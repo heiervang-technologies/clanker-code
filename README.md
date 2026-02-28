@@ -1,4 +1,17 @@
+<h1 align="center">ht-codex</h1>
+
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
+
+<p align="center">
+    <em>Heiervang Technologies fork of <a href="https://github.com/openai/codex">Codex CLI</a></em>
+</p>
+
+<p align="center">
+    <a href="https://github.com/orgs/heiervang-technologies/discussions">HT Discussions</a> |
+    <a href="https://github.com/orgs/heiervang-technologies/discussions/3">Fork Management Guide</a> |
+    <a href="https://github.com/openai/codex">Upstream Project</a>
+</p>
+
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
 </p>
@@ -6,6 +19,27 @@
 If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
 </br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
 </br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
+
+---
+
+## HT Fork Changes
+
+This is the **Heiervang Technologies** fork of [Codex CLI](https://github.com/openai/codex). The `main` branch is kept as a clean fast-forward mirror of upstream. All HT-specific changes live on the `ht` branch.
+
+### What's different from upstream
+
+| Change | Description | Contributed back? |
+|--------|-------------|:-----------------:|
+| HT fork docs | This section, CONTRIBUTING.md with fork management guide | No |
+
+### Branch strategy
+
+- **`main`** — Clean mirror of upstream. Never modified directly.
+- **`ht`** — Default branch. Contains all HT-specific additions rebased on top of `main`.
+
+For questions, feature requests, or bug reports related to this fork, please use the [HT Discussions page](https://github.com/orgs/heiervang-technologies/discussions). For upstream issues, use the [upstream repository](https://github.com/openai/codex/issues).
+
+See the [HT Fork Management Guide](https://github.com/orgs/heiervang-technologies/discussions/3) for our branch conventions, sync workflow, and contribution process.
 
 ---
 
