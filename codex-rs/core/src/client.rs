@@ -838,6 +838,18 @@ impl ModelClient {
                 .iter_mut()
                 .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
         }
+        // If the provider defines a custom developer_role_name, rewrite
+        // "developer" role messages to the configured value before sending.
+        // Useful for providers that expect "system" instead of "developer".
+        if let Some(mapped_role) = &self.state.provider.info().developer_role_name {
+            for item in &mut input {
+                if let ResponseItem::Message { role, .. } = item {
+                    if role == "developer" {
+                        *role = mapped_role.clone();
+                    }
+                }
+            }
+        }
         let tools = create_tools_json_for_responses_api(&prompt.tools)?;
         let (instructions, tools) = if model_info.use_responses_lite {
             let mut prefix = vec![ResponseItem::AdditionalTools {

@@ -29,6 +29,7 @@ base_url = "http://localhost:11434/v1"
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        developer_role_name: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -63,6 +64,7 @@ query_params = { api-version = "2025-04-01-preview" }
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        developer_role_name: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -100,6 +102,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        developer_role_name: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -177,6 +180,7 @@ fn test_supports_remote_compaction_for_azure_name() {
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        developer_role_name: None,
     };
 
     assert!(provider.supports_remote_compaction());
@@ -202,6 +206,7 @@ fn test_supports_remote_compaction_for_non_openai_non_azure_provider() {
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        developer_role_name: None,
     };
 
     assert!(!provider.supports_remote_compaction());
@@ -310,6 +315,7 @@ fn test_create_amazon_bedrock_provider() {
             websocket_connect_timeout_ms: None,
             requires_openai_auth: false,
             supports_websockets: false,
+            developer_role_name: None,
         }
     );
 }
@@ -452,6 +458,7 @@ fn test_validate_provider_aws_rejects_conflicting_auth() {
         }),
         env_key: Some("AWS_BEARER_TOKEN_BEDROCK".to_string()),
         supports_websockets: false,
+        developer_role_name: None,
         ..ModelProviderInfo::create_openai_provider(/*base_url*/ None)
     };
 
@@ -470,6 +477,7 @@ fn test_validate_provider_aws_rejects_websockets() {
         }),
         requires_openai_auth: false,
         supports_websockets: true,
+        developer_role_name: None,
         ..ModelProviderInfo::create_openai_provider(/*base_url*/ None)
     };
 
@@ -498,4 +506,27 @@ refresh_interval_ms = 0
     let auth = provider.auth.expect("auth config should deserialize");
     assert_eq!(auth.refresh_interval_ms, 0);
     assert_eq!(auth.refresh_interval(), None);
+}
+
+#[test]
+fn test_deserialize_developer_role_name() {
+    let provider_toml = r#"
+name = "CustomProvider"
+base_url = "https://example.com/v1"
+developer_role_name = "system"
+        "#;
+
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+    assert_eq!(provider.developer_role_name, Some("system".to_string()));
+}
+
+#[test]
+fn test_developer_role_name_defaults_to_none() {
+    let provider_toml = r#"
+name = "MinimalProvider"
+base_url = "https://example.com/v1"
+        "#;
+
+    let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
+    assert_eq!(provider.developer_role_name, None);
 }
