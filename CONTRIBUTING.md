@@ -2,7 +2,7 @@
 
 This document describes how Heiervang Technologies maintains forks of upstream open-source projects.
 
-For the full guide, see the [HT Fork Management Guide](https://github.com/orgs/heiervang-technologies/discussions/3).
+For the full guide, see [`.github/FORK_MANAGEMENT.md`](.github/FORK_MANAGEMENT.md) (with the [`FORK_CHECKLIST.md`](.github/FORK_CHECKLIST.md) and [`FORK_DRIFT_PATTERNS.md`](.github/FORK_DRIFT_PATTERNS.md) companions), or the [HT Fork Management Guide discussion](https://github.com/orgs/heiervang-technologies/discussions/3).
 
 ## Branch Structure
 
