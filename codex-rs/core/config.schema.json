@@ -1659,6 +1659,10 @@
           "description": "Base URL for the provider's OpenAI-compatible API.",
           "type": "string"
         },
+        "developer_role_name": {
+          "description": "Override the role name used for developer-context messages in the `input` array. When set, every `ResponseItem::Message` whose role is `\"developer\"` will be rewritten to this value before the request is sent to the provider.\n\nThis is useful for providers that do not recognise the OpenAI `\"developer\"` role and expect `\"system\"` instead (e.g. many OpenAI-compatible third-party or OSS providers).\n\nDefault (`None`) keeps the role as `\"developer\"`.",
+          "type": "string"
+        },
         "env_http_headers": {
           "additionalProperties": {
             "type": "string"

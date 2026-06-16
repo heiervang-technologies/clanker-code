@@ -138,6 +138,18 @@ pub struct ModelProviderInfo {
     /// Whether this provider supports the Responses API WebSocket transport.
     #[serde(default)]
     pub supports_websockets: bool,
+
+    /// Override the role name used for developer-context messages in the
+    /// `input` array. When set, every `ResponseItem::Message` whose role is
+    /// `"developer"` will be rewritten to this value before the request is
+    /// sent to the provider.
+    ///
+    /// This is useful for providers that do not recognise the OpenAI
+    /// `"developer"` role and expect `"system"` instead (e.g. many
+    /// OpenAI-compatible third-party or OSS providers).
+    ///
+    /// Default (`None`) keeps the role as `"developer"`.
+    pub developer_role_name: Option<String>,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -360,6 +372,7 @@ impl ModelProviderInfo {
             websocket_connect_timeout_ms: None,
             requires_openai_auth: true,
             supports_websockets: true,
+            developer_role_name: None,
         }
     }
 
@@ -393,6 +406,7 @@ impl ModelProviderInfo {
             websocket_connect_timeout_ms: None,
             requires_openai_auth: false,
             supports_websockets: false,
+            developer_role_name: None,
         }
     }
 
@@ -540,6 +554,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        developer_role_name: None,
     }
 }
 

@@ -190,6 +190,7 @@ fn model_provider_from_proto(
         websocket_connect_timeout_ms: provider.websocket_connect_timeout_ms,
         requires_openai_auth: provider.requires_openai_auth,
         supports_websockets: provider.supports_websockets,
+        developer_role_name: None,
     };
     Ok((id, info))
 }
@@ -217,6 +218,9 @@ fn model_provider_to_proto(
         websocket_connect_timeout_ms,
         requires_openai_auth,
         supports_websockets,
+        // Remote thread-config proto has no developer_role_name field, so it is
+        // not round-tripped here.
+        developer_role_name: _,
     } = provider;
 
     proto::ModelProvider {
@@ -536,6 +540,7 @@ mod tests {
             websocket_connect_timeout_ms: Some(10_000),
             requires_openai_auth: false,
             supports_websockets: true,
+            developer_role_name: None,
             aws: None,
         }
     }
