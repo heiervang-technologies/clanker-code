@@ -17,6 +17,6 @@ jobs:
       upstream_repo: 'openai/codex'
       upstream_branch: 'main'
       fork_branch: 'ht'
-      skip_rebase: ${{ inputs.skip_rebase || false }}
+      skip_rebase: ${{ github.event.inputs.skip_rebase == 'true' }}
     secrets:
       gh_pat: ${{ secrets.HAI_GH_PAT }}
