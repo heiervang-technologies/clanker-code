@@ -22,3 +22,5 @@ jobs:
       upstream_branch: 'main'
       fork_branch: 'ht'
       skip_rebase: ${{ github.event.inputs.skip_rebase == 'true' }}
+    secrets:
+      gh_pat: ${{ secrets.GH_TOKEN }}
