@@ -162,7 +162,7 @@ enum Subcommand {
     /// Update Codex to the latest version.
     Update,
 
-    /// Diagnose local Codex installation, config, auth, and runtime health.
+    /// Diagnose local Clanker Code installation, config, auth, and runtime health.
     Doctor(DoctorCommand),
 
     /// Run commands within a Codex-provided sandbox.

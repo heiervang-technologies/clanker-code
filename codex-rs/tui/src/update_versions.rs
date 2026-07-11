@@ -33,6 +33,7 @@ fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::version::CODEX_CLI_VERSION;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -70,9 +71,7 @@ mod tests {
 
     #[test]
     fn clanker_fork_version_is_not_checked_against_upstream() {
-        assert!(is_fork_build_version(
-            "0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93"
-        ));
+        assert!(is_fork_build_version(CODEX_CLI_VERSION));
         assert!(!is_fork_build_version("0.1.0"));
         assert!(!is_fork_build_version("0.1.0+other.1"));
     }
