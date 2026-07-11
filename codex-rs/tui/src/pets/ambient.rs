@@ -17,6 +17,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
+use codex_config::types::TuiPetSide;
+
 use anyhow::Context;
 use anyhow::Result;
 use ratatui::buffer::Buffer;
@@ -508,7 +510,13 @@ impl AmbientPet {
             .cloned()
     }
 
-    pub(crate) fn render_ansi(&self, area: Rect, anchor_bottom_y: u16, buf: &mut Buffer) {
+    pub(crate) fn render_ansi(
+        &self,
+        area: Rect,
+        anchor_bottom_y: u16,
+        side: TuiPetSide,
+        buf: &mut Buffer,
+    ) {
         let Some(frames) = self.ansi_frames.as_ref() else {
             return;
         };
@@ -524,7 +532,10 @@ impl AmbientPet {
         };
         frame.render(
             Rect::new(
-                area.right().saturating_sub(AVATAR_WIDTH),
+                match side {
+                    TuiPetSide::Left => area.x,
+                    TuiPetSide::Right => area.right().saturating_sub(AVATAR_WIDTH),
+                },
                 sprite_bottom_y.saturating_sub(AVATAR_HEIGHT),
                 AVATAR_WIDTH,
                 AVATAR_HEIGHT,

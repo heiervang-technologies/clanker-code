@@ -2,6 +2,7 @@
 
 use super::*;
 use codex_config::types::TuiPetAnchor;
+use codex_config::types::TuiPetSide;
 
 pub(super) fn load_ambient_pet(
     config: &Config,
@@ -103,6 +104,26 @@ impl ChatWidget {
             .unwrap_or(0)
     }
 
+    pub(super) fn ambient_pet_horizontal_reserves(&self) -> (u16, u16) {
+        let reserved = self.ambient_pet_wrap_reserved_cols();
+        match self.effective_ambient_pet_side() {
+            TuiPetSide::Left => (reserved, 0),
+            TuiPetSide::Right => (0, reserved),
+        }
+    }
+
+    fn effective_ambient_pet_side(&self) -> TuiPetSide {
+        if self
+            .ambient_pet
+            .as_ref()
+            .is_some_and(crate::pets::AmbientPet::ansi_enabled)
+        {
+            self.config.tui_pet_side
+        } else {
+            TuiPetSide::Right
+        }
+    }
+
     pub(super) fn ambient_pet_min_height(&self) -> u16 {
         self.ambient_pet
             .as_ref()
@@ -115,7 +136,12 @@ impl ChatWidget {
         }
         let anchor_bottom_y = area.bottom();
         if let Some(pet) = self.ambient_pet.as_ref() {
-            pet.render_ansi(area, anchor_bottom_y, buf);
+            pet.render_ansi(
+                area,
+                anchor_bottom_y,
+                self.effective_ambient_pet_side(),
+                buf,
+            );
         }
     }
 
@@ -139,6 +165,10 @@ impl ChatWidget {
         width
             .saturating_sub(self.ambient_pet_wrap_reserved_cols())
             .max(1)
+    }
+
+    pub(crate) fn history_left_padding(&self) -> u16 {
+        self.ambient_pet_horizontal_reserves().0
     }
 
     pub(crate) fn pet_picker_preview_draw(&self) -> Option<crate::pets::AmbientPetDraw> {
@@ -266,6 +296,11 @@ impl ChatWidget {
         self.ambient_pet = load_ambient_pet(&self.config, self.frame_requester.clone());
         self.sync_ambient_pet_semantic_state();
         self.apply_ambient_pet_image_support_override_for_tests();
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_tui_pet_side(&mut self, side: TuiPetSide) {
+        self.config.tui_pet_side = side;
         self.request_redraw();
     }
 

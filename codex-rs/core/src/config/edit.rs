@@ -5,6 +5,7 @@ use codex_config::CONFIG_TOML_FILE;
 use codex_config::types::McpServerConfig;
 use codex_config::types::SessionPickerViewMode;
 use codex_config::types::ToolSuggestDisabledTool;
+use codex_config::types::TuiPetSide;
 use codex_features::FEATURES;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ServiceTier;
@@ -95,6 +96,14 @@ pub fn tui_pet_edit(name: &str) -> ConfigEdit {
     ConfigEdit::SetPath {
         segments: vec!["tui".to_string(), "pet".to_string()],
         value: value(name.to_string()),
+    }
+}
+
+/// Produces a config edit that sets `[tui].pet_side = "<side>"`.
+pub fn tui_pet_side_edit(side: TuiPetSide) -> ConfigEdit {
+    ConfigEdit::SetPath {
+        segments: vec!["tui".to_string(), "pet_side".to_string()],
+        value: value(side.to_string()),
     }
 }
 

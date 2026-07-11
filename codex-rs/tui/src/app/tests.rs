@@ -4559,6 +4559,33 @@ async fn resize_reflow_wraps_transcript_early_when_pet_is_enabled() {
 }
 
 #[tokio::test]
+async fn left_ansi_pet_indents_reflowed_history_out_of_avatar_columns() {
+    let (mut app, _rx, _op_rx) = make_test_app_with_channels().await;
+    app.transcript_cells = vec![plain_line_cell("history beside avatar")];
+    app.chat_widget.set_tui_pet_loaded(
+        Some("ansi-test".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            crate::tui::FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    app.chat_widget
+        .set_tui_pet_side(codex_config::types::TuiPetSide::Left);
+    let width = app.chat_widget.history_wrap_width(/*width*/ 60);
+
+    let rendered = app.render_transcript_lines_for_reflow(width);
+
+    assert_eq!(
+        rendered
+            .lines
+            .iter()
+            .map(rendered_line_text)
+            .collect::<Vec<_>>(),
+        vec![format!("{}history beside avatar", " ".repeat(26))],
+    );
+}
+
+#[tokio::test]
 async fn uncapped_resize_reflow_renders_all_cells_under_row_limit() {
     let (mut app, _rx, _op_rx) = make_test_app_with_channels().await;
     app.config.terminal_resize_reflow.max_rows = TerminalResizeReflowMaxRows::Limit(100);
