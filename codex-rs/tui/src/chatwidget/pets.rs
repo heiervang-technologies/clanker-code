@@ -95,12 +95,44 @@ impl ChatWidget {
     pub(super) fn ambient_pet_wrap_reserved_cols(&self) -> u16 {
         self.ambient_pet
             .as_ref()
-            .filter(|pet| pet.image_enabled())
+            .filter(|pet| pet.visual_enabled())
             .map(|pet| {
-                pet.image_columns()
+                pet.visual_columns()
                     .saturating_add(AMBIENT_PET_WRAP_GAP_COLUMNS)
             })
             .unwrap_or(0)
+    }
+
+    pub(super) fn ambient_pet_min_height(&self) -> u16 {
+        self.ambient_pet
+            .as_ref()
+            .map_or(0, crate::pets::AmbientPet::ansi_min_height)
+    }
+
+    pub(super) fn render_ambient_pet_ansi(&self, area: Rect, buf: &mut Buffer) {
+        if !self.bottom_pane.no_modal_or_popup_active() {
+            return;
+        }
+        let anchor_bottom_y = area.bottom();
+        if let Some(pet) = self.ambient_pet.as_ref() {
+            pet.render_ansi(area, anchor_bottom_y, buf);
+        }
+    }
+
+    pub(super) fn render_pet_picker_preview_ansi(&self, buf: &mut Buffer) {
+        if self
+            .bottom_pane
+            .selected_index_for_active_view(crate::pets::PET_PICKER_VIEW_ID)
+            .is_none()
+        {
+            return;
+        }
+        let Some(area) = self.pet_picker_preview_state.area() else {
+            return;
+        };
+        if let Some(pet) = self.pet_picker_preview_pet.as_ref() {
+            pet.render_ansi_preview(area, buf);
+        }
     }
 
     pub(crate) fn history_wrap_width(&self, width: u16) -> u16 {
@@ -132,7 +164,9 @@ impl ChatWidget {
     }
 
     pub(crate) fn open_pets_picker(&mut self) {
-        if self.warn_if_pets_unsupported() {
+        if self
+            .warn_if_pets_unsupported(crate::pets::has_custom_ansi_avatar(&self.config.codex_home))
+        {
             return;
         }
 
@@ -154,16 +188,21 @@ impl ChatWidget {
     }
 
     pub(crate) fn select_pet_by_id(&mut self, pet_id: String) {
-        if self.warn_if_pets_unsupported() {
+        if self.warn_if_pets_unsupported(crate::pets::selector_uses_ansi_avatar(
+            &pet_id,
+            &self.config.codex_home,
+        )) {
             return;
         }
 
         self.app_event_tx.send(AppEvent::PetSelected { pet_id });
     }
 
-    fn warn_if_pets_unsupported(&mut self) -> bool {
-        let support = self.pet_image_support();
-        let Some(message) = support.unsupported_message() else {
+    fn warn_if_pets_unsupported(&mut self, ansi_available: bool) -> bool {
+        if ansi_available {
+            return false;
+        }
+        let Some(message) = self.pet_image_support().unsupported_message() else {
             return false;
         };
 
@@ -217,6 +256,16 @@ impl ChatWidget {
     #[cfg(not(test))]
     fn apply_ambient_pet_image_support_override_for_tests(&mut self) {}
 
+    #[cfg(test)]
+    fn apply_pet_image_support_override_for_tests(&self, pet: &mut crate::pets::AmbientPet) {
+        if let Some(support) = self.pet_image_support_override {
+            pet.set_image_support_for_tests(support);
+        }
+    }
+
+    #[cfg(not(test))]
+    fn apply_pet_image_support_override_for_tests(&self, _pet: &mut crate::pets::AmbientPet) {}
+
     pub(crate) fn start_pet_picker_preview(&mut self, pet_id: String) {
         self.pet_picker_preview_request_id =
             self.pet_picker_preview_request_id.wrapping_add(/*rhs*/ 1);
@@ -259,15 +308,16 @@ impl ChatWidget {
         }
 
         match result {
-            Ok(pet) => {
+            Ok(mut pet) => {
+                self.apply_pet_image_support_override_for_tests(&mut pet);
+                if let Some(message) = pet.unavailable_message() {
+                    self.pet_picker_preview_state.set_error(message.to_string());
+                    self.pet_picker_preview_pet = None;
+                    self.request_redraw();
+                    return;
+                }
                 self.pet_picker_preview_state.set_ready();
                 self.pet_picker_preview_pet = Some(pet);
-                #[cfg(test)]
-                if let Some(support) = self.pet_image_support_override
-                    && let Some(pet) = self.pet_picker_preview_pet.as_mut()
-                {
-                    pet.set_image_support_for_tests(support);
-                }
             }
             Err(message) => {
                 self.pet_picker_preview_state.set_error(message);

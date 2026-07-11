@@ -19,11 +19,15 @@ use std::time::Instant;
 
 use anyhow::Context;
 use anyhow::Result;
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use crate::tui::FrameRequester;
 
 use super::DEFAULT_PET_ID;
+use super::ansi_half_block::AVATAR_HEIGHT;
+use super::ansi_half_block::AVATAR_WIDTH;
+use super::ansi_half_block::AnsiHalfBlockFrame;
 use super::frames;
 use super::image_protocol::ImageProtocol;
 use super::image_protocol::PetImageSupport;
@@ -33,6 +37,7 @@ use super::model::Animation;
 #[cfg(test)]
 use super::model::AnimationFrame;
 use super::model::Pet;
+use super::model::PetRenderMode;
 
 const PET_TARGET_HEIGHT_PX: u16 = 75;
 const PET_COMPOSER_GAP_PX: u16 = 10;
@@ -128,6 +133,7 @@ pub(crate) struct AmbientPet {
     pet: Pet,
     support: PetImageSupport,
     frames: Vec<PathBuf>,
+    ansi_frames: Option<Vec<AnsiHalfBlockFrame>>,
     sixel_dir: PathBuf,
     frame_requester: FrameRequester,
     notification: Option<PetNotification>,
@@ -163,10 +169,19 @@ impl AmbientPet {
         let frame_dir = cache_dir.join("frames");
         let sixel_dir = cache_dir.join("sixel");
         let frames = frames::prepare_png_frames(&pet, &frame_dir)?;
+        let ansi_frames = (pet.render_mode == PetRenderMode::AnsiHalfBlock)
+            .then(|| {
+                frames
+                    .iter()
+                    .map(|path| AnsiHalfBlockFrame::load(path))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?;
         Ok(Self {
             pet,
             support: default_image_support(),
             frames,
+            ansi_frames,
             sixel_dir,
             frame_requester,
             notification: None,
@@ -181,11 +196,37 @@ impl AmbientPet {
     }
 
     pub(crate) fn image_enabled(&self) -> bool {
-        self.support.protocol().is_some()
+        self.pet.render_mode == PetRenderMode::TerminalImage && self.support.protocol().is_some()
     }
 
-    pub(crate) fn image_columns(&self) -> u16 {
-        self.image_size().columns
+    pub(crate) fn ansi_enabled(&self) -> bool {
+        self.ansi_frames.is_some()
+    }
+
+    pub(crate) fn visual_enabled(&self) -> bool {
+        self.image_enabled() || self.ansi_enabled()
+    }
+
+    pub(crate) fn unavailable_message(&self) -> Option<&'static str> {
+        (!self.ansi_enabled())
+            .then(|| self.support.unsupported_message())
+            .flatten()
+    }
+
+    pub(crate) fn visual_columns(&self) -> u16 {
+        if self.ansi_enabled() {
+            AVATAR_WIDTH
+        } else {
+            self.image_size().columns
+        }
+    }
+
+    pub(crate) fn ansi_min_height(&self) -> u16 {
+        if self.ansi_enabled() {
+            AVATAR_HEIGHT.saturating_add(composer_gap_rows())
+        } else {
+            0
+        }
     }
 
     #[cfg(test)]
@@ -200,7 +241,7 @@ impl AmbientPet {
     }
 
     fn next_frame_delay(&self) -> Option<Duration> {
-        if self.support.protocol().is_none() || !self.animations_enabled {
+        if !self.visual_enabled() || !self.animations_enabled {
             return None;
         }
 
@@ -223,6 +264,9 @@ impl AmbientPet {
         area: Rect,
         composer_bottom_y: u16,
     ) -> Option<AmbientPetDraw> {
+        if self.pet.render_mode != PetRenderMode::TerminalImage {
+            return None;
+        }
         let protocol = self.support.protocol()?;
         let size = self.image_size();
         let notification = self.visible_notification(Instant::now());
@@ -254,6 +298,9 @@ impl AmbientPet {
     /// the live animation state so selection browsing stays stable and does not
     /// require the full ambient animation lifecycle.
     pub(crate) fn preview_draw_request(&self, area: Rect) -> Option<AmbientPetDraw> {
+        if self.pet.render_mode != PetRenderMode::TerminalImage {
+            return None;
+        }
         let protocol = self.support.protocol()?;
         let size = self.image_size();
         if area.width < size.columns || area.height < size.rows {
@@ -301,8 +348,12 @@ impl AmbientPet {
     }
 
     fn current_frame_path(&self) -> Option<PathBuf> {
-        let sprite_index = self
-            .current_animation()
+        let sprite_index = self.current_sprite_index();
+        self.frame_path_for_sprite_index(sprite_index)
+    }
+
+    fn current_sprite_index(&self) -> usize {
+        self.current_animation()
             .and_then(|animation| {
                 if self.animations_enabled {
                     current_animation_frame(animation, self.animation_started_at.elapsed())
@@ -311,8 +362,7 @@ impl AmbientPet {
                     animation.frames.first().map(|frame| frame.sprite_index)
                 }
             })
-            .unwrap_or(0);
-        self.frame_path_for_sprite_index(sprite_index)
+            .unwrap_or(0)
     }
 
     fn first_idle_frame_path(&self) -> Option<PathBuf> {
@@ -329,6 +379,57 @@ impl AmbientPet {
         self.frames
             .get(sprite_index.min(self.frames.len().saturating_sub(1)))
             .cloned()
+    }
+
+    pub(crate) fn render_ansi(&self, area: Rect, anchor_bottom_y: u16, buf: &mut Buffer) {
+        let Some(frames) = self.ansi_frames.as_ref() else {
+            return;
+        };
+        let sprite_bottom_y = anchor_bottom_y.saturating_sub(composer_gap_rows());
+        if area.width < AVATAR_WIDTH || sprite_bottom_y < area.y.saturating_add(AVATAR_HEIGHT) {
+            return;
+        }
+        let frame_index = self
+            .current_sprite_index()
+            .min(frames.len().saturating_sub(1));
+        let Some(frame) = frames.get(frame_index) else {
+            return;
+        };
+        frame.render(
+            Rect::new(
+                area.right().saturating_sub(AVATAR_WIDTH),
+                sprite_bottom_y.saturating_sub(AVATAR_HEIGHT),
+                AVATAR_WIDTH,
+                AVATAR_HEIGHT,
+            ),
+            buf,
+        );
+    }
+
+    pub(crate) fn render_ansi_preview(&self, area: Rect, buf: &mut Buffer) {
+        let Some(frame) = self.ansi_frames.as_ref().and_then(|frames| {
+            let index = self
+                .pet
+                .animations
+                .get("idle")
+                .and_then(|animation| animation.frames.first())
+                .map_or(0, |frame| frame.sprite_index);
+            frames.get(index.min(frames.len().saturating_sub(1)))
+        }) else {
+            return;
+        };
+        if area.width < AVATAR_WIDTH || area.height < AVATAR_HEIGHT {
+            return;
+        }
+        frame.render(
+            Rect::new(
+                area.x + area.width.saturating_sub(AVATAR_WIDTH) / 2,
+                area.y + area.height.saturating_sub(AVATAR_HEIGHT) / 2,
+                AVATAR_WIDTH,
+                AVATAR_HEIGHT,
+            ),
+            buf,
+        );
     }
 
     fn image_size(&self) -> ImageSize {
@@ -459,15 +560,50 @@ pub(crate) fn test_ambient_pet(
             rows: 9,
             frame_count: 72,
             animations: HashMap::from([("idle".to_string(), test_animation())]),
+            render_mode: PetRenderMode::TerminalImage,
         },
         support: PetImageSupport::Supported(ImageProtocol::Kitty),
         frames: vec![PathBuf::from("frame-0.png"), PathBuf::from("frame-1.png")],
+        ansi_frames: None,
         sixel_dir: PathBuf::new(),
         frame_requester,
         notification: None,
         animation_started_at: Instant::now()
             .checked_sub(Duration::from_millis(/*millis*/ 15))
             .unwrap(),
+        animations_enabled,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_ansi_ambient_pet(
+    frame_requester: FrameRequester,
+    animations_enabled: bool,
+) -> AmbientPet {
+    let image = image::RgbaImage::from_pixel(24, 24, image::Rgba([255, 0, 0, 255]));
+    AmbientPet {
+        pet: Pet {
+            id: "ansi-test".to_string(),
+            display_name: "ANSI Test".to_string(),
+            description: String::new(),
+            spritesheet_path: PathBuf::from("avatar.png"),
+            frame_width: 24,
+            frame_height: 24,
+            columns: 1,
+            rows: 1,
+            frame_count: 1,
+            animations: HashMap::from([("idle".to_string(), test_animation())]),
+            render_mode: PetRenderMode::AnsiHalfBlock,
+        },
+        support: PetImageSupport::Unsupported(
+            super::image_protocol::PetImageUnsupportedReason::Terminal,
+        ),
+        frames: vec![PathBuf::from("frame-0.png")],
+        ansi_frames: Some(vec![AnsiHalfBlockFrame::from_image(image).unwrap()]),
+        sixel_dir: PathBuf::new(),
+        frame_requester,
+        notification: None,
+        animation_started_at: Instant::now(),
         animations_enabled,
     }
 }
@@ -524,5 +660,42 @@ mod tests {
 
         assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-0.png")));
         assert_eq!(pet.next_frame_delay(), None);
+    }
+
+    #[test]
+    fn notification_states_select_their_configured_avatar_frames() {
+        let mut pet = test_ambient_pet(
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        pet.frames = (0..5)
+            .map(|index| PathBuf::from(format!("frame-{index}.png")))
+            .collect();
+        for (name, sprite_index) in [("running", 1), ("waiting", 2), ("review", 3), ("failed", 4)] {
+            pet.pet.animations.insert(
+                name.to_string(),
+                Animation {
+                    frames: vec![AnimationFrame {
+                        sprite_index,
+                        duration: Duration::from_secs(1),
+                    }],
+                    loop_start: Some(/*loop_start*/ 0),
+                    fallback: "idle".to_string(),
+                },
+            );
+        }
+
+        for (kind, expected_frame) in [
+            (PetNotificationKind::Running, "frame-1.png"),
+            (PetNotificationKind::Waiting, "frame-2.png"),
+            (PetNotificationKind::Review, "frame-3.png"),
+            (PetNotificationKind::Failed, "frame-4.png"),
+        ] {
+            pet.set_notification(kind, /*body*/ None);
+            assert_eq!(
+                pet.current_frame_path(),
+                Some(PathBuf::from(expected_frame))
+            );
+        }
     }
 }

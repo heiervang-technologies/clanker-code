@@ -132,11 +132,15 @@ impl TranscriptAreaRenderable<'_> {
 impl Renderable for ChatWidget {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         self.as_renderable().render(area, buf);
+        self.render_ambient_pet_ansi(area, buf);
+        self.render_pet_picker_preview_ansi(buf);
         self.last_rendered_width.set(Some(area.width as usize));
     }
 
     fn desired_height(&self, width: u16) -> u16 {
-        self.as_renderable().desired_height(width)
+        self.as_renderable()
+            .desired_height(width)
+            .max(self.ambient_pet_min_height())
     }
 
     fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {

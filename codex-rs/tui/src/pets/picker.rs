@@ -193,6 +193,30 @@ fn custom_pet_entries(codex_home: &Path) -> Vec<PetPickerEntry> {
     entries_by_selector.into_values().collect()
 }
 
+pub(crate) fn has_custom_ansi_avatar(codex_home: &Path) -> bool {
+    for (directory_name, manifest_file) in [("avatars", "avatar.json"), ("pets", "pet.json")] {
+        let Ok(children) = fs::read_dir(codex_home.join(directory_name)) else {
+            continue;
+        };
+        for child in children.flatten() {
+            let path = child.path();
+            if !path.join(manifest_file).is_file() {
+                continue;
+            }
+            let Some(id) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let selector = custom_pet_selector(id);
+            if Pet::load_with_codex_home(&selector, /*codex_home*/ Some(codex_home))
+                .is_ok_and(|pet| pet.uses_ansi_half_block())
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

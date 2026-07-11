@@ -24,6 +24,8 @@ use serde::Deserialize;
 use sha2::Digest as _;
 use sha2::Sha256;
 
+use super::ansi_half_block::AVATAR_HEIGHT;
+use super::ansi_half_block::AVATAR_WIDTH;
 use super::catalog;
 
 const MAX_PET_FRAMES: usize = 256;
@@ -69,6 +71,7 @@ pub struct Pet {
     pub rows: u32,
     pub frame_count: usize,
     pub animations: HashMap<String, Animation>,
+    pub render_mode: PetRenderMode,
 }
 
 impl Pet {
@@ -99,6 +102,10 @@ impl Pet {
         self.frame_count
     }
 
+    pub(super) fn uses_ansi_half_block(&self) -> bool {
+        self.render_mode == PetRenderMode::AnsiHalfBlock
+    }
+
     pub(super) fn frame_cache_key(&self) -> Result<String> {
         let bytes = fs::read(&self.spritesheet_path)
             .with_context(|| format!("read {}", self.spritesheet_path.display()))?;
@@ -112,6 +119,15 @@ impl Pet {
 
 pub(super) const CUSTOM_PET_PREFIX: &str = "custom:";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[derive(Default)]
+pub(super) enum PetRenderMode {
+    #[default]
+    TerminalImage,
+    AnsiHalfBlock,
+}
+
 #[derive(Debug, Deserialize)]
 struct PetFile {
     #[serde(default)]
@@ -122,6 +138,8 @@ struct PetFile {
     description: Option<String>,
     #[serde(default, rename = "spritesheetPath")]
     spritesheet_path: Option<String>,
+    #[serde(default, rename = "renderMode")]
+    render_mode: PetRenderMode,
     frame: Option<FrameSpec>,
     #[serde(default)]
     animations: HashMap<String, AnimationSpec>,
@@ -179,6 +197,7 @@ fn load_builtin_pet(pet: catalog::BuiltinPet, codex_home: Option<&Path>) -> Resu
         rows: catalog::DEFAULT_FRAME_ROWS,
         frame_count: default_frame_count(),
         animations: default_animations(),
+        render_mode: PetRenderMode::TerminalImage,
     })
 }
 
@@ -274,10 +293,24 @@ fn load_pet_manifest(
     if !spritesheet_path.exists() {
         bail!("missing spritesheet {}", spritesheet_path.display());
     }
-    let (spritesheet_width, spritesheet_height) =
-        validate_app_spritesheet_dimensions(&spritesheet_path)?;
-
-    let frame = file.frame.unwrap_or_default();
+    let (spritesheet_width, spritesheet_height) = image::image_dimensions(&spritesheet_path)
+        .with_context(|| format!("read {}", spritesheet_path.display()))?;
+    let frame = match (file.frame, file.render_mode) {
+        (Some(frame), _) => frame,
+        (None, PetRenderMode::TerminalImage) => FrameSpec::default(),
+        (None, PetRenderMode::AnsiHalfBlock) => FrameSpec {
+            width: u32::from(AVATAR_WIDTH),
+            height: u32::from(AVATAR_HEIGHT) * 2,
+            columns: 1,
+            rows: 1,
+        },
+    };
+    validate_render_mode_dimensions(
+        file.render_mode,
+        &frame,
+        spritesheet_width,
+        spritesheet_height,
+    )?;
     let frame_count = validate_frame_spec(&frame, spritesheet_width, spritesheet_height)?;
     Ok(Pet {
         id: pet_id,
@@ -289,7 +322,8 @@ fn load_pet_manifest(
         columns: frame.columns,
         rows: frame.rows,
         frame_count,
-        animations: load_animations(file.animations, frame_count)?,
+        animations: load_animations(file.animations, frame_count, file.render_mode)?,
+        render_mode: file.render_mode,
     })
 }
 
@@ -311,17 +345,35 @@ fn resolve_spritesheet_path(pet_dir: &Path, spritesheet_path: &str) -> Result<Pa
     Ok(pet_dir.join(path))
 }
 
-fn validate_app_spritesheet_dimensions(path: &Path) -> Result<(u32, u32)> {
-    let (width, height) =
-        image::image_dimensions(path).with_context(|| format!("read {}", path.display()))?;
-    if width != catalog::SPRITESHEET_WIDTH || height != catalog::SPRITESHEET_HEIGHT {
-        bail!(
-            "spritesheet must be {}x{} pixels",
-            catalog::SPRITESHEET_WIDTH,
-            catalog::SPRITESHEET_HEIGHT
-        );
+fn validate_render_mode_dimensions(
+    render_mode: PetRenderMode,
+    frame: &FrameSpec,
+    spritesheet_width: u32,
+    spritesheet_height: u32,
+) -> Result<()> {
+    match render_mode {
+        PetRenderMode::TerminalImage => {
+            if spritesheet_width != catalog::SPRITESHEET_WIDTH
+                || spritesheet_height != catalog::SPRITESHEET_HEIGHT
+            {
+                bail!(
+                    "spritesheet must be {}x{} pixels",
+                    catalog::SPRITESHEET_WIDTH,
+                    catalog::SPRITESHEET_HEIGHT
+                );
+            }
+        }
+        PetRenderMode::AnsiHalfBlock => {
+            let expected_width = u32::from(AVATAR_WIDTH);
+            let expected_height = u32::from(AVATAR_HEIGHT) * 2;
+            if frame.width != expected_width || frame.height != expected_height {
+                bail!(
+                    "ANSI half-block avatar frames must be {expected_width}x{expected_height} pixels"
+                );
+            }
+        }
     }
-    Ok((width, height))
+    Ok(())
 }
 
 fn validate_frame_spec(
@@ -388,8 +440,12 @@ fn expand_path(value: &str) -> Result<PathBuf> {
 fn load_animations(
     specs: HashMap<String, AnimationSpec>,
     frame_count: usize,
+    render_mode: PetRenderMode,
 ) -> Result<HashMap<String, Animation>> {
-    let mut animations = default_animations();
+    let mut animations = match render_mode {
+        PetRenderMode::TerminalImage => default_animations(),
+        PetRenderMode::AnsiHalfBlock => HashMap::from([("idle".to_string(), idle_frame_zero())]),
+    };
     if specs.is_empty() {
         validate_animation_indices(&animations, frame_count)?;
         return Ok(animations);
@@ -595,6 +651,17 @@ fn idle_animation() -> Animation {
     }
 }
 
+fn idle_frame_zero() -> Animation {
+    Animation {
+        frames: vec![AnimationFrame {
+            sprite_index: 0,
+            duration: Duration::from_secs(1),
+        }],
+        loop_start: Some(/*loop_start*/ 0),
+        fallback: "idle".to_string(),
+    }
+}
+
 fn app_state_animation(
     row_index: usize,
     frame_count: usize,
@@ -645,6 +712,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("pet.json"), manifest).unwrap();
         catalog::write_test_spritesheet(&dir.path().join("spritesheet.webp"));
+        dir
+    }
+
+    fn write_ansi_avatar_manifest(
+        manifest: &str,
+        spritesheet_width: u32,
+        spritesheet_height: u32,
+    ) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("avatar.json"), manifest).unwrap();
+        image::RgbaImage::from_pixel(
+            spritesheet_width,
+            spritesheet_height,
+            image::Rgba([0, 0, 0, 0]),
+        )
+        .save(dir.path().join("avatar.png"))
+        .unwrap();
         dir
     }
 
@@ -738,6 +822,7 @@ mod tests {
                 },
             )]),
             default_frame_count(),
+            PetRenderMode::TerminalImage,
         )
         .unwrap();
         let custom = &animations["custom"];
@@ -762,6 +847,78 @@ mod tests {
         assert_eq!(pet.rows, 9);
         assert_eq!(pet.frame_count(), 72);
         assert!(!pet.animations["idle"].frames.is_empty());
+    }
+
+    #[test]
+    fn ansi_avatar_defaults_one_24px_image_to_idle() {
+        let dir = write_ansi_avatar_manifest(
+            r#"{
+                "displayName": "Clanker",
+                "renderMode": "ansi-half-block",
+                "spritesheetPath": "avatar.png"
+            }"#,
+            24,
+            24,
+        );
+
+        let pet = load_pet_from_dir(&dir);
+
+        assert_eq!(pet.render_mode, PetRenderMode::AnsiHalfBlock);
+        assert_eq!((pet.frame_width, pet.frame_height), (24, 24));
+        assert_eq!((pet.columns, pet.rows, pet.frame_count), (1, 1, 1));
+        assert_eq!(sprite_indices(&pet.animations["idle"]), vec![0]);
+    }
+
+    #[test]
+    fn ansi_avatar_supports_per_state_multiframe_animations() {
+        let dir = write_ansi_avatar_manifest(
+            r#"{
+                "displayName": "Clanker",
+                "renderMode": "ansi-half-block",
+                "spritesheetPath": "avatar.png",
+                "frame": { "width": 24, "height": 24, "columns": 3, "rows": 2 },
+                "animations": {
+                    "idle": { "frames": [0] },
+                    "running": { "frames": [1, 2], "fps": 4.0 },
+                    "waiting": { "frames": [3] },
+                    "review": { "frames": [4] },
+                    "failed": { "frames": [5] }
+                }
+            }"#,
+            72,
+            48,
+        );
+
+        let pet = load_pet_from_dir(&dir);
+
+        assert_eq!(pet.frame_count, 6);
+        assert_eq!(sprite_indices(&pet.animations["idle"]), vec![0]);
+        assert_eq!(sprite_indices(&pet.animations["running"]), vec![1, 2]);
+        assert_eq!(durations_ms(&pet.animations["running"]), vec![250, 250]);
+        assert_eq!(sprite_indices(&pet.animations["waiting"]), vec![3]);
+        assert_eq!(sprite_indices(&pet.animations["review"]), vec![4]);
+        assert_eq!(sprite_indices(&pet.animations["failed"]), vec![5]);
+    }
+
+    #[test]
+    fn ansi_avatar_rejects_non_24px_frames() {
+        let dir = write_ansi_avatar_manifest(
+            r#"{
+                "displayName": "Too Small",
+                "renderMode": "ansi-half-block",
+                "spritesheetPath": "avatar.png",
+                "frame": { "width": 12, "height": 24, "columns": 2, "rows": 1 }
+            }"#,
+            24,
+            24,
+        );
+
+        let err = load_pet_error_from_dir(&dir);
+
+        assert!(
+            err.to_string()
+                .contains("ANSI half-block avatar frames must be 24x24 pixels")
+        );
     }
 
     #[test]
