@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 build = "build.rs"
 
+# clanker-delta: entry-point
+[[bin]]
+name = "clanker"
+path = "src/clanker.rs"
+
 [[bin]]
 name = "codex"
 path = "src/main.rs"
