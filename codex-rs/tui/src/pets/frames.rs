@@ -7,6 +7,8 @@ use anyhow::Result;
 use image::GenericImageView;
 
 use super::model::Pet;
+#[cfg(test)]
+use super::model::PetRenderMode;
 
 pub(super) fn prepare_png_frames(pet: &Pet, frame_dir: &Path) -> Result<Vec<PathBuf>> {
     fs::create_dir_all(frame_dir).with_context(|| format!("create {}", frame_dir.display()))?;
@@ -104,6 +106,7 @@ mod tests {
                 rows: 1,
                 frame_count: 2,
                 animations: HashMap::new(),
+                render_mode: PetRenderMode::TerminalImage,
             },
             &dir.path().join("frames"),
         )

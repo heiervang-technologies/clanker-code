@@ -2503,6 +2503,33 @@ async fn ambient_pet_hides_notification_text_overlay() {
     }
 }
 
+#[tokio::test]
+async fn ansi_half_block_avatar_renders_inside_the_tui_without_image_protocols() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_tui_pet_loaded(
+        Some("ansi-test".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(60, 16)).expect("create terminal");
+
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("draw ANSI avatar");
+
+    assert!(!chat.ambient_pet_image_enabled());
+    assert_eq!(chat.history_wrap_width(/*width*/ 60), 34);
+    assert_chatwidget_snapshot!(
+        "ansi_half_block_avatar",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
 // Snapshot test: status widget + approval modal active together
 // The modal takes precedence visually; this captures the layout with a running
 // task (status indicator active) while an approval request is shown.

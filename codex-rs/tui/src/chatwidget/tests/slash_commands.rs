@@ -27,6 +27,25 @@ fn force_old_iterm2_pet_image_unsupported(chat: &mut ChatWidget) {
     ));
 }
 
+fn write_ansi_avatar(chat: &ChatWidget, id: &str) {
+    let avatar_dir = chat.config.codex_home.join("avatars").join(id);
+    std::fs::create_dir_all(&avatar_dir).unwrap();
+    std::fs::write(
+        avatar_dir.join("avatar.json"),
+        format!(
+            r#"{{
+                "displayName": "{id}",
+                "renderMode": "ansi-half-block",
+                "spritesheetPath": "avatar.png"
+            }}"#
+        ),
+    )
+    .unwrap();
+    image::RgbaImage::from_pixel(24, 24, image::Rgba([255, 0, 0, 255]))
+        .save(avatar_dir.join("avatar.png"))
+        .unwrap();
+}
+
 fn fast_tier_command() -> ServiceTierCommand {
     ServiceTierCommand {
         id: ServiceTier::Fast.request_value().to_string(),
@@ -2464,6 +2483,36 @@ async fn slash_pets_with_arg_on_unsupported_terminal_warns_without_selection() {
         .join("\n");
     assert!(rendered.contains("Pets are disabled in tmux."));
     assert_matches!(rx.try_recv(), Err(TryRecvError::Empty));
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
+#[serial]
+async fn slash_pets_on_unsupported_terminal_opens_when_ansi_avatar_exists() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    force_tmux_pet_image_unsupported(&mut chat);
+    write_ansi_avatar(&chat, "clanker");
+
+    chat.dispatch_command(SlashCommand::Pets);
+
+    assert!(chat.bottom_pane.has_active_view());
+}
+
+#[tokio::test]
+#[serial]
+async fn slash_pets_selects_ansi_avatar_without_image_protocol_support() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    force_tmux_pet_image_unsupported(&mut chat);
+    write_ansi_avatar(&chat, "clanker");
+    chat.bottom_pane
+        .set_composer_text("/pets custom:clanker".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PetSelected { pet_id }) if pet_id == "custom:clanker"
+    );
     assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
 }
 
