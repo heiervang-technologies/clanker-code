@@ -64,6 +64,7 @@ use codex_config::types::Tui;
 use codex_config::types::TuiKeymap;
 use codex_config::types::TuiNotificationSettings;
 use codex_config::types::TuiPetAnchor;
+use codex_config::types::TuiPetSide;
 use codex_config::types::WindowsSandboxModeToml;
 use codex_config::types::WindowsToml;
 use codex_core_plugins::PluginsManager;
@@ -902,6 +903,7 @@ fn config_toml_deserializes_model_availability_nux() {
             theme: None,
             pet: None,
             pet_anchor: TuiPetAnchor::Composer,
+            pet_side: TuiPetSide::Right,
             session_picker_view: None,
             keymap: TuiKeymap::default(),
             model_availability_nux: ModelAvailabilityNuxConfig {
@@ -3717,6 +3719,48 @@ pet_anchor = "bottom"
 }
 
 #[test]
+fn tui_pet_side_deserializes_and_defaults_to_right() {
+    let left = toml::from_str::<ConfigToml>(
+        r#"
+[tui]
+pet_side = "left"
+"#,
+    )
+    .expect("left pet side should deserialize");
+    let default = toml::from_str::<ConfigToml>(
+        r#"
+[tui]
+"#,
+    )
+    .expect("missing pet side should use its default");
+
+    assert_eq!(
+        (
+            left.tui.map(|tui| tui.pet_side),
+            default.tui.map(|tui| tui.pet_side),
+        ),
+        (Some(TuiPetSide::Left), Some(TuiPetSide::Right)),
+    );
+}
+
+#[test]
+fn tui_pet_side_rejects_unknown_value() {
+    let err = toml::from_str::<ConfigToml>(
+        r#"
+[tui]
+pet_side = "center"
+"#,
+    )
+    .expect_err("unknown pet side should fail")
+    .to_string();
+
+    assert!(
+        err.contains("unknown variant `center`") && err.contains("left") && err.contains("right"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn tui_config_missing_notifications_field_defaults_to_enabled() {
     let cfg = r#"
 [tui]
@@ -3741,6 +3785,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             theme: None,
             pet: None,
             pet_anchor: TuiPetAnchor::Composer,
+            pet_side: TuiPetSide::Right,
             session_picker_view: None,
             keymap: TuiKeymap::default(),
             model_availability_nux: ModelAvailabilityNuxConfig::default(),

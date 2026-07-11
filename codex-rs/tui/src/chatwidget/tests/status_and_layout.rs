@@ -2530,6 +2530,39 @@ async fn ansi_half_block_avatar_renders_inside_the_tui_without_image_protocols()
     );
 }
 
+#[tokio::test]
+async fn ansi_half_block_avatar_renders_on_left_without_overlapping_composer() {
+    use codex_config::types::TuiPetSide;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_tui_pet_loaded(
+        Some("ansi-test".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    chat.set_tui_pet_side(TuiPetSide::Left);
+    chat.bottom_pane.set_composer_text(
+        "The composer begins after the left-side avatar reserve.".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(60, 16)).expect("create terminal");
+
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("draw left-side ANSI avatar");
+
+    assert_eq!(chat.history_left_padding(), 26);
+    assert_chatwidget_snapshot!(
+        "ansi_half_block_avatar_left",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
 // Snapshot test: status widget + approval modal active together
 // The modal takes precedence visually; this captures the layout with a running
 // task (status indicator active) while an approval request is shown.

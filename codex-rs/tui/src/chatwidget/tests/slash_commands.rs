@@ -2475,6 +2475,30 @@ async fn slash_pets_prev_cycles_to_previous_pet_in_stable_order() {
 
 #[tokio::test]
 #[serial]
+async fn slash_pets_side_commands_select_horizontal_side() {
+    for (argument, expected) in [
+        ("left", codex_config::types::TuiPetSide::Left),
+        ("right", codex_config::types::TuiPetSide::Right),
+    ] {
+        let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+        chat.bottom_pane.set_composer_text(
+            format!("/pets side {argument}"),
+            Vec::new(),
+            Vec::new(),
+        );
+
+        chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+        assert_matches!(
+            rx.try_recv(),
+            Ok(AppEvent::PetSideSelected { side }) if side == expected
+        );
+        assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+    }
+}
+
+#[tokio::test]
+#[serial]
 async fn slash_pets_disable_disables_pets_even_on_unsupported_terminal() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     force_tmux_pet_image_unsupported(&mut chat);

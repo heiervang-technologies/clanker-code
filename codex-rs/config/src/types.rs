@@ -651,6 +651,25 @@ pub enum TuiPetAnchor {
     ScreenBottom,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TuiPetSide {
+    /// Render ANSI pets along the left edge of the TUI.
+    Left,
+    /// Render pets along the right edge of the TUI.
+    #[default]
+    Right,
+}
+
+impl fmt::Display for TuiPetSide {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TuiPetSide::Left => write!(f, "left"),
+            TuiPetSide::Right => write!(f, "right"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct TuiNotificationSettings {
@@ -755,6 +774,12 @@ pub struct Tui {
     /// Defaults to `composer`, which follows the current TUI composer viewport.
     #[serde(default)]
     pub pet_anchor: TuiPetAnchor,
+
+    /// Horizontal side used for the terminal pet.
+    ///
+    /// Defaults to `right`. Left placement currently applies to ANSI pets.
+    #[serde(default)]
+    pub pet_side: TuiPetSide,
 
     /// Preferred layout for resume/fork session picker results.
     #[serde(default)]

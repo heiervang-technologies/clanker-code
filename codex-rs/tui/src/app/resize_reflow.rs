@@ -85,7 +85,15 @@ impl App {
                 self.has_emitted_history_lines = true;
             }
         }
+        self.apply_pet_side_history_padding(&mut display);
         display
+    }
+
+    fn apply_pet_side_history_padding(&self, lines: &mut [HyperlinkLine]) {
+        let columns = usize::from(self.chat_widget.history_left_padding());
+        for line in lines {
+            line.prepend_spaces(columns);
+        }
     }
 
     pub(super) fn insert_history_cell_lines(
@@ -525,6 +533,7 @@ impl App {
             let trimmed_line_count = reflowed_lines.len() - max_rows;
             reflowed_lines = reflowed_lines.split_off(trimmed_line_count);
         }
+        self.apply_pet_side_history_padding(&mut reflowed_lines);
         self.has_emitted_history_lines = !reflowed_lines.is_empty();
 
         ReflowRenderResult {

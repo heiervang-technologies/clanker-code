@@ -3259,6 +3259,15 @@
           "default": "composer",
           "description": "Where the terminal pet should anchor vertically.\n\nDefaults to `composer`, which follows the current TUI composer viewport."
         },
+        "pet_side": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TuiPetSide"
+            }
+          ],
+          "default": "right",
+          "description": "Horizontal side used for the terminal pet.\n\nDefaults to `right`. Left placement currently applies to ANSI pets."
+        },
         "raw_output_mode": {
           "default": false,
           "description": "Start the TUI in raw scrollback mode for copy-friendly transcript output. Defaults to `false`.",
@@ -4102,6 +4111,24 @@
           "description": "Anchor the pet to the physical bottom of the terminal screen.",
           "enum": [
             "screen-bottom"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "TuiPetSide": {
+      "oneOf": [
+        {
+          "description": "Render ANSI pets along the left edge of the TUI.",
+          "enum": [
+            "left"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render pets along the right edge of the TUI.",
+          "enum": [
+            "right"
           ],
           "type": "string"
         }

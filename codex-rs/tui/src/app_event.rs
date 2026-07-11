@@ -44,6 +44,7 @@ use crate::chatwidget::UserMessage;
 use crate::goal_files::GoalDraft;
 use codex_app_server_protocol::AskForApproval;
 use codex_config::types::ApprovalsReviewer;
+use codex_config::types::TuiPetSide;
 use codex_features::Feature;
 use codex_plugin::PluginCapabilitySummary;
 use codex_protocol::config_types::CollaborationModeMask;
@@ -415,6 +416,11 @@ pub(crate) enum AppEvent {
 
     /// Persist terminal pets as disabled and remove the ambient pet.
     PetDisabled,
+
+    /// Persist the horizontal side used for ANSI terminal pets.
+    PetSideSelected {
+        side: TuiPetSide,
+    },
 
     /// Start loading the side preview for the pet picker.
     PetPreviewRequested {

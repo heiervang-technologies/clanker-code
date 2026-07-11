@@ -65,6 +65,17 @@ impl HyperlinkLine {
         self.line = self.line.style(style);
         self
     }
+
+    pub(crate) fn prepend_spaces(&mut self, columns: usize) {
+        if columns == 0 {
+            return;
+        }
+        self.line.spans.insert(0, " ".repeat(columns).into());
+        for hyperlink in &mut self.hyperlinks {
+            hyperlink.columns = hyperlink.columns.start.saturating_add(columns)
+                ..hyperlink.columns.end.saturating_add(columns);
+        }
+    }
 }
 
 impl From<Line<'static>> for HyperlinkLine {
@@ -517,6 +528,30 @@ fn mark_matching_cells(
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn prepending_spaces_preserves_hyperlink_target_columns() {
+        let mut line = HyperlinkLine {
+            line: Line::from("go link"),
+            hyperlinks: vec![TerminalHyperlink {
+                columns: 3..7,
+                destination: "https://example.com".to_string(),
+            }],
+        };
+
+        line.prepend_spaces(/*columns*/ 4);
+
+        assert_eq!(
+            line,
+            HyperlinkLine {
+                line: Line::from(vec![Span::from("    "), Span::from("go link")]),
+                hyperlinks: vec![TerminalHyperlink {
+                    columns: 7..11,
+                    destination: "https://example.com".to_string(),
+                }],
+            }
+        );
+    }
 
     #[test]
     fn only_web_destinations_receive_osc8() {
