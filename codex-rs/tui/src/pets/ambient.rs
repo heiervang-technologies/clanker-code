@@ -56,6 +56,40 @@ pub(crate) enum PetNotificationKind {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PetContextTier {
+    Fresh,
+    Focused,
+    Tired,
+    Exhausted,
+}
+
+impl PetContextTier {
+    fn from_used_percent(used_percent: i64) -> Self {
+        match used_percent.clamp(0, 100) {
+            0..=24 => Self::Fresh,
+            25..=49 => Self::Focused,
+            50..=74 => Self::Tired,
+            75..=100 => Self::Exhausted,
+            _ => unreachable!(),
+        }
+    }
+
+    fn animation_name(self, base_animation: &str) -> Option<&'static str> {
+        match (self, base_animation) {
+            (Self::Fresh, "idle") => Some("fresh-idle"),
+            (Self::Fresh, "running") => Some("fresh-running"),
+            (Self::Focused, "idle") => Some("focused-idle"),
+            (Self::Focused, "running") => Some("focused-running"),
+            (Self::Tired, "idle") => Some("tired-idle"),
+            (Self::Tired, "running") => Some("tired-running"),
+            (Self::Exhausted, "idle") => Some("exhausted-idle"),
+            (Self::Exhausted, "running") => Some("exhausted-running"),
+            (_, _) => None,
+        }
+    }
+}
+
 impl PetNotificationKind {
     fn animation_name(self) -> &'static str {
         match self {
@@ -137,6 +171,8 @@ pub(crate) struct AmbientPet {
     sixel_dir: PathBuf,
     frame_requester: FrameRequester,
     notification: Option<PetNotification>,
+    planning: bool,
+    context_tier: Option<PetContextTier>,
     animation_started_at: Instant,
     animations_enabled: bool,
 }
@@ -185,6 +221,8 @@ impl AmbientPet {
             sixel_dir,
             frame_requester,
             notification: None,
+            planning: false,
+            context_tier: None,
             animation_started_at: Instant::now(),
             animations_enabled,
         })
@@ -193,6 +231,21 @@ impl AmbientPet {
     pub(crate) fn set_notification(&mut self, kind: PetNotificationKind, body: Option<String>) {
         self.notification = Some(PetNotification::new(kind, body));
         self.animation_started_at = Instant::now();
+    }
+
+    pub(crate) fn set_planning(&mut self, planning: bool) {
+        if self.planning != planning {
+            self.planning = planning;
+            self.animation_started_at = Instant::now();
+        }
+    }
+
+    pub(crate) fn set_context_used_percent(&mut self, used_percent: Option<i64>) {
+        let context_tier = used_percent.map(PetContextTier::from_used_percent);
+        if self.context_tier != context_tier {
+            self.context_tier = context_tier;
+            self.animation_started_at = Instant::now();
+        }
     }
 
     pub(crate) fn image_enabled(&self) -> bool {
@@ -328,13 +381,20 @@ impl AmbientPet {
     }
 
     fn current_animation(&self) -> Option<&Animation> {
-        let animation_name = self
-            .visible_notification(Instant::now())
-            .map_or("idle", |notification| notification.kind.animation_name());
+        let base_animation = if self.planning {
+            "planning"
+        } else {
+            self.visible_notification(Instant::now())
+                .map_or("idle", |notification| notification.kind.animation_name())
+        };
+        let tier_animation = (!self.planning)
+            .then(|| self.context_tier?.animation_name(base_animation))
+            .flatten();
         let animation = self
             .pet
             .animations
-            .get(animation_name)
+            .get(tier_animation.unwrap_or(base_animation))
+            .or_else(|| self.pet.animations.get(base_animation))
             .or_else(|| self.pet.animations.get("idle"))?;
         if animation.loop_start.is_none() {
             let elapsed = self.animation_started_at.elapsed();
@@ -568,6 +628,8 @@ pub(crate) fn test_ambient_pet(
         sixel_dir: PathBuf::new(),
         frame_requester,
         notification: None,
+        planning: false,
+        context_tier: None,
         animation_started_at: Instant::now()
             .checked_sub(Duration::from_millis(/*millis*/ 15))
             .unwrap(),
@@ -603,6 +665,8 @@ pub(crate) fn test_ansi_ambient_pet(
         sixel_dir: PathBuf::new(),
         frame_requester,
         notification: None,
+        planning: false,
+        context_tier: None,
         animation_started_at: Instant::now(),
         animations_enabled,
     }
@@ -697,5 +761,102 @@ mod tests {
                 Some(PathBuf::from(expected_frame))
             );
         }
+    }
+
+    #[test]
+    fn planning_uses_planning_animation_and_falls_back_to_idle() {
+        let mut pet = test_ambient_pet(
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        pet.frames.push(PathBuf::from("frame-1.png"));
+        pet.pet.animations.insert(
+            "planning".to_string(),
+            Animation {
+                frames: vec![AnimationFrame {
+                    sprite_index: 1,
+                    duration: Duration::from_secs(1),
+                }],
+                loop_start: Some(/*loop_start*/ 0),
+                fallback: "idle".to_string(),
+            },
+        );
+
+        pet.set_planning(true);
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-1.png")));
+
+        pet.pet.animations.remove("planning");
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-0.png")));
+    }
+
+    #[test]
+    fn context_quartiles_select_semantic_idle_and_running_variants() {
+        let mut pet = test_ambient_pet(
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        pet.frames = (0..9)
+            .map(|index| PathBuf::from(format!("frame-{index}.png")))
+            .collect();
+        for (sprite_index, name) in [
+            (1, "fresh-idle"),
+            (2, "focused-idle"),
+            (3, "tired-idle"),
+            (4, "exhausted-idle"),
+            (5, "fresh-running"),
+            (6, "focused-running"),
+            (7, "tired-running"),
+            (8, "exhausted-running"),
+        ] {
+            pet.pet.animations.insert(
+                name.to_string(),
+                Animation {
+                    frames: vec![AnimationFrame {
+                        sprite_index,
+                        duration: Duration::from_secs(1),
+                    }],
+                    loop_start: Some(/*loop_start*/ 0),
+                    fallback: "idle".to_string(),
+                },
+            );
+        }
+
+        for (used_percent, idle_frame, running_frame) in [
+            (0, "frame-1.png", "frame-5.png"),
+            (25, "frame-2.png", "frame-6.png"),
+            (50, "frame-3.png", "frame-7.png"),
+            (75, "frame-4.png", "frame-8.png"),
+        ] {
+            pet.notification = None;
+            pet.set_context_used_percent(Some(used_percent));
+            assert_eq!(pet.current_frame_path(), Some(PathBuf::from(idle_frame)));
+            pet.set_notification(PetNotificationKind::Running, /*body*/ None);
+            assert_eq!(pet.current_frame_path(), Some(PathBuf::from(running_frame)));
+        }
+    }
+
+    #[test]
+    fn context_variant_missing_from_manifest_falls_back_to_base_state() {
+        let mut pet = test_ambient_pet(
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        pet.frames.push(PathBuf::from("frame-1.png"));
+        pet.pet.animations.insert(
+            "running".to_string(),
+            Animation {
+                frames: vec![AnimationFrame {
+                    sprite_index: 1,
+                    duration: Duration::from_secs(1),
+                }],
+                loop_start: Some(/*loop_start*/ 0),
+                fallback: "idle".to_string(),
+            },
+        );
+
+        pet.set_context_used_percent(Some(50));
+        pet.set_notification(PetNotificationKind::Running, /*body*/ None);
+
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-1.png")));
     }
 }

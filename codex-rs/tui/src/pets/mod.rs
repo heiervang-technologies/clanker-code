@@ -47,6 +47,8 @@ pub(crate) use image_protocol::PetImageUnsupportedReason;
 #[cfg(not(test))]
 pub(crate) use image_protocol::detect_pet_image_support;
 pub(crate) use picker::PET_PICKER_VIEW_ID;
+pub(crate) use picker::PetCycleDirection;
+pub(crate) use picker::adjacent_pet_selector;
 pub(crate) use picker::build_pet_picker_params;
 pub(crate) use picker::has_custom_ansi_avatar;
 pub(crate) use preview::PetPickerPreviewState;
