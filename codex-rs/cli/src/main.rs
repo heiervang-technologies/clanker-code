@@ -46,7 +46,6 @@ use supports_color::Stream;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;
-mod clanker_version;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod desktop_app;
 mod doctor;
@@ -89,8 +88,8 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::user_input::UserInput;
 use codex_terminal_detection::TerminalName;
 
-const CLI_DISPLAY_NAME: &str = clanker_version::PRODUCT_NAME;
-const CLI_VERSION: &str = clanker_version::VERSION;
+const CLI_DISPLAY_NAME: &str = codex_config::CLANKER_PRODUCT_NAME;
+const CLI_VERSION: &str = codex_config::CLANKER_VERSION;
 
 /// Clanker Code CLI
 ///
