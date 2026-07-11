@@ -72,3 +72,14 @@ fn alpha_threshold_is_binary_and_deterministic() {
     assert_eq!(buffer[(0, 0)].symbol(), " ");
     assert_eq!(buffer[(1, 0)].symbol(), "▀");
 }
+
+#[test]
+fn stale_layout_area_outside_resized_buffer_is_ignored() {
+    let image = RgbaImage::from_pixel(24, 24, Rgba([255, 0, 0, 255]));
+    let frame = AnsiHalfBlockFrame::from_image(image).unwrap();
+    let mut buffer = Buffer::empty(Rect::new(0, 0, 37, 20));
+
+    frame.render(Rect::new(141, 2, AVATAR_WIDTH, AVATAR_HEIGHT), &mut buffer);
+
+    assert!(buffer.content().iter().all(|cell| cell.symbol() == " "));
+}

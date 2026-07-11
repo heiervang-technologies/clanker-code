@@ -7,6 +7,7 @@ use anyhow::Result;
 use anyhow::bail;
 use image::Rgba;
 use image::RgbaImage;
+use image::imageops::FilterType;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -30,6 +31,19 @@ impl AnsiHalfBlockFrame {
         let image = image::open(path)
             .with_context(|| format!("read {}", path.display()))?
             .into_rgba8();
+        Self::from_image(image)
+    }
+
+    pub(super) fn load_resized(path: &Path) -> Result<Self> {
+        let image = image::open(path)
+            .with_context(|| format!("read {}", path.display()))?
+            .into_rgba8();
+        let image = image::imageops::resize(
+            &image,
+            u32::from(AVATAR_WIDTH),
+            u32::from(AVATAR_HEIGHT) * 2,
+            FilterType::Nearest,
+        );
         Self::from_image(image)
     }
 
@@ -63,6 +77,7 @@ impl AnsiHalfBlockFrame {
     }
 
     pub(super) fn render(&self, area: Rect, buf: &mut Buffer) {
+        let area = area.intersection(*buf.area());
         if area.width < AVATAR_WIDTH || area.height < AVATAR_HEIGHT {
             return;
         }

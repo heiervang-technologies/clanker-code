@@ -64,16 +64,16 @@ impl PetImageUnsupportedReason {
     fn message(self) -> &'static str {
         match self {
             Self::Tmux => {
-                "Pets are disabled in tmux. Terminal images don’t stay pane-local in tmux and can corrupt scrollback or move between panes. Run Codex outside tmux to use pets."
+                "Terminal images are unavailable in tmux. Clanker Code will render pets with pane-safe ANSI graphics instead."
             }
             Self::Zellij => {
-                "Pets are disabled in Zellij. Terminal images don’t stay reliably pane-local in Zellij. Run Codex outside Zellij to use pets."
+                "Terminal images are unavailable in Zellij. Clanker Code will render pets with pane-safe ANSI graphics instead."
             }
             Self::Iterm2TooOld => {
                 "Pets require iTerm2 3.6 or newer. Upgrade iTerm2 to use terminal pets."
             }
             Self::Terminal => {
-                "Pets aren’t available in this terminal. Terminal pets need image support, and this terminal environment doesn’t expose a supported image protocol. Try a terminal with Kitty graphics or Sixel support, or run Codex outside tmux."
+                "Terminal images aren’t available in this terminal. Clanker Code will render pets with pane-safe ANSI graphics instead."
             }
         }
     }

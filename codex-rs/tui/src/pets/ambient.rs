@@ -209,17 +209,25 @@ impl AmbientPet {
         let frame_dir = cache_dir.join("frames");
         let sixel_dir = cache_dir.join("sixel");
         let frames = frames::prepare_png_frames(&pet, &frame_dir)?;
-        let ansi_frames = (pet.render_mode == PetRenderMode::AnsiHalfBlock)
-            .then(|| {
+        let support = default_image_support();
+        let ansi_frames = match pet.render_mode {
+            PetRenderMode::AnsiHalfBlock => Some(
                 frames
                     .iter()
                     .map(|path| AnsiHalfBlockFrame::load(path))
-                    .collect::<Result<Vec<_>>>()
-            })
-            .transpose()?;
+                    .collect::<Result<Vec<_>>>()?,
+            ),
+            PetRenderMode::TerminalImage if support.protocol().is_none() => Some(
+                frames
+                    .iter()
+                    .map(|path| AnsiHalfBlockFrame::load_resized(path))
+                    .collect::<Result<Vec<_>>>()?,
+            ),
+            PetRenderMode::TerminalImage => None,
+        };
         Ok(Self {
             pet,
-            support: default_image_support(),
+            support,
             frames,
             ansi_frames,
             sixel_dir,
@@ -775,6 +783,40 @@ fn test_animation() -> Animation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_image_pet_uses_ansi_frames_without_image_protocol_support() {
+        let codex_home = tempfile::tempdir().unwrap();
+        let pet_dir = codex_home.path().join("pets").join("fallback");
+        std::fs::create_dir_all(&pet_dir).unwrap();
+        std::fs::write(
+            pet_dir.join("pet.json"),
+            r#"{
+                "spritesheetPath": "sprite.png"
+            }"#,
+        )
+        .unwrap();
+        image::RgbaImage::from_pixel(
+            super::super::catalog::SPRITESHEET_WIDTH,
+            super::super::catalog::SPRITESHEET_HEIGHT,
+            image::Rgba([255, 0, 0, 255]),
+        )
+        .save(pet_dir.join("sprite.png"))
+        .unwrap();
+
+        let pet = AmbientPet::load(
+            Some("custom:fallback"),
+            codex_home.path(),
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        )
+        .unwrap();
+
+        assert!(pet.ansi_enabled());
+        assert!(!pet.image_enabled());
+        assert!(pet.visual_enabled());
+        assert_eq!(pet.unavailable_message(), None);
+    }
 
     #[test]
     fn notification_labels_match_codex_app_vocabulary() {
