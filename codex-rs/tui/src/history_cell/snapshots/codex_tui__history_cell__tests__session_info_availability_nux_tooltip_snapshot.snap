@@ -1,12 +1,12 @@
 ---
-source: tui/src/history_cell.rs
+source: tui/src/history_cell/tests.rs
 expression: rendered
 ---
-╭─────────────────────────────────────╮
-│ >_ Clanker Code (v0.0.0)            │
-│                                     │
-│ model:     gpt-5   /model to change │
-│ directory: /tmp/project             │
-╰─────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────╮
+│ >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93) │
+│                                                                   │
+│ model:     gpt-5   /model to change                               │
+│ directory: /tmp/project                                           │
+╰───────────────────────────────────────────────────────────────────╯
 
   Tip: Model just became available

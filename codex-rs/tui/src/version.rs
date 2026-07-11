@@ -1,5 +1,5 @@
-/// The current Codex CLI version as embedded at compile time.
-pub const CODEX_CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The current Clanker Code version and its upstream Codex provenance.
+pub const CODEX_CLI_VERSION: &str = codex_config::CLANKER_VERSION;
 
 /// The fork product name shown in TUI-owned surfaces.
-pub const PRODUCT_NAME: &str = "Clanker Code";
+pub const PRODUCT_NAME: &str = codex_config::CLANKER_PRODUCT_NAME;

@@ -1,3 +1,4 @@
+mod clanker_version;
 mod cloud_config_bundle;
 mod cloud_config_layers;
 mod config_layer_source;
@@ -33,6 +34,8 @@ pub mod types;
 
 pub const CONFIG_TOML_FILE: &str = "config.toml";
 
+pub use clanker_version::PRODUCT_NAME as CLANKER_PRODUCT_NAME;
+pub use clanker_version::VERSION as CLANKER_VERSION;
 pub use cloud_config_bundle::CloudConfigBundle;
 pub use cloud_config_bundle::CloudConfigBundleLayers;
 pub use cloud_config_bundle::CloudConfigBundleLoadError;

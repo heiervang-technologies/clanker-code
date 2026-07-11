@@ -16,6 +16,12 @@ pub(crate) fn is_source_build_version(version: &str) -> bool {
     parse_version(version) == Some((0, 0, 0))
 }
 
+pub(crate) fn is_fork_build_version(version: &str) -> bool {
+    version
+        .split_once('+')
+        .is_some_and(|(_, metadata)| metadata.starts_with("codex."))
+}
+
 fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
     let mut iter = v.trim().split('.');
     let maj = iter.next()?.parse::<u64>().ok()?;
@@ -60,6 +66,15 @@ mod tests {
     fn source_build_version_is_not_checked() {
         assert!(is_source_build_version("0.0.0"));
         assert!(!is_source_build_version("0.1.0"));
+    }
+
+    #[test]
+    fn clanker_fork_version_is_not_checked_against_upstream() {
+        assert!(is_fork_build_version(
+            "0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93"
+        ));
+        assert!(!is_fork_build_version("0.1.0"));
+        assert!(!is_fork_build_version("0.1.0+other.1"));
     }
 
     #[test]
