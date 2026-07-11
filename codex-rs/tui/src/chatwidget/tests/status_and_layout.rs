@@ -2544,7 +2544,7 @@ async fn ansi_half_block_avatar_renders_on_left_without_overlapping_composer() {
             /*animations_enabled*/ false,
         )),
     );
-    chat.set_tui_pet_side(TuiPetSide::Left);
+    chat.set_tui_pet_side(TuiPetSide::FarLeft);
     chat.bottom_pane.set_composer_text(
         "The composer begins after the left-side avatar reserve.".to_string(),
         Vec::new(),
@@ -2559,6 +2559,122 @@ async fn ansi_half_block_avatar_renders_on_left_without_overlapping_composer() {
     assert_eq!(chat.history_left_padding(), 26);
     assert_chatwidget_snapshot!(
         "ansi_half_block_avatar_left",
+        normalized_backend_snapshot(terminal.backend())
+    );
+}
+
+#[tokio::test]
+async fn ansi_half_block_avatar_renders_in_above_and_below_composer_bands() {
+    use codex_config::types::TuiPetSide;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    for (snapshot_name, placement) in [
+        ("ansi_half_block_avatar_below_left", TuiPetSide::BelowLeft),
+        (
+            "ansi_half_block_avatar_below_center",
+            TuiPetSide::BelowCenter,
+        ),
+        ("ansi_half_block_avatar_below_right", TuiPetSide::BelowRight),
+        ("ansi_half_block_avatar_above_left", TuiPetSide::AboveLeft),
+        (
+            "ansi_half_block_avatar_above_center",
+            TuiPetSide::AboveCenter,
+        ),
+        ("ansi_half_block_avatar_above_right", TuiPetSide::AboveRight),
+    ] {
+        let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+        chat.set_tui_pet_loaded(
+            Some("ansi-test".to_string()),
+            Some(crate::pets::test_ansi_ambient_pet(
+                chat.frame_requester.clone(),
+                /*animations_enabled*/ false,
+            )),
+        );
+        chat.set_tui_pet_side(placement);
+        chat.bottom_pane.set_composer_text(
+            "The composer keeps its full width when the avatar has a vertical band.".to_string(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(60, 28)).expect("create terminal");
+
+        terminal
+            .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+            .expect("draw banded ANSI avatar");
+
+        assert_eq!(chat.history_wrap_width(/*width*/ 60), 60);
+        assert_chatwidget_snapshot!(
+            snapshot_name,
+            normalized_backend_snapshot(terminal.backend())
+        );
+    }
+}
+
+#[tokio::test]
+async fn ansi_half_block_avatar_center_alignment_handles_odd_width() {
+    use codex_config::types::TuiPetSide;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_tui_pet_loaded(
+        Some("ansi-test".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    chat.set_tui_pet_side(TuiPetSide::BelowCenter);
+    let mut terminal = Terminal::new(TestBackend::new(61, 20)).expect("create terminal");
+
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("draw centered ANSI avatar");
+
+    let avatar_row = 7;
+    let symbols = |x| {
+        terminal
+            .backend()
+            .buffer()
+            .cell((x, avatar_row))
+            .expect("cell should exist")
+            .symbol()
+    };
+    assert_eq!(
+        (symbols(17), symbols(18), symbols(41), symbols(42)),
+        (" ", "▀", "▀", " ")
+    );
+}
+
+#[tokio::test]
+async fn ansi_half_block_avatar_yields_to_composer_in_short_pane() {
+    use codex_config::types::TuiPetSide;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_tui_pet_loaded(
+        Some("ansi-test".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    chat.set_tui_pet_side(TuiPetSide::BelowCenter);
+    chat.bottom_pane.set_composer_text(
+        "The composer remains usable in a short pane.".to_string(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let mut terminal = Terminal::new(TestBackend::new(40, 10)).expect("create terminal");
+
+    terminal
+        .draw(|frame| chat.render(frame.area(), frame.buffer_mut()))
+        .expect("draw short pane with ANSI avatar");
+
+    assert_chatwidget_snapshot!(
+        "ansi_half_block_avatar_short_below_center",
         normalized_backend_snapshot(terminal.backend())
     );
 }

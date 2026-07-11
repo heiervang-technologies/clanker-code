@@ -3280,8 +3280,8 @@
               "$ref": "#/definitions/TuiPetSide"
             }
           ],
-          "default": "right",
-          "description": "Horizontal side used for the terminal pet.\n\nDefaults to `right`. Left placement currently applies to ANSI pets."
+          "default": "far-right",
+          "description": "Placement used for the terminal pet.\n\nDefaults to `far-right`. Non-edge placements currently apply to ANSI pets."
         },
         "raw_output_mode": {
           "default": false,
@@ -4134,16 +4134,58 @@
     "TuiPetSide": {
       "oneOf": [
         {
-          "description": "Render ANSI pets along the left edge of the TUI.",
+          "description": "Render ANSI pets along the left edge of the composer and transcript.",
           "enum": [
-            "left"
+            "far-left"
           ],
           "type": "string"
         },
         {
-          "description": "Render pets along the right edge of the TUI.",
+          "description": "Render pets along the right edge of the composer and transcript.",
           "enum": [
-            "right"
+            "far-right"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render ANSI pets below the composer, aligned left.",
+          "enum": [
+            "below-left"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render ANSI pets below the composer, centered.",
+          "enum": [
+            "below-center"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render ANSI pets below the composer, aligned right.",
+          "enum": [
+            "below-right"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render ANSI pets above the composer, aligned left.",
+          "enum": [
+            "above-left"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render ANSI pets above the composer, centered.",
+          "enum": [
+            "above-center"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Render ANSI pets above the composer, aligned right.",
+          "enum": [
+            "above-right"
           ],
           "type": "string"
         }

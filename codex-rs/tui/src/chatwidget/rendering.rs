@@ -53,6 +53,13 @@ impl ChatWidget {
         }
         flex.push(
             /*flex*/ 0,
+            RenderableItem::Owned(Box::new(AmbientPetBandRenderable {
+                chat_widget: self,
+                position: AmbientPetBandPosition::Above,
+            })),
+        );
+        flex.push(
+            /*flex*/ 0,
             RenderableItem::Owned(Box::new(BottomPaneComposerReserveRenderable {
                 bottom_pane: &self.bottom_pane,
                 left_reserve: active_cell_left_reserve,
@@ -62,7 +69,53 @@ impl ChatWidget {
                 /*top*/ 1, /*left*/ 0, /*bottom*/ 0, /*right*/ 0,
             )),
         );
+        flex.push(
+            /*flex*/ 0,
+            RenderableItem::Owned(Box::new(AmbientPetBandRenderable {
+                chat_widget: self,
+                position: AmbientPetBandPosition::Below,
+            })),
+        );
         RenderableItem::Owned(Box::new(flex))
+    }
+}
+
+struct AmbientPetBandRenderable<'a> {
+    chat_widget: &'a ChatWidget,
+    position: AmbientPetBandPosition,
+}
+
+#[derive(Clone, Copy)]
+enum AmbientPetBandPosition {
+    Above,
+    Below,
+}
+
+impl Renderable for AmbientPetBandRenderable<'_> {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        let placement = self.chat_widget.effective_ambient_pet_side();
+        if self.matches(placement) {
+            self.chat_widget
+                .render_ambient_pet_band(placement, area, buf);
+        }
+    }
+
+    fn desired_height(&self, _width: u16) -> u16 {
+        let placement = self.chat_widget.effective_ambient_pet_side();
+        if self.matches(placement) {
+            self.chat_widget.ambient_pet_band_height(placement)
+        } else {
+            0
+        }
+    }
+}
+
+impl AmbientPetBandRenderable<'_> {
+    fn matches(&self, placement: codex_config::types::TuiPetSide) -> bool {
+        match self.position {
+            AmbientPetBandPosition::Above => placement.is_above(),
+            AmbientPetBandPosition::Below => placement.is_below(),
+        }
     }
 }
 

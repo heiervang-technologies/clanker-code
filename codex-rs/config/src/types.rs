@@ -652,20 +652,72 @@ pub enum TuiPetAnchor {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum TuiPetSide {
-    /// Render ANSI pets along the left edge of the TUI.
-    Left,
-    /// Render pets along the right edge of the TUI.
+    /// Render ANSI pets along the left edge of the composer and transcript.
+    #[serde(alias = "left")]
+    FarLeft,
+    /// Render pets along the right edge of the composer and transcript.
+    #[serde(alias = "right")]
     #[default]
-    Right,
+    FarRight,
+    /// Render ANSI pets below the composer, aligned left.
+    BelowLeft,
+    /// Render ANSI pets below the composer, centered.
+    BelowCenter,
+    /// Render ANSI pets below the composer, aligned right.
+    BelowRight,
+    /// Render ANSI pets above the composer, aligned left.
+    AboveLeft,
+    /// Render ANSI pets above the composer, centered.
+    AboveCenter,
+    /// Render ANSI pets above the composer, aligned right.
+    AboveRight,
+}
+
+impl TuiPetSide {
+    pub fn is_far_side(self) -> bool {
+        matches!(self, Self::FarLeft | Self::FarRight)
+    }
+
+    pub fn is_above(self) -> bool {
+        matches!(self, Self::AboveLeft | Self::AboveCenter | Self::AboveRight)
+    }
+
+    pub fn is_below(self) -> bool {
+        matches!(self, Self::BelowLeft | Self::BelowCenter | Self::BelowRight)
+    }
 }
 
 impl fmt::Display for TuiPetSide {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TuiPetSide::Left => write!(f, "left"),
-            TuiPetSide::Right => write!(f, "right"),
+            TuiPetSide::FarLeft => write!(f, "far-left"),
+            TuiPetSide::FarRight => write!(f, "far-right"),
+            TuiPetSide::BelowLeft => write!(f, "below-left"),
+            TuiPetSide::BelowCenter => write!(f, "below-center"),
+            TuiPetSide::BelowRight => write!(f, "below-right"),
+            TuiPetSide::AboveLeft => write!(f, "above-left"),
+            TuiPetSide::AboveCenter => write!(f, "above-center"),
+            TuiPetSide::AboveRight => write!(f, "above-right"),
+        }
+    }
+}
+
+impl std::str::FromStr for TuiPetSide {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "left" | "far-left" => Ok(Self::FarLeft),
+            "right" | "far-right" => Ok(Self::FarRight),
+            "below-left" => Ok(Self::BelowLeft),
+            "below-center" => Ok(Self::BelowCenter),
+            "below-right" => Ok(Self::BelowRight),
+            "above-left" => Ok(Self::AboveLeft),
+            "above-center" => Ok(Self::AboveCenter),
+            "above-right" => Ok(Self::AboveRight),
+            _ => Err(()),
         }
     }
 }
@@ -775,9 +827,9 @@ pub struct Tui {
     #[serde(default)]
     pub pet_anchor: TuiPetAnchor,
 
-    /// Horizontal side used for the terminal pet.
+    /// Placement used for the terminal pet.
     ///
-    /// Defaults to `right`. Left placement currently applies to ANSI pets.
+    /// Defaults to `far-right`. Non-edge placements currently apply to ANSI pets.
     #[serde(default)]
     pub pet_side: TuiPetSide,
 

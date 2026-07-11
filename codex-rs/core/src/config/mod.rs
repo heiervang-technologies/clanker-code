@@ -787,7 +787,7 @@ pub struct Config {
     /// Vertical anchor used by terminal pet rendering.
     pub tui_pet_anchor: TuiPetAnchor,
 
-    /// Horizontal side used by ANSI terminal pet rendering.
+    /// Placement used by ANSI terminal pet rendering.
     pub tui_pet_side: TuiPetSide,
 
     /// Preferred layout for resume/fork session picker results.

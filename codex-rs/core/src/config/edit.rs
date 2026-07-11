@@ -99,7 +99,7 @@ pub fn tui_pet_edit(name: &str) -> ConfigEdit {
     }
 }
 
-/// Produces a config edit that sets `[tui].pet_side = "<side>"`.
+/// Produces a config edit that sets `[tui].pet_side = "<placement>"`.
 pub fn tui_pet_side_edit(side: TuiPetSide) -> ConfigEdit {
     ConfigEdit::SetPath {
         segments: vec!["tui".to_string(), "pet_side".to_string()],

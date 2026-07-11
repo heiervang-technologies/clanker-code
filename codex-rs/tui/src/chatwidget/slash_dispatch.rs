@@ -895,18 +895,19 @@ impl ChatWidget {
             {
                 self.select_adjacent_pet(crate::pets::PetCycleDirection::Previous);
             }
-            SlashCommand::Pets if trimmed.eq_ignore_ascii_case("side left") => {
-                self.app_event_tx.send(AppEvent::PetSideSelected {
-                    side: codex_config::types::TuiPetSide::Left,
-                });
-            }
-            SlashCommand::Pets if trimmed.eq_ignore_ascii_case("side right") => {
-                self.app_event_tx.send(AppEvent::PetSideSelected {
-                    side: codex_config::types::TuiPetSide::Right,
-                });
-            }
             SlashCommand::Pets if trimmed.to_ascii_lowercase().starts_with("side") => {
-                self.add_error_message("Use /pets side left or /pets side right.".to_string());
+                let placement = trimmed
+                    .to_ascii_lowercase()
+                    .strip_prefix("side ")
+                    .and_then(|value| value.parse().ok());
+                if let Some(side) = placement {
+                    self.app_event_tx.send(AppEvent::PetSideSelected { side });
+                } else {
+                    self.add_error_message(
+                        "Use /pets side far-left, far-right, below-left, below-center, below-right, above-left, above-center, or above-right."
+                            .to_string(),
+                    );
+                }
             }
             SlashCommand::Pets if !trimmed.is_empty() => {
                 self.select_pet_by_id(args);

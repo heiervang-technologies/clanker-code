@@ -225,7 +225,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         tui_raw_output_mode: false,
         tui_pet: None,
         tui_pet_anchor: TuiPetAnchor::Composer,
-        tui_pet_side: TuiPetSide::Right,
+        tui_pet_side: TuiPetSide::FarRight,
         terminal_resize_reflow: TerminalResizeReflowConfig::default(),
         tui_keymap: TuiKeymap::default(),
         tui_session_picker_view: SessionPickerViewMode::Dense,
