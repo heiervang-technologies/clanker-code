@@ -533,8 +533,13 @@ impl AmbientPet {
         frame.render(
             Rect::new(
                 match side {
-                    TuiPetSide::Left => area.x,
-                    TuiPetSide::Right => area.right().saturating_sub(AVATAR_WIDTH),
+                    TuiPetSide::FarLeft | TuiPetSide::BelowLeft | TuiPetSide::AboveLeft => area.x,
+                    TuiPetSide::BelowCenter | TuiPetSide::AboveCenter => area
+                        .x
+                        .saturating_add(area.width.saturating_sub(AVATAR_WIDTH) / 2),
+                    TuiPetSide::FarRight | TuiPetSide::BelowRight | TuiPetSide::AboveRight => {
+                        area.right().saturating_sub(AVATAR_WIDTH)
+                    }
                 },
                 sprite_bottom_y.saturating_sub(AVATAR_HEIGHT),
                 AVATAR_WIDTH,

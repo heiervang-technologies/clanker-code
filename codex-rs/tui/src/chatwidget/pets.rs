@@ -94,6 +94,9 @@ impl ChatWidget {
     }
 
     pub(super) fn ambient_pet_wrap_reserved_cols(&self) -> u16 {
+        if !self.effective_ambient_pet_side().is_far_side() {
+            return 0;
+        }
         self.ambient_pet
             .as_ref()
             .filter(|pet| pet.visual_enabled())
@@ -107,12 +110,18 @@ impl ChatWidget {
     pub(super) fn ambient_pet_horizontal_reserves(&self) -> (u16, u16) {
         let reserved = self.ambient_pet_wrap_reserved_cols();
         match self.effective_ambient_pet_side() {
-            TuiPetSide::Left => (reserved, 0),
-            TuiPetSide::Right => (0, reserved),
+            TuiPetSide::FarLeft => (reserved, 0),
+            TuiPetSide::FarRight => (0, reserved),
+            TuiPetSide::BelowLeft
+            | TuiPetSide::BelowCenter
+            | TuiPetSide::BelowRight
+            | TuiPetSide::AboveLeft
+            | TuiPetSide::AboveCenter
+            | TuiPetSide::AboveRight => (0, 0),
         }
     }
 
-    fn effective_ambient_pet_side(&self) -> TuiPetSide {
+    pub(super) fn effective_ambient_pet_side(&self) -> TuiPetSide {
         if self
             .ambient_pet
             .as_ref()
@@ -120,18 +129,48 @@ impl ChatWidget {
         {
             self.config.tui_pet_side
         } else {
-            TuiPetSide::Right
+            TuiPetSide::FarRight
         }
     }
 
     pub(super) fn ambient_pet_min_height(&self) -> u16 {
+        if !self.effective_ambient_pet_side().is_far_side() {
+            return 0;
+        }
         self.ambient_pet
             .as_ref()
             .map_or(0, crate::pets::AmbientPet::ansi_min_height)
     }
 
+    pub(super) fn ambient_pet_band_height(&self, placement: TuiPetSide) -> u16 {
+        if !self.bottom_pane.no_modal_or_popup_active()
+            || self.effective_ambient_pet_side() != placement
+        {
+            return 0;
+        }
+        self.ambient_pet
+            .as_ref()
+            .map_or(0, crate::pets::AmbientPet::ansi_min_height)
+    }
+
+    pub(super) fn render_ambient_pet_band(
+        &self,
+        placement: TuiPetSide,
+        area: Rect,
+        buf: &mut Buffer,
+    ) {
+        if self.ambient_pet_band_height(placement) == 0 {
+            return;
+        }
+        if let Some(pet) = self.ambient_pet.as_ref() {
+            pet.render_ansi(area, area.bottom(), placement, buf);
+        }
+    }
+
     pub(super) fn render_ambient_pet_ansi(&self, area: Rect, buf: &mut Buffer) {
-        if !self.bottom_pane.no_modal_or_popup_active() {
+        if !self.bottom_pane.no_modal_or_popup_active()
+            || !self.effective_ambient_pet_side().is_far_side()
+        {
             return;
         }
         let anchor_bottom_y = area.bottom();

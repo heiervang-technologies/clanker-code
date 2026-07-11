@@ -417,7 +417,7 @@ pub(crate) enum AppEvent {
     /// Persist terminal pets as disabled and remove the ambient pet.
     PetDisabled,
 
-    /// Persist the horizontal side used for ANSI terminal pets.
+    /// Persist the placement used for ANSI terminal pets.
     PetSideSelected {
         side: TuiPetSide,
     },

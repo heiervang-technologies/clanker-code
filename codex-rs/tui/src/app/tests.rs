@@ -4582,7 +4582,7 @@ async fn left_ansi_pet_indents_reflowed_history_out_of_avatar_columns() {
         )),
     );
     app.chat_widget
-        .set_tui_pet_side(codex_config::types::TuiPetSide::Left);
+        .set_tui_pet_side(codex_config::types::TuiPetSide::FarLeft);
     let width = app.chat_widget.history_wrap_width(/*width*/ 60);
 
     let rendered = app.render_transcript_lines_for_reflow(width);

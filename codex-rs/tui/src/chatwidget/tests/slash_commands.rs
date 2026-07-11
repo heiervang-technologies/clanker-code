@@ -2475,10 +2475,18 @@ async fn slash_pets_prev_cycles_to_previous_pet_in_stable_order() {
 
 #[tokio::test]
 #[serial]
-async fn slash_pets_side_commands_select_horizontal_side() {
+async fn slash_pets_side_commands_select_placement() {
     for (argument, expected) in [
-        ("left", codex_config::types::TuiPetSide::Left),
-        ("right", codex_config::types::TuiPetSide::Right),
+        ("left", codex_config::types::TuiPetSide::FarLeft),
+        ("right", codex_config::types::TuiPetSide::FarRight),
+        ("far-left", codex_config::types::TuiPetSide::FarLeft),
+        ("far-right", codex_config::types::TuiPetSide::FarRight),
+        ("below-left", codex_config::types::TuiPetSide::BelowLeft),
+        ("below-center", codex_config::types::TuiPetSide::BelowCenter),
+        ("below-right", codex_config::types::TuiPetSide::BelowRight),
+        ("above-left", codex_config::types::TuiPetSide::AboveLeft),
+        ("above-center", codex_config::types::TuiPetSide::AboveCenter),
+        ("above-right", codex_config::types::TuiPetSide::AboveRight),
     ] {
         let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
         chat.bottom_pane.set_composer_text(
