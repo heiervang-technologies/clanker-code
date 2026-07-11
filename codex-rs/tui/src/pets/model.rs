@@ -102,10 +102,6 @@ impl Pet {
         self.frame_count
     }
 
-    pub(super) fn uses_ansi_half_block(&self) -> bool {
-        self.render_mode == PetRenderMode::AnsiHalfBlock
-    }
-
     pub(super) fn frame_cache_key(&self) -> Result<String> {
         let bytes = fs::read(&self.spritesheet_path)
             .with_context(|| format!("read {}", self.spritesheet_path.display()))?;

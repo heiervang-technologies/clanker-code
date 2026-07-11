@@ -44,16 +44,14 @@ pub(crate) use asset_pack::ensure_clanker_default;
 pub(crate) use asset_pack::write_test_pack;
 #[cfg(test)]
 pub(crate) use image_protocol::ImageProtocol;
+#[cfg(test)]
 pub(crate) use image_protocol::PetImageSupport;
 #[cfg(test)]
 pub(crate) use image_protocol::PetImageUnsupportedReason;
-#[cfg(not(test))]
-pub(crate) use image_protocol::detect_pet_image_support;
 pub(crate) use picker::PET_PICKER_VIEW_ID;
 pub(crate) use picker::PetCycleDirection;
 pub(crate) use picker::adjacent_pet_selector;
 pub(crate) use picker::build_pet_picker_params;
-pub(crate) use picker::has_custom_ansi_avatar;
 pub(crate) use preview::PetPickerPreviewState;
 pub(crate) use talking_signal::TalkingSignal;
 
@@ -61,11 +59,6 @@ pub(crate) const DEFAULT_PET_ID: &str = "codex";
 #[cfg(not(test))]
 pub(crate) const CLANKER_DEFAULT_PET_ID: &str = "custom:clanker";
 pub(crate) const DISABLED_PET_ID: &str = "disabled";
-
-pub(crate) fn selector_uses_ansi_avatar(pet_id: &str, codex_home: &std::path::Path) -> bool {
-    model::Pet::load_with_codex_home(pet_id, /*codex_home*/ Some(codex_home))
-        .is_ok_and(|pet| pet.uses_ansi_half_block())
-}
 
 pub(crate) fn load_with_clanker_fallback(
     pet_id: &str,

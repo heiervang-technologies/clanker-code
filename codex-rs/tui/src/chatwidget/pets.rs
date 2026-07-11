@@ -233,12 +233,6 @@ impl ChatWidget {
     }
 
     pub(crate) fn open_pets_picker(&mut self) {
-        if self
-            .warn_if_pets_unsupported(crate::pets::has_custom_ansi_avatar(&self.config.codex_home))
-        {
-            return;
-        }
-
         self.pet_picker_preview_state.clear();
         self.pet_picker_preview_pet = None;
         self.pet_picker_preview_animation = "idle".to_string();
@@ -258,13 +252,6 @@ impl ChatWidget {
     }
 
     pub(crate) fn select_pet_by_id(&mut self, pet_id: String) {
-        if self.warn_if_pets_unsupported(crate::pets::selector_uses_ansi_avatar(
-            &pet_id,
-            &self.config.codex_home,
-        )) {
-            return;
-        }
-
         self.app_event_tx.send(AppEvent::PetSelected { pet_id });
     }
 
@@ -300,33 +287,6 @@ impl ChatWidget {
             pet.set_talking(talking);
             pet.set_context_used_percent(context_used_percent);
         }
-    }
-
-    fn warn_if_pets_unsupported(&mut self, ansi_available: bool) -> bool {
-        if ansi_available {
-            return false;
-        }
-        let Some(message) = self.pet_image_support().unsupported_message() else {
-            return false;
-        };
-
-        self.add_warning_message(message.to_string());
-        true
-    }
-
-    fn pet_image_support(&self) -> crate::pets::PetImageSupport {
-        #[cfg(test)]
-        if let Some(support) = self.pet_image_support_override {
-            return support;
-        }
-
-        #[cfg(test)]
-        return crate::pets::PetImageSupport::Unsupported(
-            crate::pets::PetImageUnsupportedReason::Terminal,
-        );
-
-        #[cfg(not(test))]
-        crate::pets::detect_pet_image_support()
     }
 
     /// Set the pet preselected by the TUI picker in the widget's config copy.
