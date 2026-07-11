@@ -107,6 +107,7 @@ codex-utils-cargo-bin = { workspace = true }
 insta = { workspace = true }
 predicates = { workspace = true }
 pretty_assertions = { workspace = true }
+semver = { workspace = true }
 sqlx = { workspace = true }
 wiremock = { workspace = true }
 

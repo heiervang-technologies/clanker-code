@@ -46,6 +46,7 @@ use supports_color::Stream;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;
+mod clanker_version;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod desktop_app;
 mod doctor;
@@ -88,13 +89,17 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::user_input::UserInput;
 use codex_terminal_detection::TerminalName;
 
+const CLI_DISPLAY_NAME: &str = clanker_version::PRODUCT_NAME;
+const CLI_VERSION: &str = clanker_version::VERSION;
+
 /// Clanker Code CLI
 ///
 /// If no subcommand is specified, options will be forwarded to the interactive CLI.
 #[derive(Debug, Parser)]
 #[clap(
+    display_name = CLI_DISPLAY_NAME,
     author,
-    version,
+    version = CLI_VERSION,
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // Keep each installed command name stable even when its executable has a
