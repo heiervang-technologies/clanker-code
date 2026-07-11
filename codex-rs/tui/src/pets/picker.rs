@@ -10,12 +10,17 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use ratatui::style::Stylize;
+use ratatui::text::Line;
+
 use crate::app_event::AppEvent;
 use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
+use crate::bottom_pane::SelectionTab;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::SideContentWidth;
-use crate::bottom_pane::popup_consts::standard_popup_hint_line;
+use crate::render::renderable::ColumnRenderable;
+use crate::render::renderable::Renderable;
 
 use super::DEFAULT_PET_ID;
 use super::DISABLED_PET_ID;
@@ -27,6 +32,17 @@ use super::preview::PetPickerPreviewState;
 
 pub(crate) const PET_PICKER_VIEW_ID: &str = "pet-picker";
 const PET_PICKER_PREVIEW_WIDTH: u16 = 30;
+const PET_PREVIEW_STATES: &[(&str, &str)] = &[
+    ("idle", "Idle"),
+    ("running", "R"),
+    ("talking", "T"),
+    ("waiting", "W"),
+    ("review", "V"),
+    ("failed", "F"),
+    ("planning", "P"),
+    ("tired-idle", "Ti"),
+    ("tired-running", "Tr"),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PetPickerEntry {
@@ -84,7 +100,11 @@ pub(crate) fn build_pet_picker_params(
 ) -> SelectionViewParams {
     let preferred_pet = current_pet.unwrap_or(DEFAULT_PET_ID);
     let mut entries = available_pet_entries(codex_home);
-    entries.sort_by(|left, right| left.display_name.cmp(&right.display_name));
+    entries.sort_by(|left, right| {
+        left.display_name
+            .cmp(&right.display_name)
+            .then_with(|| left.selector.cmp(&right.selector))
+    });
     if let Some(disabled_idx) = entries
         .iter()
         .position(|entry| entry.selector == DISABLED_PET_ID)
@@ -93,7 +113,6 @@ pub(crate) fn build_pet_picker_params(
         entries.insert(0, disabled_entry);
     }
 
-    let mut initial_selected_idx = None;
     let preview_pet_ids = entries
         .iter()
         .map(|entry| entry.selector.clone())
@@ -108,24 +127,68 @@ pub(crate) fn build_pet_picker_params(
         },
     ));
 
-    let items = entries
-        .into_iter()
-        .enumerate()
-        .map(|(idx, entry)| {
+    let initial_selected_idx = entries.iter().position(|entry| {
+        preferred_pet == entry.selector || entry.legacy_selector.as_deref() == Some(preferred_pet)
+    });
+    let tabs = PET_PREVIEW_STATES
+        .iter()
+        .map(|(animation_name, label)| SelectionTab {
+            id: (*animation_name).to_string(),
+            label: (*label).to_string(),
+            header: wheel_header(animation_name),
+            items: pet_selection_items(&entries, current_pet),
+        })
+        .collect();
+    let on_tab_changed: crate::bottom_pane::OnTabChangedCallback = Some(Box::new(
+        |animation_name: &str, tx: &crate::app_event_sender::AppEventSender| {
+            tx.send(AppEvent::PetPreviewStateChanged {
+                animation_name: animation_name.to_string(),
+            });
+        },
+    ));
+
+    SelectionViewParams {
+        view_id: Some(PET_PICKER_VIEW_ID),
+        footer_hint: Some("↑/↓ avatar · ←/→ state · enter select · esc cancel".into()),
+        tabs,
+        initial_tab_id: Some("idle".to_string()),
+        is_searchable: true,
+        search_placeholder: Some("Type to filter avatars...".to_string()),
+        initial_selected_idx,
+        side_content: Box::new(preview_state.renderable()),
+        side_content_width: SideContentWidth::Fixed(PET_PICKER_PREVIEW_WIDTH),
+        side_content_min_width: 28,
+        stacked_side_content: Some(Box::new(())),
+        preserve_side_content_bg: true,
+        on_selection_changed,
+        on_tab_changed,
+        ..Default::default()
+    }
+}
+
+fn wheel_header(animation_name: &str) -> Box<dyn Renderable> {
+    let mut header = ColumnRenderable::new();
+    header.push(Line::from("Avatar Wheel".bold()));
+    header.push(Line::from(format!("Previewing: {animation_name}").dim()));
+    Box::new(header)
+}
+
+fn pet_selection_items(
+    entries: &[PetPickerEntry],
+    current_pet: Option<&str>,
+) -> Vec<SelectionItem> {
+    entries
+        .iter()
+        .map(|entry| {
             let is_current = current_pet.is_some_and(|current_pet| {
                 current_pet == entry.selector
                     || entry.legacy_selector.as_deref() == Some(current_pet)
             });
-            if preferred_pet == entry.selector
-                || entry.legacy_selector.as_deref() == Some(preferred_pet)
-            {
-                initial_selected_idx = Some(idx);
-            }
             let pet_id = entry.selector.clone();
             let search_value = if pet_id == DISABLED_PET_ID {
                 "disable disabled hide hidden off none".to_string()
             } else {
-                entry.selector
+                entry.selector.clone()
             };
             let actions: Vec<SelectionAction> = if pet_id == DISABLED_PET_ID {
                 vec![Box::new(|tx| {
@@ -139,8 +202,8 @@ pub(crate) fn build_pet_picker_params(
                 })]
             };
             SelectionItem {
-                name: entry.display_name,
-                description: entry.description,
+                name: entry.display_name.clone(),
+                description: entry.description.clone(),
                 is_current,
                 dismiss_on_select: true,
                 search_value: Some(search_value),
@@ -148,25 +211,7 @@ pub(crate) fn build_pet_picker_params(
                 ..Default::default()
             }
         })
-        .collect();
-
-    SelectionViewParams {
-        view_id: Some(PET_PICKER_VIEW_ID),
-        title: Some("Select Pet".to_string()),
-        subtitle: Some("Choose a pet to wake in the terminal.".to_string()),
-        footer_hint: Some(standard_popup_hint_line()),
-        items,
-        is_searchable: true,
-        search_placeholder: Some("Type to filter pets...".to_string()),
-        initial_selected_idx,
-        side_content: Box::new(preview_state.renderable()),
-        side_content_width: SideContentWidth::Fixed(PET_PICKER_PREVIEW_WIDTH),
-        side_content_min_width: 28,
-        stacked_side_content: Some(Box::new(())),
-        preserve_side_content_bg: true,
-        on_selection_changed,
-        ..Default::default()
-    }
+        .collect()
 }
 
 fn available_pet_entries(codex_home: &Path) -> Vec<PetPickerEntry> {
@@ -255,6 +300,10 @@ pub(crate) fn has_custom_ansi_avatar(codex_home: &Path) -> bool {
 mod tests {
     use super::*;
 
+    fn idle_items(params: &SelectionViewParams) -> &[SelectionItem] {
+        &params.tabs[0].items
+    }
+
     fn write_pet(dir: &Path, folder_name: &str, display_name: &str) {
         let pet_dir = dir.join("pets").join(folder_name);
         fs::create_dir_all(&pet_dir).unwrap();
@@ -302,8 +351,7 @@ mod tests {
         );
 
         assert_eq!(
-            params
-                .items
+            idle_items(&params)
                 .iter()
                 .map(|item| item.name.as_str())
                 .collect::<Vec<_>>(),
@@ -322,8 +370,26 @@ mod tests {
         );
         assert_eq!(params.initial_selected_idx, Some(2));
         assert_eq!(
-            params.items[2].search_value.as_deref(),
+            idle_items(&params)[2].search_value.as_deref(),
             Some("custom:chefito")
+        );
+        assert_eq!(
+            params
+                .tabs
+                .iter()
+                .map(|tab| tab.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "idle",
+                "running",
+                "talking",
+                "waiting",
+                "review",
+                "failed",
+                "planning",
+                "tired-idle",
+                "tired-running",
+            ]
         );
     }
 
@@ -360,8 +426,8 @@ mod tests {
         );
 
         assert_eq!(params.initial_selected_idx, Some(2));
-        assert_eq!(params.items[2].name, "Codex");
-        assert!(!params.items[2].is_current);
+        assert_eq!(idle_items(&params)[2].name, "Codex");
+        assert!(!idle_items(&params)[2].is_current);
     }
 
     #[test]
@@ -374,11 +440,11 @@ mod tests {
         );
 
         assert_eq!(params.initial_selected_idx, Some(0));
-        assert_eq!(params.items[0].name, "Disable terminal pets");
-        assert_eq!(params.items[0].description, None);
-        assert!(params.items[0].is_current);
+        assert_eq!(idle_items(&params)[0].name, "Disable terminal pets");
+        assert_eq!(idle_items(&params)[0].description, None);
+        assert!(idle_items(&params)[0].is_current);
         assert_eq!(
-            params.items[0].search_value.as_deref(),
+            idle_items(&params)[0].search_value.as_deref(),
             Some("disable disabled hide hidden off none")
         );
     }
@@ -393,7 +459,7 @@ mod tests {
             codex_home.path(),
             PetPickerPreviewState::default(),
         );
-        let legacy = params
+        let legacy = params.tabs[0]
             .items
             .iter()
             .find(|item| item.name == "Legacy")

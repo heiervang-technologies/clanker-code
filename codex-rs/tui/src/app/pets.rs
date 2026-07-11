@@ -85,8 +85,8 @@ impl App {
         std::mem::drop(tokio::task::spawn_blocking(move || {
             let result = crate::pets::ensure_builtin_pack_for_pet(&pet_id, &codex_home)
                 .and_then(|()| {
-                    crate::pets::AmbientPet::load(
-                        Some(&pet_id),
+                    crate::pets::load_with_clanker_fallback(
+                        &pet_id,
                         &codex_home,
                         frame_requester,
                         animations_enabled,

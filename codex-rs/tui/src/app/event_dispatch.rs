@@ -528,6 +528,10 @@ impl App {
             AppEvent::PetPreviewRequested { pet_id } => {
                 self.chat_widget.start_pet_picker_preview(pet_id);
             }
+            AppEvent::PetPreviewStateChanged { animation_name } => {
+                self.chat_widget
+                    .set_pet_picker_preview_animation(animation_name);
+            }
             AppEvent::PetPreviewLoaded { request_id, result } => {
                 self.handle_pet_preview_loaded(tui, request_id, result);
             }

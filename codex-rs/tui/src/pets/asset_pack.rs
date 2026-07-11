@@ -29,6 +29,21 @@ const PET_PACK_DIR: &str = "cache/tui-pets";
 const PET_CDN_BASE_URL: &str = "https://persistent.oaistatic.com/codex/pets/v1";
 const PET_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 const PET_MAX_DOWNLOAD_BYTES: u64 = 4 * 1024 * 1024;
+const CLANKER_DEFAULT_MANIFEST: &str = include_str!("../../assets/clanker/avatar.json");
+const CLANKER_DEFAULT_SHEET: &[u8] = include_bytes!("../../assets/clanker/sheet.png");
+
+pub(crate) fn ensure_clanker_default(codex_home: &Path) -> Result<()> {
+    let avatar_dir = codex_home.join("avatars").join("clanker");
+    let manifest = avatar_dir.join("avatar.json");
+    if manifest.is_file() {
+        return Ok(());
+    }
+    fs::create_dir_all(&avatar_dir).with_context(|| format!("create {}", avatar_dir.display()))?;
+    fs::write(avatar_dir.join("sheet.png"), CLANKER_DEFAULT_SHEET)
+        .with_context(|| format!("write bundled Clanker avatar in {}", avatar_dir.display()))?;
+    fs::write(&manifest, CLANKER_DEFAULT_MANIFEST)
+        .with_context(|| format!("write {}", manifest.display()))
+}
 
 pub(crate) fn builtin_spritesheet_path(codex_home: &Path, file: &str) -> PathBuf {
     pack_dir(codex_home).join("assets").join(file)
@@ -186,5 +201,29 @@ mod tests {
             assert!(path.is_file());
             validate_cached_spritesheet(&path).unwrap();
         }
+    }
+
+    #[test]
+    fn bundled_clanker_default_installs_without_overwriting_existing_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+
+        ensure_clanker_default(dir.path()).unwrap();
+
+        let avatar_dir = dir.path().join("avatars/clanker");
+        assert_eq!(
+            fs::read_to_string(avatar_dir.join("avatar.json")).unwrap(),
+            CLANKER_DEFAULT_MANIFEST
+        );
+        assert_eq!(
+            image::image_dimensions(avatar_dir.join("sheet.png")).unwrap(),
+            (528, 24)
+        );
+
+        fs::write(avatar_dir.join("avatar.json"), "user owned").unwrap();
+        ensure_clanker_default(dir.path()).unwrap();
+        assert_eq!(
+            fs::read_to_string(avatar_dir.join("avatar.json")).unwrap(),
+            "user owned"
+        );
     }
 }

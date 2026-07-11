@@ -172,7 +172,9 @@ pub(crate) struct AmbientPet {
     frame_requester: FrameRequester,
     notification: Option<PetNotification>,
     planning: bool,
+    talking: bool,
     context_tier: Option<PetContextTier>,
+    preview_animation: String,
     animation_started_at: Instant,
     animations_enabled: bool,
 }
@@ -222,7 +224,9 @@ impl AmbientPet {
             frame_requester,
             notification: None,
             planning: false,
+            talking: false,
             context_tier: None,
+            preview_animation: "idle".to_string(),
             animation_started_at: Instant::now(),
             animations_enabled,
         })
@@ -240,10 +244,24 @@ impl AmbientPet {
         }
     }
 
+    pub(crate) fn set_talking(&mut self, talking: bool) {
+        if self.talking != talking {
+            self.talking = talking;
+            self.animation_started_at = Instant::now();
+        }
+    }
+
     pub(crate) fn set_context_used_percent(&mut self, used_percent: Option<i64>) {
         let context_tier = used_percent.map(PetContextTier::from_used_percent);
         if self.context_tier != context_tier {
             self.context_tier = context_tier;
+            self.animation_started_at = Instant::now();
+        }
+    }
+
+    pub(crate) fn set_preview_animation(&mut self, animation_name: &str) {
+        if self.preview_animation != animation_name {
+            self.preview_animation = animation_name.to_string();
             self.animation_started_at = Instant::now();
         }
     }
@@ -289,6 +307,21 @@ impl AmbientPet {
 
     pub(crate) fn schedule_next_frame(&self) {
         if let Some(delay) = self.next_frame_delay() {
+            self.frame_requester.schedule_frame_in(delay);
+        }
+    }
+
+    pub(crate) fn schedule_preview_next_frame(&self) {
+        if !self.visual_enabled() || !self.animations_enabled {
+            return;
+        }
+        if let Some(delay) = self
+            .preview_animation()
+            .and_then(|animation| {
+                current_animation_frame(animation, self.animation_started_at.elapsed())
+            })
+            .and_then(|tick| tick.delay)
+        {
             self.frame_requester.schedule_frame_in(delay);
         }
     }
@@ -362,7 +395,7 @@ impl AmbientPet {
 
         let y = area.y + area.height.saturating_sub(size.rows) / 2;
         Some(AmbientPetDraw {
-            frame: self.first_idle_frame_path()?,
+            frame: self.preview_frame_path()?,
             protocol,
             x: area.x + area.width.saturating_sub(size.columns) / 2,
             y,
@@ -383,6 +416,8 @@ impl AmbientPet {
     fn current_animation(&self) -> Option<&Animation> {
         let base_animation = if self.planning {
             "planning"
+        } else if self.talking {
+            "talking"
         } else {
             self.visible_notification(Instant::now())
                 .map_or("idle", |notification| notification.kind.animation_name())
@@ -395,6 +430,11 @@ impl AmbientPet {
             .animations
             .get(tier_animation.unwrap_or(base_animation))
             .or_else(|| self.pet.animations.get(base_animation))
+            .or_else(|| {
+                (base_animation == "talking")
+                    .then(|| self.pet.animations.get("running"))
+                    .flatten()
+            })
             .or_else(|| self.pet.animations.get("idle"))?;
         if animation.loop_start.is_none() {
             let elapsed = self.animation_started_at.elapsed();
@@ -405,6 +445,26 @@ impl AmbientPet {
             }
         }
         Some(animation)
+    }
+
+    fn preview_animation(&self) -> Option<&Animation> {
+        let base_animation = match self.preview_animation.as_str() {
+            "fresh-idle" | "focused-idle" | "tired-idle" | "exhausted-idle" => "idle",
+            "fresh-running" | "focused-running" | "tired-running" | "exhausted-running" => {
+                "running"
+            }
+            animation_name => animation_name,
+        };
+        self.pet
+            .animations
+            .get(&self.preview_animation)
+            .or_else(|| self.pet.animations.get(base_animation))
+            .or_else(|| {
+                (base_animation == "talking")
+                    .then(|| self.pet.animations.get("running"))
+                    .flatten()
+            })
+            .or_else(|| self.pet.animations.get("idle"))
     }
 
     fn current_frame_path(&self) -> Option<PathBuf> {
@@ -425,14 +485,21 @@ impl AmbientPet {
             .unwrap_or(0)
     }
 
-    fn first_idle_frame_path(&self) -> Option<PathBuf> {
-        let sprite_index = self
-            .pet
-            .animations
-            .get("idle")
-            .and_then(|animation| animation.frames.first())
-            .map_or(0, |frame| frame.sprite_index);
-        self.frame_path_for_sprite_index(sprite_index)
+    fn preview_sprite_index(&self) -> usize {
+        self.preview_animation()
+            .and_then(|animation| {
+                if self.animations_enabled {
+                    current_animation_frame(animation, self.animation_started_at.elapsed())
+                        .map(|frame| frame.sprite_index)
+                } else {
+                    animation.frames.first().map(|frame| frame.sprite_index)
+                }
+            })
+            .unwrap_or(0)
+    }
+
+    fn preview_frame_path(&self) -> Option<PathBuf> {
+        self.frame_path_for_sprite_index(self.preview_sprite_index())
     }
 
     fn frame_path_for_sprite_index(&self, sprite_index: usize) -> Option<PathBuf> {
@@ -468,12 +535,7 @@ impl AmbientPet {
 
     pub(crate) fn render_ansi_preview(&self, area: Rect, buf: &mut Buffer) {
         let Some(frame) = self.ansi_frames.as_ref().and_then(|frames| {
-            let index = self
-                .pet
-                .animations
-                .get("idle")
-                .and_then(|animation| animation.frames.first())
-                .map_or(0, |frame| frame.sprite_index);
+            let index = self.preview_sprite_index();
             frames.get(index.min(frames.len().saturating_sub(1)))
         }) else {
             return;
@@ -629,7 +691,9 @@ pub(crate) fn test_ambient_pet(
         frame_requester,
         notification: None,
         planning: false,
+        talking: false,
         context_tier: None,
+        preview_animation: "idle".to_string(),
         animation_started_at: Instant::now()
             .checked_sub(Duration::from_millis(/*millis*/ 15))
             .unwrap(),
@@ -666,7 +730,9 @@ pub(crate) fn test_ansi_ambient_pet(
         frame_requester,
         notification: None,
         planning: false,
+        talking: false,
         context_tier: None,
+        preview_animation: "idle".to_string(),
         animation_started_at: Instant::now(),
         animations_enabled,
     }
@@ -858,5 +924,61 @@ mod tests {
         pet.set_notification(PetNotificationKind::Running, /*body*/ None);
 
         assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-1.png")));
+    }
+
+    #[test]
+    fn talking_falls_back_to_running_and_planning_has_priority() {
+        let mut pet = test_ambient_pet(
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        pet.frames = (0..4)
+            .map(|index| PathBuf::from(format!("frame-{index}.png")))
+            .collect();
+        for (name, sprite_index) in [("running", 1), ("talking", 2), ("planning", 3)] {
+            pet.pet.animations.insert(
+                name.to_string(),
+                Animation {
+                    frames: vec![AnimationFrame {
+                        sprite_index,
+                        duration: Duration::from_secs(1),
+                    }],
+                    loop_start: Some(/*loop_start*/ 0),
+                    fallback: "idle".to_string(),
+                },
+            );
+        }
+
+        pet.set_talking(true);
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-2.png")));
+        pet.pet.animations.remove("talking");
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-1.png")));
+        pet.set_planning(true);
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-3.png")));
+    }
+
+    #[test]
+    fn wheel_preview_uses_selected_state_with_base_and_idle_fallbacks() {
+        let mut pet = test_ambient_pet(
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        pet.frames.push(PathBuf::from("frame-2.png"));
+        pet.pet.animations.insert(
+            "running".to_string(),
+            Animation {
+                frames: vec![AnimationFrame {
+                    sprite_index: 2,
+                    duration: Duration::from_secs(1),
+                }],
+                loop_start: Some(/*loop_start*/ 0),
+                fallback: "idle".to_string(),
+            },
+        );
+
+        pet.set_preview_animation("tired-running");
+        assert_eq!(pet.preview_frame_path(), Some(PathBuf::from("frame-2.png")));
+        pet.set_preview_animation("planning");
+        assert_eq!(pet.preview_frame_path(), Some(PathBuf::from("frame-0.png")));
     }
 }

@@ -2401,6 +2401,27 @@ async fn slash_pets_opens_picker() {
 
 #[tokio::test]
 #[serial]
+async fn slash_pets_wheel_right_arrow_changes_preview_state() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    force_pet_image_support(&mut chat);
+    chat.config.tui_pet = Some("codex".to_string());
+    chat.dispatch_command(SlashCommand::Pets);
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Right));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PetPreviewStateChanged { animation_name }) if animation_name == "running"
+    );
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PetPreviewRequested { pet_id }) if pet_id == "codex"
+    );
+    assert_matches!(rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
+#[serial]
 async fn slash_pets_with_arg_selects_named_pet() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     force_pet_image_support(&mut chat);

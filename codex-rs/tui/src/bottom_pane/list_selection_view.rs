@@ -118,6 +118,9 @@ pub(crate) struct SelectionToggle {
 pub(crate) type OnSelectionChangedCallback =
     Option<Box<dyn Fn(usize, &AppEventSender) + Send + Sync>>;
 
+/// Callback invoked whenever the active tab changes with Left/Right navigation.
+pub(crate) type OnTabChangedCallback = Option<Box<dyn Fn(&str, &AppEventSender) + Send + Sync>>;
+
 /// Callback invoked when the picker is dismissed without accepting (Esc or
 /// Ctrl+C).  Used by the theme picker to restore the pre-open theme.
 pub(crate) type OnCancelCallback = Option<Box<dyn Fn(&AppEventSender) + Send + Sync>>;
@@ -200,6 +203,9 @@ pub(crate) struct SelectionViewParams {
     /// Receives the *actual* item index, not the filtered/visible index.
     pub on_selection_changed: OnSelectionChangedCallback,
 
+    /// Called after the active tab changes. Receives the new stable tab id.
+    pub on_tab_changed: OnTabChangedCallback,
+
     /// Whether cancellation keys can dismiss the picker.
     pub allow_cancel: bool,
 
@@ -232,6 +238,7 @@ impl Default for SelectionViewParams {
             stacked_side_content: None,
             preserve_side_content_bg: false,
             on_selection_changed: None,
+            on_tab_changed: None,
             allow_cancel: true,
             on_cancel: None,
         }
@@ -273,6 +280,8 @@ pub(crate) struct ListSelectionView {
 
     /// Called when the highlighted item changes (navigation, filter, number-key).
     on_selection_changed: OnSelectionChangedCallback,
+
+    on_tab_changed: OnTabChangedCallback,
 
     allow_cancel: bool,
 
@@ -405,6 +414,7 @@ impl ListSelectionView {
             stacked_side_content: params.stacked_side_content,
             preserve_side_content_bg: params.preserve_side_content_bg,
             on_selection_changed: params.on_selection_changed,
+            on_tab_changed: params.on_tab_changed,
             allow_cancel: params.allow_cancel,
             on_cancel: params.on_cancel,
             keymap,
@@ -619,6 +629,7 @@ impl ListSelectionView {
         let Some(active_idx) = self.active_tab_idx else {
             return;
         };
+        let previous_actual_idx = self.selected_actual_idx();
         let len = self.tabs.len();
         if len == 0 {
             return;
@@ -632,9 +643,15 @@ impl ListSelectionView {
         self.active_tab_idx = Some(next_idx);
         self.search_query.clear();
         self.state.reset();
+        self.initial_selected_idx = previous_actual_idx;
         self.apply_filter();
         if self.state.selected_idx.is_none() {
             self.select_first_enabled_row();
+        }
+        if let Some(callback) = &self.on_tab_changed
+            && let Some(tab_id) = self.active_tab_id()
+        {
+            callback(tab_id, &self.app_event_tx);
         }
         self.fire_selection_changed();
     }

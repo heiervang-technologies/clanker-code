@@ -32,6 +32,21 @@ impl ChatWidget {
             terminal_title_invalid_items_warned,
             session_telemetry,
         } = common;
+        #[cfg(not(test))]
+        let mut config = config;
+        #[cfg(test)]
+        let config = config;
+        #[cfg(not(test))]
+        if config.tui_pet.is_none() {
+            match crate::pets::ensure_clanker_default(&config.codex_home) {
+                Ok(()) => {
+                    config.tui_pet = Some(crate::pets::CLANKER_DEFAULT_PET_ID.to_string());
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "failed to install bundled Clanker avatar");
+                }
+            }
+        }
         let model = model.filter(|m| !m.trim().is_empty());
         let mut config = config;
         config.model = model.clone();
@@ -184,8 +199,10 @@ impl ChatWidget {
             ambient_pet: None,
             pet_picker_preview_state: crate::pets::PetPickerPreviewState::default(),
             pet_picker_preview_pet: None,
+            pet_picker_preview_animation: "idle".to_string(),
             pet_picker_preview_request_id: 0,
             pet_picker_preview_image_visible: std::cell::Cell::new(/*value*/ false),
+            pet_talking_signal: crate::pets::TalkingSignal::new(),
             pet_selection_load_request_id: 0,
             #[cfg(test)]
             pet_image_support_override: None,

@@ -2,16 +2,18 @@
 source: tui/src/chatwidget/tests/slash_commands.rs
 expression: popup
 ---
-  Select Pet
-  Choose a pet to wake in the terminal.
+  Avatar Wheel
+  Previewing: idle
 
-  Type to filter pets...
+  [Idle]  R  T  W  V  F  P  Ti  Tr
+
+  Type to filter avatars...
   Disable terminal pets
   BSOD                   A tiny blue-screen
                          gremlin
 › Codex                  The original Codex
-                         companion
-  Dewey                  A tidy duck for calm         Loading preview...
+                         companion                    Loading preview...
+  Dewey                  A tidy duck for calm
                          workspace days
   Fireball               Hot path energy for
                          fast iteration
@@ -22,4 +24,4 @@ expression: popup
   Seedy                  Small green shoots
                          for new ideas
 
-  Press enter to confirm or esc to go back
+  ↑/↓ avatar · ←/→ state · enter select · esc cancel

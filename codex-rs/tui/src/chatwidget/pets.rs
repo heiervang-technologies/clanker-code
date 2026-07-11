@@ -12,8 +12,8 @@ pub(super) fn load_ambient_pet(
         return None;
     }
 
-    crate::pets::AmbientPet::load(
-        Some(selected_pet),
+    crate::pets::load_with_clanker_fallback(
+        selected_pet,
         &config.codex_home,
         frame_requester,
         config.animations,
@@ -39,8 +39,8 @@ pub(super) fn start_configured_pet_load_if_needed(
     spawn_pet_load(move || {
         let result = crate::pets::ensure_builtin_pack_for_pet(&pet_id, &codex_home)
             .and_then(|()| {
-                crate::pets::AmbientPet::load(
-                    Some(&pet_id),
+                crate::pets::load_with_clanker_fallback(
+                    &pet_id,
                     &codex_home,
                     frame_requester,
                     animations_enabled,
@@ -172,6 +172,7 @@ impl ChatWidget {
 
         self.pet_picker_preview_state.clear();
         self.pet_picker_preview_pet = None;
+        self.pet_picker_preview_animation = "idle".to_string();
         let params = crate::pets::build_pet_picker_params(
             self.config.tui_pet.as_deref(),
             &self.config.codex_home,
@@ -210,7 +211,13 @@ impl ChatWidget {
     }
 
     pub(super) fn sync_ambient_pet_semantic_state(&mut self) {
+        if self.ambient_pet.is_some() {
+            self.frame_requester
+                .schedule_frame_in(crate::pets::TalkingSignal::poll_interval());
+        }
         let planning = self.active_mode_kind() == ModeKind::Plan;
+        let talking = self.stream_controller.is_some()
+            || (self.ambient_pet.is_some() && self.pet_talking_signal.is_active());
         let context_used_percent = self.token_info.as_ref().and_then(|info| {
             info.model_context_window.map(|window| {
                 100 - info
@@ -221,6 +228,7 @@ impl ChatWidget {
         });
         if let Some(pet) = self.ambient_pet.as_mut() {
             pet.set_planning(planning);
+            pet.set_talking(talking);
             pet.set_context_used_percent(context_used_percent);
         }
     }
@@ -311,6 +319,7 @@ impl ChatWidget {
 
         let codex_home = self.config.codex_home.clone();
         let frame_requester = self.frame_requester.clone();
+        let animations_enabled = self.config.animations;
         let tx = self.app_event_tx.clone();
         spawn_pet_load(move || {
             let result = crate::pets::ensure_builtin_pack_for_pet(&pet_id, &codex_home)
@@ -319,7 +328,7 @@ impl ChatWidget {
                         Some(&pet_id),
                         &codex_home,
                         frame_requester,
-                        /*animations_enabled*/ false,
+                        animations_enabled,
                     )
                 })
                 .map_err(|err| err.to_string());
@@ -339,6 +348,7 @@ impl ChatWidget {
         match result {
             Ok(mut pet) => {
                 self.apply_pet_image_support_override_for_tests(&mut pet);
+                pet.set_preview_animation(&self.pet_picker_preview_animation);
                 if let Some(message) = pet.unavailable_message() {
                     self.pet_picker_preview_state.set_error(message.to_string());
                     self.pet_picker_preview_pet = None;
@@ -352,6 +362,14 @@ impl ChatWidget {
                 self.pet_picker_preview_state.set_error(message);
                 self.pet_picker_preview_pet = None;
             }
+        }
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_pet_picker_preview_animation(&mut self, animation_name: String) {
+        self.pet_picker_preview_animation = animation_name;
+        if let Some(pet) = self.pet_picker_preview_pet.as_mut() {
+            pet.set_preview_animation(&self.pet_picker_preview_animation);
         }
         self.request_redraw();
     }
