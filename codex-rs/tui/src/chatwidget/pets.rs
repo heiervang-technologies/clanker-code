@@ -198,6 +198,33 @@ impl ChatWidget {
         self.app_event_tx.send(AppEvent::PetSelected { pet_id });
     }
 
+    pub(crate) fn select_adjacent_pet(&mut self, direction: crate::pets::PetCycleDirection) {
+        let Some(pet_id) = crate::pets::adjacent_pet_selector(
+            self.config.tui_pet.as_deref(),
+            &self.config.codex_home,
+            direction,
+        ) else {
+            return;
+        };
+        self.select_pet_by_id(pet_id);
+    }
+
+    pub(super) fn sync_ambient_pet_semantic_state(&mut self) {
+        let planning = self.active_mode_kind() == ModeKind::Plan;
+        let context_used_percent = self.token_info.as_ref().and_then(|info| {
+            info.model_context_window.map(|window| {
+                100 - info
+                    .last_token_usage
+                    .percent_of_context_window_remaining(window)
+                    .clamp(0, 100)
+            })
+        });
+        if let Some(pet) = self.ambient_pet.as_mut() {
+            pet.set_planning(planning);
+            pet.set_context_used_percent(context_used_percent);
+        }
+    }
+
     fn warn_if_pets_unsupported(&mut self, ansi_available: bool) -> bool {
         if ansi_available {
             return false;
@@ -229,6 +256,7 @@ impl ChatWidget {
     pub(crate) fn set_tui_pet(&mut self, pet: Option<String>) {
         self.config.tui_pet = pet;
         self.ambient_pet = load_ambient_pet(&self.config, self.frame_requester.clone());
+        self.sync_ambient_pet_semantic_state();
         self.apply_ambient_pet_image_support_override_for_tests();
         self.request_redraw();
     }
@@ -240,6 +268,7 @@ impl ChatWidget {
     ) {
         self.config.tui_pet = pet;
         self.ambient_pet = ambient_pet;
+        self.sync_ambient_pet_semantic_state();
         self.apply_ambient_pet_image_support_override_for_tests();
         self.request_redraw();
     }

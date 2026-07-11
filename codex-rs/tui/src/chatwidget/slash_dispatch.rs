@@ -887,6 +887,14 @@ impl ChatWidget {
             {
                 self.app_event_tx.send(AppEvent::PetDisabled);
             }
+            SlashCommand::Pets if trimmed.eq_ignore_ascii_case("next") => {
+                self.select_adjacent_pet(crate::pets::PetCycleDirection::Next);
+            }
+            SlashCommand::Pets
+                if matches!(trimmed.to_ascii_lowercase().as_str(), "prev" | "previous") =>
+            {
+                self.select_adjacent_pet(crate::pets::PetCycleDirection::Previous);
+            }
             SlashCommand::Pets if !trimmed.is_empty() => {
                 self.select_pet_by_id(args);
             }

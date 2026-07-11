@@ -607,6 +607,7 @@ impl ChatWidget {
     }
 
     pub(super) fn update_collaboration_mode_indicator(&mut self) {
+        self.sync_ambient_pet_semantic_state();
         let indicator = self.collaboration_mode_indicator();
         let goal_indicator = if indicator.is_none() {
             self.goal_status_indicator(Instant::now())

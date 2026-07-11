@@ -36,6 +36,40 @@ struct PetPickerEntry {
     description: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PetCycleDirection {
+    Next,
+    Previous,
+}
+
+pub(crate) fn adjacent_pet_selector(
+    current_pet: Option<&str>,
+    codex_home: &Path,
+    direction: PetCycleDirection,
+) -> Option<String> {
+    let mut entries = available_pet_entries(codex_home);
+    entries.retain(|entry| entry.selector != DISABLED_PET_ID);
+    entries.sort_by(|left, right| {
+        left.display_name
+            .cmp(&right.display_name)
+            .then_with(|| left.selector.cmp(&right.selector))
+    });
+    let current_idx = current_pet.and_then(|current_pet| {
+        entries.iter().position(|entry| {
+            entry.selector == current_pet || entry.legacy_selector.as_deref() == Some(current_pet)
+        })
+    });
+    let next_idx = match (current_idx, direction) {
+        (Some(idx), PetCycleDirection::Next) => (idx + 1) % entries.len(),
+        (Some(0), PetCycleDirection::Previous) | (None, PetCycleDirection::Previous) => {
+            entries.len().checked_sub(1)?
+        }
+        (Some(idx), PetCycleDirection::Previous) => idx - 1,
+        (None, PetCycleDirection::Next) => 0,
+    };
+    entries.get(next_idx).map(|entry| entry.selector.clone())
+}
+
 /// Build the selection popup parameters for `/pets`.
 ///
 /// The picker preselects `DEFAULT_PET_ID` when no pet is configured so the UI
@@ -290,6 +324,29 @@ mod tests {
         assert_eq!(
             params.items[2].search_value.as_deref(),
             Some("custom:chefito")
+        );
+    }
+
+    #[test]
+    fn adjacent_pet_selector_cycles_stable_picker_order_and_legacy_ids() {
+        let codex_home = tempfile::tempdir().unwrap();
+        write_pet(codex_home.path(), "chefito", "Chefito");
+
+        assert_eq!(
+            adjacent_pet_selector(Some("chefito"), codex_home.path(), PetCycleDirection::Next,),
+            Some("codex".to_string())
+        );
+        assert_eq!(
+            adjacent_pet_selector(
+                Some("custom:chefito"),
+                codex_home.path(),
+                PetCycleDirection::Previous,
+            ),
+            Some("bsod".to_string())
+        );
+        assert_eq!(
+            adjacent_pet_selector(Some("bsod"), codex_home.path(), PetCycleDirection::Previous,),
+            Some("stacky".to_string())
         );
     }
 

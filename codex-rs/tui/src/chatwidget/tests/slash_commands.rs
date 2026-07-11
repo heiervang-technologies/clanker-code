@@ -2418,6 +2418,42 @@ async fn slash_pets_with_arg_selects_named_pet() {
 
 #[tokio::test]
 #[serial]
+async fn slash_pets_next_cycles_to_next_pet_in_stable_order() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    force_pet_image_support(&mut chat);
+    chat.config.tui_pet = Some("codex".to_string());
+    chat.bottom_pane
+        .set_composer_text("/pets next".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PetSelected { pet_id }) if pet_id == "dewey"
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
+#[serial]
+async fn slash_pets_prev_cycles_to_previous_pet_in_stable_order() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    force_pet_image_support(&mut chat);
+    chat.config.tui_pet = Some("codex".to_string());
+    chat.bottom_pane
+        .set_composer_text("/pets prev".to_string(), Vec::new(), Vec::new());
+
+    chat.handle_key_event(KeyEvent::from(KeyCode::Enter));
+
+    assert_matches!(
+        rx.try_recv(),
+        Ok(AppEvent::PetSelected { pet_id }) if pet_id == "bsod"
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
+#[serial]
 async fn slash_pets_disable_disables_pets_even_on_unsupported_terminal() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     force_tmux_pet_image_unsupported(&mut chat);
