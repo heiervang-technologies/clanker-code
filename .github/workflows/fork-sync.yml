@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       skip_rebase:
-        description: 'Only sync main, skip rebase of ht'
+        description: 'Only sync main, skip rebase of clanker'
         type: boolean
         default: false
 
@@ -20,5 +20,5 @@ jobs:
     with:
       upstream_repo: 'openai/codex'
       upstream_branch: 'main'
-      fork_branch: 'ht'
+      fork_branch: 'clanker'
       skip_rebase: ${{ github.event.inputs.skip_rebase == 'true' }}
