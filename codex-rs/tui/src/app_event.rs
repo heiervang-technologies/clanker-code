@@ -421,6 +421,11 @@ pub(crate) enum AppEvent {
         pet_id: String,
     },
 
+    /// Change the animation state used by the active pet picker preview.
+    PetPreviewStateChanged {
+        animation_name: String,
+    },
+
     /// Result of loading the side preview for the pet picker.
     PetPreviewLoaded {
         request_id: u64,
