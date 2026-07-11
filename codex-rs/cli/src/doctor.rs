@@ -898,8 +898,8 @@ fn inherited_managed_env_for_cargo_binary(current_exe: Option<&Path>) -> bool {
         return false;
     };
     if current_exe
-        .file_name()
-        .is_some_and(|file_name| file_name == "clanker")
+        .file_stem()
+        .is_some_and(|file_stem| file_stem == "clanker")
     {
         return true;
     }
