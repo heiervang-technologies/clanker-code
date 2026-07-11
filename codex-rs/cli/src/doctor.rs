@@ -487,7 +487,7 @@ async fn build_report(
         schema_version: 1,
         generated_at: generated_at(),
         overall_status,
-        codex_version: env!("CARGO_PKG_VERSION").to_string(),
+        codex_version: codex_config::CLANKER_VERSION.to_string(),
         checks,
     }
 }
@@ -897,6 +897,12 @@ fn inherited_managed_env_for_cargo_binary(current_exe: Option<&Path>) -> bool {
     let Some(current_exe) = current_exe else {
         return false;
     };
+    if current_exe
+        .file_name()
+        .is_some_and(|file_name| file_name == "clanker")
+    {
+        return true;
+    }
     let components = current_exe
         .components()
         .map(|component| component.as_os_str().to_string_lossy())

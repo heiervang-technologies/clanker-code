@@ -31,6 +31,23 @@ const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.jso
 /// warning instead of failing doctor outright; update freshness is useful
 /// support context but should not mask more direct install/config failures.
 pub(super) fn updates_check(config: &Config) -> DoctorCheck {
+    if codex_config::CLANKER_VERSION.contains("+codex.") {
+        return DoctorCheck::new(
+            "updates.status",
+            "updates",
+            CheckStatus::Ok,
+            "upstream updates are disabled for Clanker Code",
+        )
+        .details(vec![
+            format!("current version: {}", codex_config::CLANKER_VERSION),
+            "update source: managed by the Clanker Code fork".to_string(),
+            format!(
+                "check for update on startup: {} (upstream check suppressed)",
+                config.check_for_update_on_startup
+            ),
+        ]);
+    }
+
     let current_exe = std::env::current_exe().ok();
     let install_context = doctor_install_context(current_exe.as_deref());
     let mut details = vec![
