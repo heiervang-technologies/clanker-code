@@ -39,6 +39,8 @@ pub(crate) use ambient::test_ambient_pet;
 pub(crate) use ambient::test_ansi_ambient_pet;
 pub(crate) use asset_pack::builtin_spritesheet_path;
 #[cfg(not(test))]
+pub(crate) use asset_pack::ensure_bundled_avatars;
+#[cfg(not(test))]
 pub(crate) use asset_pack::ensure_clanker_default;
 #[cfg(test)]
 pub(crate) use asset_pack::write_test_pack;

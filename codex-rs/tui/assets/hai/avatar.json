@@ -1,0 +1,93 @@
+{
+  "displayName": "Hai",
+  "renderMode": "ansi-half-block",
+  "spritesheetPath": "sheet.png",
+  "frame": {
+    "width": 24,
+    "height": 24,
+    "columns": 22,
+    "rows": 1
+  },
+  "animations": {
+    "idle": {
+      "frames": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        2
+      ],
+      "fps": 8
+    },
+    "running": {
+      "frames": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "fps": 8
+    },
+    "waiting": {
+      "frames": [
+        7,
+        8
+      ],
+      "fps": 3
+    },
+    "review": {
+      "frames": [
+        9,
+        10
+      ],
+      "fps": 3
+    },
+    "failed": {
+      "frames": [
+        11,
+        12
+      ],
+      "fps": 2
+    },
+    "planning": {
+      "frames": [
+        13,
+        14,
+        15,
+        14
+      ],
+      "fps": 3
+    },
+    "talking": {
+      "frames": [
+        0,
+        16,
+        17,
+        16
+      ],
+      "fps": 8
+    },
+    "tired-idle": {
+      "frames": [
+        18,
+        19
+      ],
+      "fps": 2
+    },
+    "tired-running": {
+      "frames": [
+        20,
+        21
+      ],
+      "fps": 6
+    }
+  }
+}

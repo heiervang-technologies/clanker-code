@@ -29,20 +29,73 @@ const PET_PACK_DIR: &str = "cache/tui-pets";
 const PET_CDN_BASE_URL: &str = "https://persistent.oaistatic.com/codex/pets/v1";
 const PET_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(60);
 const PET_MAX_DOWNLOAD_BYTES: u64 = 4 * 1024 * 1024;
-const CLANKER_DEFAULT_MANIFEST: &str = include_str!("../../assets/clanker/avatar.json");
-const CLANKER_DEFAULT_SHEET: &[u8] = include_bytes!("../../assets/clanker/sheet.png");
 
-pub(crate) fn ensure_clanker_default(codex_home: &Path) -> Result<()> {
-    let avatar_dir = codex_home.join("avatars").join("clanker");
+/// A fleet mascot whose spritesheet is embedded in the binary and installed
+/// into `$CODEX_HOME/avatars/<id>/` on startup. Unlike CDN built-ins, these
+/// ship with the distribution, so a fresh install has them offline. `clanker`
+/// stays first: it remains the default pet and its fallback path relies on it.
+struct BundledAvatar {
+    id: &'static str,
+    manifest: &'static str,
+    sheet: &'static [u8],
+}
+
+const BUNDLED_AVATARS: &[BundledAvatar] = &[
+    BundledAvatar {
+        id: "clanker",
+        manifest: include_str!("../../assets/clanker/avatar.json"),
+        sheet: include_bytes!("../../assets/clanker/sheet.png"),
+    },
+    BundledAvatar {
+        id: "c3ph0",
+        manifest: include_str!("../../assets/c3ph0/avatar.json"),
+        sheet: include_bytes!("../../assets/c3ph0/sheet.png"),
+    },
+    BundledAvatar {
+        id: "clautist",
+        manifest: include_str!("../../assets/clautist/avatar.json"),
+        sheet: include_bytes!("../../assets/clautist/sheet.png"),
+    },
+    BundledAvatar {
+        id: "hai",
+        manifest: include_str!("../../assets/hai/avatar.json"),
+        sheet: include_bytes!("../../assets/hai/sheet.png"),
+    },
+];
+
+/// Write one bundled avatar into `$CODEX_HOME/avatars/<id>/` if it is not
+/// already present. An existing on-disk copy is left untouched — once the user
+/// has an avatar, that copy is the source of truth.
+fn ensure_bundled_avatar(codex_home: &Path, avatar: &BundledAvatar) -> Result<()> {
+    let avatar_dir = codex_home.join("avatars").join(avatar.id);
     let manifest = avatar_dir.join("avatar.json");
     if manifest.is_file() {
         return Ok(());
     }
     fs::create_dir_all(&avatar_dir).with_context(|| format!("create {}", avatar_dir.display()))?;
-    fs::write(avatar_dir.join("sheet.png"), CLANKER_DEFAULT_SHEET)
-        .with_context(|| format!("write bundled Clanker avatar in {}", avatar_dir.display()))?;
-    fs::write(&manifest, CLANKER_DEFAULT_MANIFEST)
-        .with_context(|| format!("write {}", manifest.display()))
+    fs::write(avatar_dir.join("sheet.png"), avatar.sheet).with_context(|| {
+        format!(
+            "write bundled {} avatar in {}",
+            avatar.id,
+            avatar_dir.display()
+        )
+    })?;
+    fs::write(&manifest, avatar.manifest).with_context(|| format!("write {}", manifest.display()))
+}
+
+/// Install the default Clanker avatar. Kept as a named entry point because the
+/// clanker-fallback path depends specifically on Clanker being present.
+pub(crate) fn ensure_clanker_default(codex_home: &Path) -> Result<()> {
+    ensure_bundled_avatar(codex_home, &BUNDLED_AVATARS[0])
+}
+
+/// Install every bundled fleet mascot that isn't already on disk, so they all
+/// show up in the pet picker on a fresh install without any CDN round-trip.
+pub(crate) fn ensure_bundled_avatars(codex_home: &Path) -> Result<()> {
+    for avatar in BUNDLED_AVATARS {
+        ensure_bundled_avatar(codex_home, avatar)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn builtin_spritesheet_path(codex_home: &Path, file: &str) -> PathBuf {
@@ -212,7 +265,7 @@ mod tests {
         let avatar_dir = dir.path().join("avatars/clanker");
         assert_eq!(
             fs::read_to_string(avatar_dir.join("avatar.json")).unwrap(),
-            CLANKER_DEFAULT_MANIFEST
+            BUNDLED_AVATARS[0].manifest
         );
         assert_eq!(
             image::image_dimensions(avatar_dir.join("sheet.png")).unwrap(),
@@ -223,6 +276,43 @@ mod tests {
         ensure_clanker_default(dir.path()).unwrap();
         assert_eq!(
             fs::read_to_string(avatar_dir.join("avatar.json")).unwrap(),
+            "user owned"
+        );
+    }
+
+    #[test]
+    fn bundled_fleet_mascots_all_install_and_parse() {
+        let dir = tempfile::tempdir().unwrap();
+
+        ensure_bundled_avatars(dir.path()).unwrap();
+
+        for avatar in BUNDLED_AVATARS {
+            let avatar_dir = dir.path().join("avatars").join(avatar.id);
+            let manifest = fs::read_to_string(avatar_dir.join("avatar.json")).unwrap();
+            assert_eq!(manifest, avatar.manifest, "{} manifest mismatch", avatar.id);
+            // The embedded manifest must be valid JSON and point at sheet.png.
+            let parsed: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+            assert_eq!(
+                parsed.get("spritesheetPath").and_then(|v| v.as_str()),
+                Some("sheet.png"),
+                "{} spritesheetPath",
+                avatar.id
+            );
+            assert!(avatar_dir.join("sheet.png").is_file(), "{} sheet", avatar.id);
+        }
+    }
+
+    #[test]
+    fn ensure_bundled_avatars_never_overwrites_user_copies() {
+        let dir = tempfile::tempdir().unwrap();
+        let c3ph0 = dir.path().join("avatars/c3ph0");
+        fs::create_dir_all(&c3ph0).unwrap();
+        fs::write(c3ph0.join("avatar.json"), "user owned").unwrap();
+
+        ensure_bundled_avatars(dir.path()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(c3ph0.join("avatar.json")).unwrap(),
             "user owned"
         );
     }

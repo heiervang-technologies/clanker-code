@@ -37,14 +37,21 @@ impl ChatWidget {
         #[cfg(test)]
         let config = config;
         #[cfg(not(test))]
-        if config.tui_pet.is_none() {
-            match crate::pets::ensure_clanker_default(&config.codex_home) {
-                Ok(()) => {
-                    config.tui_pet = Some(crate::pets::CLANKER_DEFAULT_PET_ID.to_string());
+        {
+            if config.tui_pet.is_none() {
+                match crate::pets::ensure_clanker_default(&config.codex_home) {
+                    Ok(()) => {
+                        config.tui_pet = Some(crate::pets::CLANKER_DEFAULT_PET_ID.to_string());
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to install bundled Clanker avatar");
+                    }
                 }
-                Err(err) => {
-                    tracing::warn!(error = %err, "failed to install bundled Clanker avatar");
-                }
+            }
+            // Install the rest of the fleet mascots (c3ph0, clautist, hai) so they
+            // appear in the pet picker on a fresh install, offline. Non-fatal.
+            if let Err(err) = crate::pets::ensure_bundled_avatars(&config.codex_home) {
+                tracing::warn!(error = %err, "failed to install bundled fleet avatars");
             }
         }
         let model = model.filter(|m| !m.trim().is_empty());

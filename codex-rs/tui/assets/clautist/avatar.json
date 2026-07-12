@@ -1,0 +1,73 @@
+{
+  "displayName": "Clautist",
+  "renderMode": "ansi-half-block",
+  "spritesheetPath": "sheet.png",
+  "frame": {
+    "width": 24,
+    "height": 24,
+    "columns": 22,
+    "rows": 1
+  },
+  "animations": {
+    "idle": {
+      "frames": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        1
+      ],
+      "fps": 8
+    },
+    "running": {
+      "frames": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "fps": 12
+    },
+    "waiting": {
+      "frames": [
+        15,
+        16,
+        17,
+        16
+      ],
+      "fps": 4
+    },
+    "review": {
+      "frames": [
+        18,
+        19,
+        18,
+        19
+      ],
+      "fps": 3
+    },
+    "failed": {
+      "frames": [
+        20,
+        21
+      ],
+      "fps": 2
+    }
+  }
+}

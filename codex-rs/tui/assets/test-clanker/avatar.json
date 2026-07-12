@@ -1,0 +1,13 @@
+{
+  "displayName": "Test Clanker",
+  "renderMode": "ansi-half-block",
+  "spritesheetPath": "spritesheet.png",
+  "frame": { "width": 24, "height": 24, "columns": 3, "rows": 1 },
+  "animations": {
+    "idle": { "frames": [0] },
+    "running": { "frames": [0, 1], "fps": 2 },
+    "waiting": { "frames": [1] },
+    "review": { "frames": [0] },
+    "failed": { "frames": [2] }
+  }
+}
