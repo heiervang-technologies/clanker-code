@@ -1,0 +1,28 @@
+name: Fork Sync
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+    inputs:
+      skip_rebase:
+        description: 'Only sync main, skip rebase of clanker'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: clanker-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    uses: heiervang-technologies/.github/.github/workflows/fork-sync-reusable.yml@main
+    with:
+      upstream_repo: 'openai/codex'
+      upstream_branch: 'main'
+      fork_branch: 'clanker'
+      skip_rebase: ${{ github.event.inputs.skip_rebase == 'true' }}
