@@ -11,6 +11,7 @@ use sqlx::sqlite::SqliteJournalMode;
 use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
+use super::MEMORIES_MIGRATOR;
 use super::STATE_MIGRATOR;
 use super::repair_legacy_recency_migration_version;
 
@@ -30,6 +31,96 @@ fn migrator_through(version: i64) -> Migrator {
         create_schemas: STATE_MIGRATOR.create_schemas.clone(),
         no_tx: STATE_MIGRATOR.no_tx,
     }
+}
+
+fn memories_migrator_through(version: i64) -> Migrator {
+    Migrator {
+        migrations: Cow::Owned(
+            MEMORIES_MIGRATOR
+                .migrations
+                .iter()
+                .filter(|migration| migration.version <= version)
+                .cloned()
+                .collect(),
+        ),
+        ignore_missing: MEMORIES_MIGRATOR.ignore_missing,
+        locking: MEMORIES_MIGRATOR.locking,
+        table_name: MEMORIES_MIGRATOR.table_name.clone(),
+        create_schemas: MEMORIES_MIGRATOR.create_schemas.clone(),
+        no_tx: MEMORIES_MIGRATOR.no_tx,
+    }
+}
+
+#[tokio::test]
+async fn character_memory_migration_preserves_legacy_rows_as_anonymous() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+    memories_migrator_through(/*version*/ 1)
+        .run(&pool)
+        .await
+        .expect("legacy memories migration should apply");
+    sqlx::query(
+        r#"
+INSERT INTO stage1_outputs (
+    thread_id,
+    source_updated_at,
+    raw_memory,
+    rollout_summary,
+    generated_at
+) VALUES (?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind("00000000-0000-0000-0000-000000000001")
+    .bind(100_i64)
+    .bind("legacy raw")
+    .bind("legacy summary")
+    .bind(101_i64)
+    .execute(&pool)
+    .await
+    .expect("legacy memory row should insert");
+
+    MEMORIES_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("character memory migration should apply");
+    let row = sqlx::query(
+        "SELECT clanker_id, project_key, visibility FROM stage1_outputs WHERE thread_id = ?",
+    )
+    .bind("00000000-0000-0000-0000-000000000001")
+    .fetch_one(&pool)
+    .await
+    .expect("legacy row should remain");
+    assert_eq!(
+        row.try_get::<Option<String>, _>("clanker_id").unwrap(),
+        None
+    );
+    assert_eq!(
+        row.try_get::<Option<String>, _>("project_key").unwrap(),
+        None
+    );
+    assert_eq!(
+        row.try_get::<String, _>("visibility").unwrap(),
+        "anonymous_legacy"
+    );
+    let scope_table_exists: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'thread_memory_scopes'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("scope table lookup should work");
+    assert_eq!(scope_table_exists, 1);
+    let invalid_visibility =
+        sqlx::query("UPDATE stage1_outputs SET visibility = 'untrusted' WHERE thread_id = ?")
+            .bind("00000000-0000-0000-0000-000000000001")
+            .execute(&pool)
+            .await;
+    assert!(
+        invalid_visibility.is_err(),
+        "visibility CHECK should reject unknown values"
+    );
 }
 
 #[tokio::test]
