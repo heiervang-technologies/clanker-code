@@ -91,6 +91,11 @@ test *args:
 test-github-scripts:
     {{ python }} -m unittest discover -s {{ justfile_directory() }}/.github/scripts -p 'test_*.py'
 
+# Exercise the Character Continuity black-box harness without requiring a built CLI.
+[no-cd]
+test-character-continuity-contract:
+    {{ python }} -m unittest discover -s {{ justfile_directory() }}/scripts -p 'test_character_continuity_acceptance.py'
+
 # Run explicit workspace benchmark targets.
 bench *args:
     cargo bench --workspace --bench '*' {args}

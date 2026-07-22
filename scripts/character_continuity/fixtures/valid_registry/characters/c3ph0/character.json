@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "c3ph0",
+  "displayName": "C3PH0",
+  "aliases": ["c3p-h0", "c3pho", "cepho"],
+  "avatar": "avatar/avatar.json",
+  "avatarByMode": {
+    "locked_in": "avatar/locked-in/avatar.json"
+  },
+  "room": "custom:c3ph0",
+  "voiceProfile": "fixture:c3ph0"
+}
