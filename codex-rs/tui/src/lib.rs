@@ -95,6 +95,7 @@ mod app_server_session;
 mod approval_events;
 mod ascii_animation;
 mod avatars;
+pub use avatars::ensure_bundled_character_for_name;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use codex_character::CharacterCatalog;
 use codex_character::ValidationIssue;
+use codex_character::ValidationIssueCode;
 use codex_character::validate_manifest_path;
 use serde::Serialize;
 
@@ -44,6 +45,9 @@ struct CharacterResolveArgs {
     /// Emit the stable machine-readable character contract.
     #[arg(long, default_value_t = false)]
     json: bool,
+    /// Materialize the requested built-in character before resolving it.
+    #[arg(long, default_value_t = false)]
+    materialize_builtin: bool,
 }
 
 #[derive(Serialize)]
@@ -123,14 +127,35 @@ fn run_validate(args: CharacterValidateArgs, codex_home: &Path) -> anyhow::Resul
 }
 
 fn run_resolve(args: CharacterResolveArgs, codex_home: &Path) -> anyhow::Result<bool> {
-    let _json = args.json;
+    let CharacterResolveArgs {
+        input,
+        json: _json,
+        materialize_builtin,
+    } = args;
+    if materialize_builtin {
+        if let Err(error) = codex_tui::ensure_bundled_character_for_name(codex_home, &input) {
+            let issue = ValidationIssue {
+                code: ValidationIssueCode::InvalidManifest,
+                message: format!("failed to materialize requested built-in: {error}"),
+                path: None,
+                conflict_kind: None,
+            };
+            let output = FailureOutput {
+                schema_version: CHARACTER_SCHEMA_VERSION,
+                ok: false,
+                errors: std::slice::from_ref(&issue),
+            };
+            println!("{}", serde_json::to_string(&output)?);
+            return Ok(false);
+        }
+    }
     let catalog = CharacterCatalog::load(codex_home);
-    match catalog.resolve(&args.input) {
+    match catalog.resolve(&input) {
         Ok(resolved) => {
             let output = ResolutionOutput {
                 schema_version: CHARACTER_SCHEMA_VERSION,
                 ok: true,
-                input: &args.input,
+                input: &input,
                 id: &resolved.manifest.id,
                 display_name: &resolved.manifest.display_name,
                 manifest_path: resolved.manifest_path.display().to_string(),
@@ -148,5 +173,34 @@ fn run_resolve(args: CharacterResolveArgs, codex_home: &Path) -> anyhow::Result<
             println!("{}", serde_json::to_string(&output)?);
             Ok(false)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn materialize_builtin_is_explicit_on_resolve() {
+        let cli = CharacterCli::try_parse_from([
+            "character",
+            "resolve",
+            "chloe",
+            "--json",
+            "--materialize-builtin",
+        ])
+        .expect("parse materialization flag");
+        let CharacterSubcommand::Resolve(args) = cli.command else {
+            panic!("expected resolve command");
+        };
+        assert!(args.materialize_builtin);
+        assert!(args.json);
+
+        let cli = CharacterCli::try_parse_from(["character", "resolve", "chloe", "--json"])
+            .expect("parse read only resolve");
+        let CharacterSubcommand::Resolve(args) = cli.command else {
+            panic!("expected resolve command");
+        };
+        assert!(!args.materialize_builtin);
     }
 }

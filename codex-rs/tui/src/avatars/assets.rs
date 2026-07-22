@@ -99,10 +99,7 @@ pub(super) fn ensure_bundled_characters(codex_home: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn ensure_bundled_character_for_name(
-    codex_home: &Path,
-    requested_name: &str,
-) -> Result<()> {
+pub fn ensure_bundled_character_for_name(codex_home: &Path, requested_name: &str) -> Result<()> {
     if requested_name.eq_ignore_ascii_case("clanker")
         || requested_name.eq_ignore_ascii_case("rusty")
     {
