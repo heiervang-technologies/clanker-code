@@ -190,6 +190,11 @@ impl MemoryStartupContext {
         self.thread.state_db()
     }
 
+    pub(crate) async fn lineage_parent_thread_id(&self) -> Option<ThreadId> {
+        let config = self.thread.config_snapshot().await;
+        config.parent_thread_id.or(config.forked_from_thread_id)
+    }
+
     pub(crate) fn provider(&self) -> &dyn ModelProvider {
         self.provider.as_ref()
     }

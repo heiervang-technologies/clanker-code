@@ -3796,6 +3796,31 @@
       "title": "McpServerElicitationRequestResponse",
       "type": "object"
     },
+    "MemoryResetParams": {
+      "properties": {
+        "scope": {
+          "$ref": "#/definitions/MemoryResetScope"
+        },
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope"
+      ],
+      "type": "object"
+    },
+    "MemoryResetScope": {
+      "enum": [
+        "thread",
+        "character",
+        "all_local"
+      ],
+      "type": "string"
+    },
     "NetworkApprovalContext": {
       "properties": {
         "host": {

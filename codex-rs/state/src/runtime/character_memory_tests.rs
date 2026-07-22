@@ -7,9 +7,11 @@ use crate::MemoryScopeError;
 use crate::MemoryScopeRegistration;
 use crate::MemorySelectionScope;
 use crate::MemoryVisibility;
+use crate::Phase2JobClaimOutcome;
 use crate::Stage1JobClaimOutcome;
 use crate::ThreadMetadataBuilder;
 use chrono::DateTime;
+use chrono::Duration;
 use chrono::Utc;
 use codex_character::CharacterCatalog;
 use codex_protocol::ThreadId;
@@ -844,6 +846,675 @@ async fn explicit_character_rekey_preserves_record_provenance_and_refuses_merge(
     ));
 }
 
+#[tokio::test]
+async fn scoped_stage1_success_registers_output_and_phase2_job_atomically() {
+    let (_home, runtime) = runtime().await;
+    let source = thread_id(80);
+    let now = Utc::now();
+    seed_thread(&runtime, source, now).await;
+    let scope = named_scope(
+        source,
+        "chloe",
+        project_a(),
+        /*parent*/ None,
+        now.timestamp(),
+    );
+    let claim = runtime
+        .memories()
+        .try_claim_stage1_job(
+            source,
+            thread_id(999),
+            now.timestamp(),
+            /*lease_seconds*/ 3_600,
+            /*max_running_jobs*/ 64,
+        )
+        .await
+        .unwrap();
+    let Stage1JobClaimOutcome::Claimed { ownership_token } = claim else {
+        panic!("unexpected stage1 claim: {claim:?}");
+    };
+    assert!(
+        runtime
+            .memories()
+            .mark_stage1_job_succeeded_scoped(
+                &scope,
+                &citation_path(source),
+                ownership_token.as_str(),
+                crate::Stage1MemoryPayload {
+                    source_updated_at: now.timestamp(),
+                    raw_memory: "raw",
+                    rollout_summary: "summary",
+                    rollout_slug: None,
+                },
+            )
+            .await
+            .unwrap()
+    );
+
+    assert_eq!(
+        runtime.memories().memory_scope(source).await.unwrap(),
+        Some(scope.clone())
+    );
+    let output_scope: (Option<String>, Option<String>, String, Option<String>) = sqlx::query_as(
+        "SELECT clanker_id, project_key, visibility, citation_path FROM stage1_outputs WHERE thread_id = ?",
+    )
+    .bind(source.to_string())
+    .fetch_one(runtime.memories().pool_for_tests())
+    .await
+    .unwrap();
+    assert_eq!(
+        output_scope,
+        (
+            Some("chloe".to_string()),
+            Some(project_a().as_str().to_string()),
+            "private_character".to_string(),
+            Some(citation_path(source).as_str().to_string()),
+        )
+    );
+    let jobs: Vec<(String, String)> = sqlx::query_as(
+        "SELECT kind, job_key FROM jobs WHERE kind LIKE 'memory_consolidate_%' ORDER BY kind, job_key",
+    )
+    .fetch_all(runtime.memories().pool_for_tests())
+    .await
+    .unwrap();
+    assert_eq!(
+        jobs,
+        vec![(
+            "memory_consolidate_scoped".to_string(),
+            scope.selection_scope().phase2_key(),
+        )]
+    );
+}
+
+#[tokio::test]
+async fn scoped_stage1_no_output_registers_anonymous_scope_atomically() {
+    let (_home, runtime) = runtime().await;
+    let source = thread_id(801);
+    let now = Utc::now();
+    seed_thread(&runtime, source, now).await;
+    let scope = anonymous_scope(source, project_a(), now.timestamp());
+    let claim = runtime
+        .memories()
+        .try_claim_stage1_job(source, thread_id(999), now.timestamp(), 3_600, 64)
+        .await
+        .unwrap();
+    let Stage1JobClaimOutcome::Claimed { ownership_token } = claim else {
+        panic!("unexpected stage1 claim: {claim:?}");
+    };
+
+    assert!(
+        !runtime
+            .memories()
+            .mark_stage1_job_succeeded_no_output_scoped(&scope, "wrong-owner")
+            .await
+            .unwrap()
+    );
+    assert_eq!(runtime.memories().memory_scope(source).await.unwrap(), None);
+    assert!(
+        runtime
+            .memories()
+            .mark_stage1_job_succeeded_no_output_scoped(&scope, ownership_token.as_str())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        runtime.memories().memory_scope(source).await.unwrap(),
+        Some(scope)
+    );
+    let output_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM stage1_outputs WHERE thread_id = ?")
+            .bind(source.to_string())
+            .fetch_one(runtime.memories().pool_for_tests())
+            .await
+            .unwrap();
+    assert_eq!(output_count, 0);
+}
+
+#[tokio::test]
+async fn scoped_phase2_success_uses_canonical_key_and_replaces_its_snapshot() {
+    let (_home, runtime) = runtime().await;
+    let now = Utc::now();
+    let source = thread_id(81);
+    let scope = named_scope(source, "chloe", project_a(), None, now.timestamp());
+    seed_thread(&runtime, source, now).await;
+    let claim = runtime
+        .memories()
+        .try_claim_stage1_job(source, thread_id(999), now.timestamp(), 3_600, 64)
+        .await
+        .unwrap();
+    let Stage1JobClaimOutcome::Claimed { ownership_token } = claim else {
+        panic!("unexpected stage1 claim: {claim:?}");
+    };
+    runtime
+        .memories()
+        .mark_stage1_job_succeeded_scoped(
+            &scope,
+            &citation_path(source),
+            ownership_token.as_str(),
+            crate::Stage1MemoryPayload {
+                source_updated_at: now.timestamp(),
+                raw_memory: "raw",
+                rollout_summary: "summary",
+                rollout_slug: None,
+            },
+        )
+        .await
+        .unwrap();
+    let selection_scope = scope.selection_scope();
+    let selected = runtime
+        .memories()
+        .select_scoped_phase2_inputs(&selection_scope, 10, 30)
+        .await
+        .unwrap();
+    assert_eq!(selected.len(), 1);
+    let claim = runtime
+        .memories()
+        .try_claim_selection_phase2_job(&selection_scope, thread_id(998), 3_600)
+        .await
+        .unwrap();
+    let Phase2JobClaimOutcome::Claimed {
+        ownership_token,
+        input_watermark,
+    } = claim
+    else {
+        panic!("unexpected phase2 claim: {claim:?}");
+    };
+    assert!(
+        runtime
+            .memories()
+            .mark_selection_phase2_job_succeeded(
+                &selection_scope,
+                ownership_token.as_str(),
+                input_watermark,
+                input_watermark.max(now.timestamp()),
+                selected.as_slice(),
+            )
+            .await
+            .unwrap()
+    );
+    let snapshots: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT scope_key, thread_id, source_updated_at FROM phase2_scope_outputs ORDER BY scope_key, thread_id",
+    )
+    .fetch_all(runtime.memories().pool_for_tests())
+    .await
+    .unwrap();
+    assert_eq!(
+        snapshots,
+        vec![(
+            selection_scope.phase2_key(),
+            source.to_string(),
+            now.timestamp(),
+        )]
+    );
+    assert!(
+        runtime
+            .memories()
+            .select_scoped_phase2_inputs(&named_selection("chloe", project_b()), 10, 30)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn visibility_changes_enqueue_every_affected_scope_in_canonical_order() {
+    let (_home, runtime) = runtime().await;
+    let source = thread_id(82);
+    seed_output(
+        &runtime,
+        named_scope(source, "clanker", project_a(), None, 100),
+        "promoted",
+    )
+    .await;
+    for scope in [
+        named_scope(thread_id(83), "chloe", project_a(), None, 100),
+        named_scope(thread_id(84), "orion", project_a(), None, 100),
+        named_scope(thread_id(85), "chloe", project_b(), None, 100),
+    ] {
+        register_scope_only(&runtime, scope).await;
+    }
+
+    runtime
+        .memories()
+        .set_trusted_memory_visibility(source, MemoryVisibility::ProjectShared)
+        .await
+        .unwrap();
+    let shared_keys: Vec<String> = sqlx::query_scalar(
+        "SELECT job_key FROM jobs WHERE kind = 'memory_consolidate_scoped' ORDER BY job_key",
+    )
+    .fetch_all(runtime.memories().pool_for_tests())
+    .await
+    .unwrap();
+    let mut expected_shared = vec![
+        named_selection("chloe", project_a()).phase2_key(),
+        named_selection("clanker", project_a()).phase2_key(),
+        named_selection("orion", project_a()).phase2_key(),
+    ];
+    expected_shared.sort();
+    assert_eq!(shared_keys, expected_shared);
+
+    runtime
+        .memories()
+        .set_trusted_memory_visibility(source, MemoryVisibility::GlobalUserPreference)
+        .await
+        .unwrap();
+    let global_keys: Vec<String> = sqlx::query_scalar(
+        "SELECT job_key FROM jobs WHERE kind = 'memory_consolidate_scoped' ORDER BY job_key",
+    )
+    .fetch_all(runtime.memories().pool_for_tests())
+    .await
+    .unwrap();
+    let mut expected_global = vec![
+        named_selection("chloe", project_a()).phase2_key(),
+        named_selection("chloe", project_b()).phase2_key(),
+        named_selection("clanker", project_a()).phase2_key(),
+        named_selection("orion", project_a()).phase2_key(),
+    ];
+    expected_global.sort();
+    assert_eq!(global_keys, expected_global);
+}
+
+#[tokio::test]
+async fn scoped_phase2_selection_pages_past_startup_cap_and_disabled_candidates() {
+    let (_home, runtime) = runtime().await;
+    let now = Utc::now();
+    let clanker_id = canonical_id("chloe");
+    let project_key = project_a();
+    let disabled_count = 16_u128;
+    let total = 272_u128;
+    let mut disabled_ids = Vec::new();
+
+    for index in 0..total {
+        let source = thread_id(2_000 + index);
+        let scope = MemoryScope {
+            thread_id: source,
+            clanker_id: Some(clanker_id.clone()),
+            project_key: project_key.clone(),
+            parent_thread_id: None,
+            recorded_at: now - Duration::seconds(index as i64),
+        };
+        seed_output(&runtime, scope, "paged").await;
+        if index < disabled_count {
+            disabled_ids.push(source);
+            runtime
+                .set_thread_memory_mode(source, "disabled")
+                .await
+                .unwrap();
+        }
+    }
+
+    let selection_scope = MemorySelectionScope::Named {
+        clanker_id,
+        project_key,
+    };
+    let configured = runtime
+        .memories()
+        .select_scoped_phase2_inputs(&selection_scope, 137, 30)
+        .await
+        .unwrap();
+    assert_eq!(configured.len(), 137);
+    let default_capacity = runtime
+        .memories()
+        .select_scoped_phase2_inputs(&selection_scope, 256, 30)
+        .await
+        .unwrap();
+    assert_eq!(default_capacity.len(), 256);
+    assert!(
+        default_capacity
+            .iter()
+            .all(|record| !disabled_ids.contains(&record.output.thread_id))
+    );
+    assert!(
+        default_capacity
+            .windows(2)
+            .all(|pair| pair[0].output.thread_id.to_string() < pair[1].output.thread_id.to_string())
+    );
+}
+
+#[tokio::test]
+async fn anonymous_scoped_phase2_selection_preserves_legacy_paging_and_excludes_named() {
+    let (_home, runtime) = runtime().await;
+    let now = Utc::now();
+    for index in 0..140_u128 {
+        seed_output(
+            &runtime,
+            anonymous_scope(
+                thread_id(3_000 + index),
+                project_a(),
+                (now - Duration::seconds(index as i64)).timestamp(),
+            ),
+            "anonymous",
+        )
+        .await;
+    }
+    let named = thread_id(3_500);
+    seed_output(
+        &runtime,
+        named_scope(named, "chloe", project_a(), None, now.timestamp()),
+        "named",
+    )
+    .await;
+
+    let legacy = runtime
+        .memories()
+        .get_phase2_input_selection(128, 30)
+        .await
+        .unwrap();
+    let scoped = runtime
+        .memories()
+        .select_scoped_phase2_inputs(&MemorySelectionScope::Anonymous, 128, 30)
+        .await
+        .unwrap();
+    assert_eq!(
+        scoped
+            .iter()
+            .map(|record| record.output.thread_id)
+            .collect::<Vec<_>>(),
+        legacy
+            .iter()
+            .map(|output| output.thread_id)
+            .collect::<Vec<_>>()
+    );
+    assert!(!legacy.iter().any(|output| output.thread_id == named));
+}
+
+#[tokio::test]
+async fn retention_preserves_outputs_referenced_only_by_named_snapshots() {
+    let (_home, runtime) = runtime().await;
+    let source = thread_id(3_600);
+    let old = Utc::now() - Duration::days(60);
+    let scope = named_scope(source, "chloe", project_a(), None, old.timestamp());
+    seed_output(&runtime, scope.clone(), "selected").await;
+    let MemorySelectionScope::Named {
+        clanker_id,
+        project_key,
+    } = scope.selection_scope()
+    else {
+        unreachable!();
+    };
+    sqlx::query(
+        "INSERT INTO phase2_scope_outputs (scope_key, clanker_id, project_key, thread_id, source_updated_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(scope.selection_scope().phase2_key())
+    .bind(clanker_id.as_str())
+    .bind(project_key.as_str())
+    .bind(source.to_string())
+    .bind(old.timestamp())
+    .execute(runtime.memories().pool_for_tests())
+    .await
+    .unwrap();
+
+    assert_eq!(
+        runtime
+            .memories()
+            .prune_stage1_outputs_for_retention(30, 100)
+            .await
+            .unwrap(),
+        0
+    );
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM stage1_outputs WHERE thread_id = ?")
+        .bind(source.to_string())
+        .fetch_one(runtime.memories().pool_for_tests())
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn stale_named_and_anonymous_phase2_completions_preserve_snapshots_and_reclaim_immediately() {
+    for (index, selection_scope) in [
+        named_selection("chloe", project_a()),
+        MemorySelectionScope::Anonymous,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (_home, runtime) = runtime().await;
+        let source = thread_id(3_700 + index as u128);
+        let now = Utc::now();
+        let scope = match &selection_scope {
+            MemorySelectionScope::Named {
+                clanker_id,
+                project_key,
+            } => MemoryScope {
+                thread_id: source,
+                clanker_id: Some(clanker_id.clone()),
+                project_key: project_key.clone(),
+                parent_thread_id: None,
+                recorded_at: now,
+            },
+            MemorySelectionScope::Anonymous => {
+                anonymous_scope(source, project_a(), now.timestamp())
+            }
+        };
+        seed_output(&runtime, scope, "snapshot").await;
+        let selected = runtime
+            .memories()
+            .select_scoped_phase2_inputs(&selection_scope, 10, 30)
+            .await
+            .unwrap();
+        let claim = runtime
+            .memories()
+            .try_claim_selection_phase2_job(&selection_scope, thread_id(3_999), 3_600)
+            .await
+            .unwrap();
+        let Phase2JobClaimOutcome::Claimed {
+            ownership_token,
+            input_watermark,
+        } = claim
+        else {
+            panic!("unexpected phase2 claim: {claim:?}");
+        };
+        assert!(
+            runtime
+                .memories()
+                .mark_selection_phase2_job_succeeded(
+                    &selection_scope,
+                    ownership_token.as_str(),
+                    input_watermark,
+                    input_watermark,
+                    selected.as_slice(),
+                )
+                .await
+                .unwrap()
+        );
+
+        let next_claim = runtime
+            .memories()
+            .try_claim_selection_phase2_job(&selection_scope, thread_id(3_998), 3_600)
+            .await
+            .unwrap();
+        assert!(matches!(next_claim, Phase2JobClaimOutcome::SkippedCooldown));
+        let kind = if matches!(selection_scope, MemorySelectionScope::Anonymous) {
+            "memory_consolidate_global"
+        } else {
+            "memory_consolidate_scoped"
+        };
+        let key = if matches!(selection_scope, MemorySelectionScope::Anonymous) {
+            "global".to_string()
+        } else {
+            selection_scope.phase2_key()
+        };
+        sqlx::query("UPDATE jobs SET finished_at = 0 WHERE kind = ? AND job_key = ?")
+            .bind(kind)
+            .bind(key.as_str())
+            .execute(runtime.memories().pool_for_tests())
+            .await
+            .unwrap();
+        let running = runtime
+            .memories()
+            .try_claim_selection_phase2_job(&selection_scope, thread_id(3_997), 3_600)
+            .await
+            .unwrap();
+        let Phase2JobClaimOutcome::Claimed {
+            ownership_token: stale_token,
+            input_watermark: claimed_watermark,
+        } = running
+        else {
+            panic!("unexpected second claim: {running:?}");
+        };
+        if matches!(selection_scope, MemorySelectionScope::Anonymous) {
+            runtime
+                .memories()
+                .enqueue_global_consolidation(claimed_watermark + 1)
+                .await
+                .unwrap();
+        } else {
+            runtime
+                .memories()
+                .set_trusted_memory_visibility(source, MemoryVisibility::ProjectShared)
+                .await
+                .unwrap();
+        }
+
+        assert!(
+            !runtime
+                .memories()
+                .mark_selection_phase2_job_succeeded(
+                    &selection_scope,
+                    stale_token.as_str(),
+                    claimed_watermark,
+                    claimed_watermark,
+                    &[],
+                )
+                .await
+                .unwrap()
+        );
+        let snapshot_count: i64 = if matches!(selection_scope, MemorySelectionScope::Anonymous) {
+            sqlx::query_scalar("SELECT COUNT(*) FROM stage1_outputs WHERE selected_for_phase2 = 1")
+                .fetch_one(runtime.memories().pool_for_tests())
+                .await
+                .unwrap()
+        } else {
+            sqlx::query_scalar("SELECT COUNT(*) FROM phase2_scope_outputs WHERE scope_key = ?")
+                .bind(selection_scope.phase2_key())
+                .fetch_one(runtime.memories().pool_for_tests())
+                .await
+                .unwrap()
+        };
+        assert_eq!(snapshot_count, 1);
+        let reclaimed = runtime
+            .memories()
+            .try_claim_selection_phase2_job(&selection_scope, thread_id(3_996), 3_600)
+            .await
+            .unwrap();
+        let Phase2JobClaimOutcome::Claimed {
+            input_watermark: reclaimed_watermark,
+            ..
+        } = reclaimed
+        else {
+            panic!("stale completion should be immediately reclaimable: {reclaimed:?}");
+        };
+        assert!(reclaimed_watermark > claimed_watermark);
+    }
+}
+
+#[tokio::test]
+async fn pollution_enqueues_snapshot_consumers_and_private_shared_global_visibility_fanout() {
+    let (_home, runtime) = runtime().await;
+    let private = thread_id(4_000);
+    let shared = thread_id(4_001);
+    let global = thread_id(4_002);
+    seed_output(
+        &runtime,
+        named_scope(private, "chloe", project_a(), None, 100),
+        "private",
+    )
+    .await;
+    seed_output(
+        &runtime,
+        named_scope(shared, "clanker", project_a(), None, 101),
+        "shared",
+    )
+    .await;
+    runtime
+        .memories()
+        .set_trusted_memory_visibility(shared, MemoryVisibility::ProjectShared)
+        .await
+        .unwrap();
+    seed_output(
+        &runtime,
+        named_scope(global, "orion", project_b(), None, 102),
+        "global",
+    )
+    .await;
+    runtime
+        .memories()
+        .set_trusted_memory_visibility(global, MemoryVisibility::GlobalUserPreference)
+        .await
+        .unwrap();
+    register_scope_only(
+        &runtime,
+        named_scope(thread_id(4_010), "orion", project_a(), None, 100),
+    )
+    .await;
+    register_scope_only(
+        &runtime,
+        named_scope(thread_id(4_011), "chloe", project_b(), None, 100),
+    )
+    .await;
+
+    let historical_consumer = named_selection("chloe", project_b());
+    insert_named_snapshot(&runtime, &historical_consumer, private, 100).await;
+    insert_named_snapshot(&runtime, &historical_consumer, shared, 101).await;
+    sqlx::query("DELETE FROM jobs WHERE kind LIKE 'memory_consolidate_%'")
+        .execute(runtime.memories().pool_for_tests())
+        .await
+        .unwrap();
+
+    runtime
+        .memories()
+        .mark_thread_memory_mode_polluted(private)
+        .await
+        .unwrap();
+    assert_eq!(
+        scoped_job_keys(&runtime).await,
+        sorted_scope_keys([
+            named_selection("chloe", project_a()),
+            historical_consumer.clone(),
+        ])
+    );
+    sqlx::query("DELETE FROM jobs WHERE kind LIKE 'memory_consolidate_%'")
+        .execute(runtime.memories().pool_for_tests())
+        .await
+        .unwrap();
+
+    runtime
+        .memories()
+        .mark_thread_memory_mode_polluted(shared)
+        .await
+        .unwrap();
+    assert_eq!(
+        scoped_job_keys(&runtime).await,
+        sorted_scope_keys([
+            named_selection("chloe", project_a()),
+            named_selection("clanker", project_a()),
+            named_selection("orion", project_a()),
+            historical_consumer.clone(),
+        ])
+    );
+    sqlx::query("DELETE FROM jobs WHERE kind LIKE 'memory_consolidate_%'")
+        .execute(runtime.memories().pool_for_tests())
+        .await
+        .unwrap();
+
+    runtime
+        .memories()
+        .mark_thread_memory_mode_polluted(global)
+        .await
+        .unwrap();
+    assert_eq!(
+        scoped_job_keys(&runtime).await,
+        sorted_scope_keys([
+            named_selection("chloe", project_a()),
+            named_selection("clanker", project_a()),
+            named_selection("orion", project_a()),
+            historical_consumer,
+            named_selection("orion", project_b()),
+        ])
+    );
+}
+
 async fn runtime() -> (TempDir, Arc<StateRuntime>) {
     let home = tempfile::tempdir().expect("tempdir");
     let runtime = StateRuntime::init(home.path().to_path_buf(), "mock_provider".to_string())
@@ -905,6 +1576,50 @@ async fn register_scope_only(runtime: &StateRuntime, scope: MemoryScope) {
         .register_memory_scope(&scope)
         .await
         .expect("scope should register");
+}
+
+async fn insert_named_snapshot(
+    runtime: &StateRuntime,
+    scope: &MemorySelectionScope,
+    source_thread_id: ThreadId,
+    source_updated_at: i64,
+) {
+    let MemorySelectionScope::Named {
+        clanker_id,
+        project_key,
+    } = scope
+    else {
+        panic!("snapshot helper requires a named scope");
+    };
+    sqlx::query(
+        "INSERT INTO phase2_scope_outputs (scope_key, clanker_id, project_key, thread_id, source_updated_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(scope.phase2_key())
+    .bind(clanker_id.as_str())
+    .bind(project_key.as_str())
+    .bind(source_thread_id.to_string())
+    .bind(source_updated_at)
+    .execute(runtime.memories().pool_for_tests())
+    .await
+    .expect("insert named snapshot");
+}
+
+async fn scoped_job_keys(runtime: &StateRuntime) -> Vec<String> {
+    sqlx::query_scalar(
+        "SELECT job_key FROM jobs WHERE kind = 'memory_consolidate_scoped' ORDER BY job_key",
+    )
+    .fetch_all(runtime.memories().pool_for_tests())
+    .await
+    .expect("load scoped job keys")
+}
+
+fn sorted_scope_keys<const N: usize>(scopes: [MemorySelectionScope; N]) -> Vec<String> {
+    let mut keys = scopes
+        .into_iter()
+        .map(|scope| scope.phase2_key())
+        .collect::<Vec<_>>();
+    keys.sort();
+    keys
 }
 
 async fn seed_thread(runtime: &StateRuntime, thread_id: ThreadId, updated_at: DateTime<Utc>) {

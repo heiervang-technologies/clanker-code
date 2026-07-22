@@ -33,6 +33,7 @@ pub use memories::Phase2JobClaimOutcome;
 pub use memories::ScopedMemoryRecord;
 pub use memories::Stage1JobClaim;
 pub use memories::Stage1JobClaimOutcome;
+pub use memories::Stage1MemoryPayload;
 pub use memories::Stage1Output;
 pub use memories::Stage1StartupClaimParams;
 pub use thread_goal::ThreadGoal;

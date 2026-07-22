@@ -124,6 +124,48 @@ INSERT INTO stage1_outputs (
 }
 
 #[tokio::test]
+async fn scoped_phase2_migration_preserves_character_memory_and_adds_baselines() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+    memories_migrator_through(/*version*/ 2)
+        .run(&pool)
+        .await
+        .expect("character memory migration should apply");
+    sqlx::query(
+        "INSERT INTO stage1_outputs (thread_id, source_updated_at, raw_memory, rollout_summary, generated_at, visibility) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind("00000000-0000-0000-0000-000000000001")
+    .bind(100_i64)
+    .bind("legacy raw")
+    .bind("legacy summary")
+    .bind(101_i64)
+    .bind("anonymous_legacy")
+    .execute(&pool)
+    .await
+    .expect("pre-scoped row should insert");
+
+    MEMORIES_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("scoped phase2 migration should apply");
+    let retained: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM stage1_outputs")
+        .fetch_one(&pool)
+        .await
+        .expect("stage1 output count should load");
+    let baseline_table: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'phase2_scope_outputs'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("phase2 baseline table lookup should work");
+    assert_eq!(retained, 1);
+    assert_eq!(baseline_table, 1);
+}
+
+#[tokio::test]
 async fn recency_migration_backfills_and_seeds_old_binary_inserts() {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)

@@ -16,6 +16,7 @@ use crate::model::Phase2JobClaimOutcome;
 use crate::model::ScopedMemoryRecord;
 use crate::model::Stage1JobClaim;
 use crate::model::Stage1JobClaimOutcome;
+use crate::model::Stage1MemoryPayload;
 use crate::model::Stage1Output;
 use crate::model::Stage1StartupClaimParams;
 use crate::model::ThreadRow;
@@ -24,12 +25,14 @@ use chrono::Duration;
 use sqlx::Executor;
 use sqlx::QueryBuilder;
 use sqlx::Sqlite;
+use sqlx::SqliteConnection;
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use uuid::Uuid;
 
 const JOB_KIND_MEMORY_STAGE1: &str = "memory_stage1";
 const JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL: &str = "memory_consolidate_global";
+const JOB_KIND_MEMORY_CONSOLIDATE_SCOPED: &str = "memory_consolidate_scoped";
 const MEMORY_CONSOLIDATION_JOB_KEY: &str = "global";
 const PHASE2_SUCCESS_COOLDOWN_SECONDS: i64 = 6 * 60 * 60;
 const PHASE2_INPUT_SELECTION_PAGE_SIZE: usize = 512;
@@ -72,69 +75,9 @@ impl MemoryStore {
         scope: &MemoryScope,
     ) -> Result<MemoryScopeRegistration, MemoryScopeError> {
         let mut tx = self.pool.begin().await?;
-        let inserted = sqlx::query(
-            r#"
-INSERT INTO thread_memory_scopes (
-    thread_id,
-    clanker_id,
-    project_key,
-    parent_thread_id,
-    recorded_at
-) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(thread_id) DO NOTHING
-            "#,
-        )
-        .bind(scope.thread_id.to_string())
-        .bind(scope.clanker_id.as_ref().map(CanonicalClankerId::as_str))
-        .bind(scope.project_key.as_str())
-        .bind(scope.parent_thread_id.map(|id| id.to_string()))
-        .bind(scope.recorded_at.timestamp())
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
-        if inserted == 1 {
-            tx.commit().await?;
-            return Ok(MemoryScopeRegistration::Inserted);
-        }
-
-        let existing = sqlx::query(
-            r#"
-SELECT clanker_id, project_key, parent_thread_id
-FROM thread_memory_scopes
-WHERE thread_id = ?
-            "#,
-        )
-        .bind(scope.thread_id.to_string())
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        let result = if let Some(existing) = existing {
-            let clanker_id: Option<String> = existing.try_get("clanker_id")?;
-            let project_key: String = existing.try_get("project_key")?;
-            let parent_thread_id: Option<String> = existing.try_get("parent_thread_id")?;
-            let exact = clanker_id.as_deref()
-                == scope.clanker_id.as_ref().map(CanonicalClankerId::as_str)
-                && project_key == scope.project_key.as_str()
-                && parent_thread_id.as_deref()
-                    == scope
-                        .parent_thread_id
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .as_deref();
-            if exact {
-                Ok(MemoryScopeRegistration::ReplayedExact)
-            } else {
-                Err(MemoryScopeError::ScopeConflict {
-                    thread_id: scope.thread_id,
-                })
-            }
-        } else {
-            Err(MemoryScopeError::ScopeNotFound {
-                thread_id: scope.thread_id,
-            })
-        };
-        tx.rollback().await?;
-        result
+        let result = register_memory_scope_in_tx(&mut tx, scope).await?;
+        tx.commit().await?;
+        Ok(result)
     }
 
     pub async fn memory_scope(
@@ -249,6 +192,12 @@ WHERE thread_id = ?
         if scope.clanker_id.is_none() {
             return Err(MemoryScopeError::AnonymousScope { thread_id });
         }
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut affected_scopes =
+            affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None)
+                .await?
+                .into_iter()
+                .collect::<BTreeSet<_>>();
         let rows_affected = sqlx::query(
             r#"
 UPDATE stage1_outputs
@@ -258,9 +207,17 @@ WHERE thread_id = ? AND clanker_id IS NOT NULL AND project_key IS NOT NULL
         )
         .bind(visibility.as_str())
         .bind(thread_id.to_string())
-        .execute(self.pool.as_ref())
+        .execute(&mut *tx)
         .await?
         .rows_affected();
+        affected_scopes.extend(
+            affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None).await?,
+        );
+        let watermark = Utc::now().timestamp();
+        for affected_scope in &affected_scopes {
+            enqueue_selection_scope_with_executor(&mut *tx, affected_scope, watermark).await?;
+        }
+        tx.commit().await?;
         Ok(rows_affected > 0)
     }
 
@@ -384,6 +341,115 @@ LIMIT ?
         Ok(selected)
     }
 
+    /// Returns bounded, DB-authoritative phase-2 inputs for one scope.
+    pub async fn select_scoped_phase2_inputs(
+        &self,
+        scope: &MemorySelectionScope,
+        limit: usize,
+        max_unused_days: i64,
+    ) -> Result<Vec<ScopedMemoryRecord>, MemoryScopeError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let cutoff = (Utc::now() - Duration::days(max_unused_days.max(0))).timestamp();
+        let page_size = limit.clamp(1, PHASE2_INPUT_SELECTION_PAGE_SIZE);
+        let page_size_i64 = i64::try_from(page_size).unwrap_or(i64::MAX);
+        let mut offset = 0_i64;
+        let mut selected = Vec::with_capacity(limit);
+
+        while selected.len() < limit {
+            let rows = match scope {
+                MemorySelectionScope::Named {
+                    clanker_id,
+                    project_key,
+                } => {
+                    sqlx::query(
+                        r#"
+SELECT
+    thread_id, source_updated_at, raw_memory, rollout_summary, rollout_slug,
+    generated_at, usage_count, last_usage, clanker_id, project_key,
+    visibility, parent_thread_id, citation_path
+FROM stage1_outputs
+WHERE (length(trim(raw_memory)) > 0 OR length(trim(rollout_summary)) > 0)
+  AND COALESCE(last_usage, source_updated_at) >= ?
+  AND (
+        (visibility = 'private_character' AND clanker_id = ? AND project_key = ?)
+        OR (visibility = 'project_shared' AND clanker_id IS NOT NULL AND project_key = ?)
+        OR (
+            visibility = 'global_user_preference'
+            AND clanker_id IS NOT NULL
+            AND project_key IS NOT NULL
+        )
+  )
+ORDER BY
+    CASE visibility
+        WHEN 'private_character' THEN 0
+        WHEN 'project_shared' THEN 1
+        WHEN 'global_user_preference' THEN 2
+        ELSE 3
+    END ASC,
+    CASE WHEN project_key = ? THEN 0 ELSE 1 END ASC,
+    COALESCE(usage_count, 0) DESC,
+    COALESCE(last_usage, source_updated_at) DESC,
+    source_updated_at DESC,
+    thread_id ASC
+LIMIT ? OFFSET ?
+                        "#,
+                    )
+                    .bind(cutoff)
+                    .bind(clanker_id.as_str())
+                    .bind(project_key.as_str())
+                    .bind(project_key.as_str())
+                    .bind(project_key.as_str())
+                    .bind(page_size_i64)
+                    .bind(offset)
+                    .fetch_all(self.pool.as_ref())
+                    .await?
+                }
+                MemorySelectionScope::Anonymous => {
+                    sqlx::query(
+                        r#"
+SELECT
+    thread_id, source_updated_at, raw_memory, rollout_summary, rollout_slug,
+    generated_at, usage_count, last_usage, clanker_id, project_key,
+    visibility, parent_thread_id, citation_path
+FROM stage1_outputs
+WHERE (length(trim(raw_memory)) > 0 OR length(trim(rollout_summary)) > 0)
+  AND COALESCE(last_usage, source_updated_at) >= ?
+  AND clanker_id IS NULL
+  AND visibility = 'anonymous_legacy'
+ORDER BY
+    COALESCE(usage_count, 0) DESC,
+    COALESCE(last_usage, source_updated_at) DESC,
+    source_updated_at DESC,
+    thread_id DESC
+LIMIT ? OFFSET ?
+                        "#,
+                    )
+                    .bind(cutoff)
+                    .bind(page_size_i64)
+                    .bind(offset)
+                    .fetch_all(self.pool.as_ref())
+                    .await?
+                }
+            };
+            if rows.is_empty() {
+                break;
+            }
+            offset = offset.saturating_add(i64::try_from(rows.len()).unwrap_or(i64::MAX));
+            for row in rows {
+                if let Some(record) = self.scoped_record_from_row_if_thread_enabled(&row).await? {
+                    selected.push(record);
+                    if selected.len() == limit {
+                        break;
+                    }
+                }
+            }
+        }
+        selected.sort_by_key(|record| record.output.thread_id.to_string());
+        Ok(selected)
+    }
+
     /// Removes one source thread's generated record while preserving its immutable scope.
     pub async fn reset_thread_memory(
         &self,
@@ -402,6 +468,10 @@ LIMIT ?
             .bind(thread_id.to_string())
             .execute(&mut *tx)
             .await?;
+        let watermark = Utc::now().timestamp();
+        for affected_scope in &affected_scopes {
+            enqueue_selection_scope_with_executor(&mut *tx, affected_scope, watermark).await?;
+        }
         tx.commit().await?;
         Ok(MemoryResetReceipt {
             removed_outputs,
@@ -441,6 +511,10 @@ WHERE kind = ?
             .execute(&mut *tx)
             .await?
             .rows_affected();
+        let watermark = Utc::now().timestamp();
+        for affected_scope in &affected_scopes {
+            enqueue_selection_scope_with_executor(&mut *tx, affected_scope, watermark).await?;
+        }
         tx.commit().await?;
         Ok(MemoryResetReceipt {
             removed_outputs,
@@ -501,6 +575,10 @@ SELECT
         affected_scopes.extend(
             affected_output_selection_scopes(&mut tx, /*thread_id*/ None, Some(new_id)).await?,
         );
+        let watermark = Utc::now().timestamp();
+        for affected_scope in &affected_scopes {
+            enqueue_selection_scope_with_executor(&mut *tx, affected_scope, watermark).await?;
+        }
         tx.commit().await?;
         Ok(MemoryRekeyReceipt {
             updated_scopes: scope_rows,
@@ -739,20 +817,12 @@ FROM threads
         let thread_id = thread_id.to_string();
         let mut tx = self.pool.begin().await?;
 
-        let existing_output = sqlx::query(
-            r#"
-SELECT selected_for_phase2
-FROM stage1_outputs
-WHERE thread_id = ?
-            "#,
+        let affected_scopes = affected_output_selection_scopes(
+            &mut tx,
+            Some(ThreadId::try_from(thread_id.as_str())?),
+            /*clanker_id*/ None,
         )
-        .bind(thread_id.as_str())
-        .fetch_optional(&mut *tx)
         .await?;
-        let was_selected_for_phase2 = existing_output
-            .map(|row| row.try_get::<i64, _>("selected_for_phase2"))
-            .transpose()?
-            .is_some_and(|selected| selected != 0);
 
         let deleted_rows = sqlx::query(
             r#"
@@ -765,6 +835,11 @@ WHERE thread_id = ?
         .await?
         .rows_affected();
 
+        sqlx::query("DELETE FROM phase2_scope_outputs WHERE thread_id = ?")
+            .bind(thread_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+
         sqlx::query(
             r#"
 DELETE FROM jobs
@@ -776,8 +851,10 @@ WHERE kind = ? AND job_key = ?
         .execute(&mut *tx)
         .await?;
 
-        if deleted_rows > 0 && was_selected_for_phase2 {
-            enqueue_global_consolidation_with_executor(&mut *tx, now).await?;
+        if deleted_rows > 0 {
+            for affected_scope in &affected_scopes {
+                enqueue_selection_scope_with_executor(&mut *tx, affected_scope, now).await?;
+            }
         }
 
         tx.commit().await?;
@@ -855,6 +932,11 @@ WHERE thread_id IN (
     SELECT thread_id
     FROM stage1_outputs
     WHERE selected_for_phase2 = 0
+      AND NOT EXISTS (
+          SELECT 1
+          FROM phase2_scope_outputs
+          WHERE phase2_scope_outputs.thread_id = stage1_outputs.thread_id
+      )
       AND COALESCE(last_usage, source_updated_at) < ?
     ORDER BY
       COALESCE(last_usage, source_updated_at) ASC,
@@ -911,6 +993,8 @@ SELECT
     so.source_updated_at
 FROM stage1_outputs AS so
 WHERE (length(trim(so.raw_memory)) > 0 OR length(trim(so.rollout_summary)) > 0)
+  AND so.clanker_id IS NULL
+  AND so.visibility = 'anonymous_legacy'
   AND (
         (so.last_usage IS NOT NULL AND so.last_usage >= ?)
         OR (so.last_usage IS NULL AND so.source_updated_at >= ?)
@@ -1103,18 +1187,11 @@ WHERE threads.id = ? AND threads.memory_mode = 'enabled' AND threads.history_mod
         thread_id: ThreadId,
     ) -> anyhow::Result<bool> {
         let now = Utc::now().timestamp();
-        let thread_id = thread_id.to_string();
-        let selected_for_phase2 = sqlx::query_scalar::<_, i64>(
-            r#"
-SELECT selected_for_phase2
-FROM stage1_outputs
-WHERE thread_id = ?
-            "#,
-        )
-        .bind(thread_id.as_str())
-        .fetch_optional(self.pool.as_ref())
-        .await?
-        .unwrap_or(0);
+        let thread_id_value = thread_id.to_string();
+        let mut tx = self.pool.begin().await?;
+        let mut affected_scopes = snapshot_selection_scopes_for_thread(&mut tx, thread_id).await?;
+        affected_scopes
+            .extend(affected_output_selection_scopes(&mut tx, Some(thread_id), None).await?);
         let rows_affected = sqlx::query(
             r#"
 UPDATE threads
@@ -1122,14 +1199,14 @@ SET memory_mode = 'polluted'
 WHERE id = ? AND memory_mode != 'polluted'
             "#,
         )
-        .bind(thread_id.as_str())
+        .bind(thread_id_value.as_str())
         .execute(self.state_pool.as_ref())
         .await?
         .rows_affected();
-
-        if selected_for_phase2 != 0 {
-            self.enqueue_global_consolidation(now).await?;
+        for scope in affected_scopes {
+            enqueue_selection_scope_with_executor(&mut *tx, &scope, now).await?;
         }
+        tx.commit().await?;
 
         Ok(rows_affected > 0)
     }
@@ -1410,6 +1487,132 @@ WHERE excluded.source_updated_at >= stage1_outputs.source_updated_at
         Ok(true)
     }
 
+    /// Atomically registers source provenance, persists stage-1 output, and
+    /// enqueues every phase-2 scope affected by that output's visibility.
+    pub async fn mark_stage1_job_succeeded_scoped(
+        &self,
+        scope: &MemoryScope,
+        citation_path: &MemoryCitationPath,
+        ownership_token: &str,
+        payload: Stage1MemoryPayload<'_>,
+    ) -> Result<bool, MemoryScopeError> {
+        let now = Utc::now().timestamp();
+        let thread_id = scope.thread_id.to_string();
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+
+        register_memory_scope_in_tx(&mut tx, scope).await?;
+
+        let rows_affected = sqlx::query(
+            r#"
+UPDATE jobs
+SET status = 'done', finished_at = ?, lease_until = NULL,
+    last_error = NULL, last_success_watermark = input_watermark
+WHERE kind = ? AND job_key = ?
+  AND status = 'running' AND ownership_token = ?
+            "#,
+        )
+        .bind(now)
+        .bind(JOB_KIND_MEMORY_STAGE1)
+        .bind(thread_id.as_str())
+        .bind(ownership_token)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rows_affected == 0 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+
+        let existing_output = sqlx::query(
+            r#"
+SELECT clanker_id, project_key, parent_thread_id, visibility
+FROM stage1_outputs WHERE thread_id = ?
+            "#,
+        )
+        .bind(thread_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        let visibility = if let Some(existing) = existing_output {
+            let clanker_id: Option<String> = existing.try_get("clanker_id")?;
+            let project_key: Option<String> = existing.try_get("project_key")?;
+            let parent_thread_id: Option<String> = existing.try_get("parent_thread_id")?;
+            let unscoped_legacy = clanker_id.is_none()
+                && project_key.is_none()
+                && parent_thread_id.is_none()
+                && scope.clanker_id.is_none();
+            let exact = clanker_id.as_deref()
+                == scope.clanker_id.as_ref().map(CanonicalClankerId::as_str)
+                && project_key.as_deref() == Some(scope.project_key.as_str())
+                && parent_thread_id.as_deref()
+                    == scope.parent_thread_id.map(|id| id.to_string()).as_deref();
+            if !unscoped_legacy && !exact {
+                tx.rollback().await?;
+                return Err(MemoryScopeError::OutputScopeConflict {
+                    thread_id: scope.thread_id,
+                });
+            }
+            if unscoped_legacy {
+                MemoryVisibility::AnonymousLegacy
+            } else {
+                MemoryVisibility::from_str(existing.try_get("visibility")?)?
+            }
+        } else if scope.clanker_id.is_some() {
+            MemoryVisibility::PrivateCharacter
+        } else {
+            MemoryVisibility::AnonymousLegacy
+        };
+
+        sqlx::query(
+            r#"
+INSERT INTO stage1_outputs (
+    thread_id, source_updated_at, raw_memory, rollout_summary, rollout_slug,
+    generated_at, clanker_id, project_key, visibility, parent_thread_id, citation_path
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(thread_id) DO UPDATE SET
+    source_updated_at = excluded.source_updated_at,
+    raw_memory = excluded.raw_memory,
+    rollout_summary = excluded.rollout_summary,
+    rollout_slug = excluded.rollout_slug,
+    generated_at = excluded.generated_at,
+    clanker_id = excluded.clanker_id,
+    project_key = excluded.project_key,
+    parent_thread_id = excluded.parent_thread_id,
+    citation_path = excluded.citation_path
+WHERE excluded.source_updated_at >= stage1_outputs.source_updated_at
+            "#,
+        )
+        .bind(thread_id.as_str())
+        .bind(payload.source_updated_at)
+        .bind(payload.raw_memory)
+        .bind(payload.rollout_summary)
+        .bind(payload.rollout_slug)
+        .bind(now)
+        .bind(scope.clanker_id.as_ref().map(CanonicalClankerId::as_str))
+        .bind(scope.project_key.as_str())
+        .bind(visibility.as_str())
+        .bind(scope.parent_thread_id.map(|id| id.to_string()))
+        .bind(citation_path.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        let affected_scopes = affected_output_selection_scopes(
+            &mut tx,
+            Some(scope.thread_id),
+            /*clanker_id*/ None,
+        )
+        .await?;
+        for affected_scope in &affected_scopes {
+            enqueue_selection_scope_with_executor(
+                &mut *tx,
+                affected_scope,
+                payload.source_updated_at,
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
+    }
+
     /// Marks a claimed stage-1 job successful when extraction produced no output.
     ///
     /// Transaction behavior:
@@ -1467,6 +1670,13 @@ WHERE kind = ? AND job_key = ? AND ownership_token = ?
         .await?
         .try_get::<i64, _>("input_watermark")?;
 
+        let affected_scopes = affected_output_selection_scopes(
+            &mut tx,
+            Some(ThreadId::try_from(thread_id.as_str())?),
+            /*clanker_id*/ None,
+        )
+        .await?;
+
         let deleted_rows = sqlx::query(
             r#"
 DELETE FROM stage1_outputs
@@ -1479,7 +1689,69 @@ WHERE thread_id = ?
         .rows_affected();
 
         if deleted_rows > 0 {
-            enqueue_global_consolidation_with_executor(&mut *tx, source_updated_at).await?;
+            for affected_scope in &affected_scopes {
+                enqueue_selection_scope_with_executor(&mut *tx, affected_scope, source_updated_at)
+                    .await?;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Atomically registers the immutable source scope and completes a
+    /// stage-1 job that produced no output.
+    pub async fn mark_stage1_job_succeeded_no_output_scoped(
+        &self,
+        scope: &MemoryScope,
+        ownership_token: &str,
+    ) -> Result<bool, MemoryScopeError> {
+        let now = Utc::now().timestamp();
+        let thread_id = scope.thread_id.to_string();
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        register_memory_scope_in_tx(&mut tx, scope).await?;
+
+        let rows_affected = sqlx::query(
+            r#"
+UPDATE jobs
+SET status = 'done', finished_at = ?, lease_until = NULL,
+    last_error = NULL, last_success_watermark = input_watermark
+WHERE kind = ? AND job_key = ?
+  AND status = 'running' AND ownership_token = ?
+            "#,
+        )
+        .bind(now)
+        .bind(JOB_KIND_MEMORY_STAGE1)
+        .bind(thread_id.as_str())
+        .bind(ownership_token)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rows_affected == 0 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+
+        let source_updated_at: i64 = sqlx::query_scalar(
+            "SELECT input_watermark FROM jobs WHERE kind = ? AND job_key = ? AND ownership_token = ?",
+        )
+        .bind(JOB_KIND_MEMORY_STAGE1)
+        .bind(thread_id.as_str())
+        .bind(ownership_token)
+        .fetch_one(&mut *tx)
+        .await?;
+        let affected_scopes =
+            affected_output_selection_scopes(&mut tx, Some(scope.thread_id), None).await?;
+        let deleted_rows = sqlx::query("DELETE FROM stage1_outputs WHERE thread_id = ?")
+            .bind(thread_id.as_str())
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        if deleted_rows > 0 {
+            for affected_scope in &affected_scopes {
+                enqueue_selection_scope_with_executor(&mut *tx, affected_scope, source_updated_at)
+                    .await?;
+            }
         }
 
         tx.commit().await?;
@@ -1687,6 +1959,39 @@ WHERE kind = ? AND job_key = ?
         }
     }
 
+    /// Attempts to claim the phase-2 job for one canonical selection scope.
+    /// Anonymous selection retains the legacy singleton job and cooldown.
+    pub async fn try_claim_selection_phase2_job(
+        &self,
+        scope: &MemorySelectionScope,
+        worker_id: ThreadId,
+        lease_seconds: i64,
+    ) -> anyhow::Result<Phase2JobClaimOutcome> {
+        if matches!(scope, MemorySelectionScope::Anonymous) {
+            return self
+                .try_claim_global_phase2_job(worker_id, lease_seconds)
+                .await;
+        }
+        try_claim_phase2_job(
+            self.pool.as_ref(),
+            JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
+            scope.phase2_key().as_str(),
+            worker_id,
+            lease_seconds,
+        )
+        .await
+    }
+
+    /// Enqueues one canonical scope after an artifact operation fails following
+    /// a fenced database completion.
+    pub async fn enqueue_selection_phase2_job(
+        &self,
+        scope: &MemorySelectionScope,
+        input_watermark: i64,
+    ) -> anyhow::Result<()> {
+        enqueue_selection_scope_with_executor(self.pool.as_ref(), scope, input_watermark).await
+    }
+
     /// Extends the lease for an owned running phase-2 global job.
     ///
     /// Query behavior:
@@ -1718,6 +2023,27 @@ WHERE kind = ? AND job_key = ?
         Ok(rows_affected > 0)
     }
 
+    pub async fn heartbeat_selection_phase2_job(
+        &self,
+        scope: &MemorySelectionScope,
+        ownership_token: &str,
+        lease_seconds: i64,
+    ) -> anyhow::Result<bool> {
+        if matches!(scope, MemorySelectionScope::Anonymous) {
+            return self
+                .heartbeat_global_phase2_job(ownership_token, lease_seconds)
+                .await;
+        }
+        heartbeat_phase2_job(
+            self.pool.as_ref(),
+            JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
+            scope.phase2_key().as_str(),
+            ownership_token,
+            lease_seconds,
+        )
+        .await
+    }
+
     /// Marks the owned running global phase-2 job as succeeded.
     ///
     /// Query behavior:
@@ -1734,10 +2060,30 @@ WHERE kind = ? AND job_key = ?
         completed_watermark: i64,
         selected_outputs: &[Stage1Output],
     ) -> anyhow::Result<bool> {
+        self.mark_global_phase2_job_succeeded_fenced(
+            ownership_token,
+            completed_watermark,
+            completed_watermark,
+            selected_outputs,
+        )
+        .await
+    }
+
+    async fn mark_global_phase2_job_succeeded_fenced(
+        &self,
+        ownership_token: &str,
+        claimed_watermark: i64,
+        completed_watermark: i64,
+        selected_outputs: &[Stage1Output],
+    ) -> anyhow::Result<bool> {
         let mut tx = self.pool.begin().await?;
-        let rows_affected =
-            mark_global_phase2_job_succeeded_row(&mut *tx, ownership_token, completed_watermark)
-                .await?;
+        let rows_affected = mark_global_phase2_job_succeeded_row(
+            &mut tx,
+            ownership_token,
+            claimed_watermark,
+            completed_watermark,
+        )
+        .await?;
 
         if rows_affected == 0 {
             tx.commit().await?;
@@ -1773,6 +2119,79 @@ WHERE thread_id = ? AND source_updated_at = ?
             .await?;
         }
 
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Completes a scoped phase-2 job and atomically replaces its selected
+    /// input snapshot. Anonymous callers retain the legacy global snapshot.
+    pub async fn mark_selection_phase2_job_succeeded(
+        &self,
+        scope: &MemorySelectionScope,
+        ownership_token: &str,
+        claimed_watermark: i64,
+        completed_watermark: i64,
+        selected_outputs: &[ScopedMemoryRecord],
+    ) -> anyhow::Result<bool> {
+        if matches!(scope, MemorySelectionScope::Anonymous) {
+            let outputs = selected_outputs
+                .iter()
+                .map(|record| record.output.clone())
+                .collect::<Vec<_>>();
+            return self
+                .mark_global_phase2_job_succeeded_fenced(
+                    ownership_token,
+                    claimed_watermark,
+                    completed_watermark,
+                    outputs.as_slice(),
+                )
+                .await;
+        }
+
+        let MemorySelectionScope::Named {
+            clanker_id,
+            project_key,
+        } = scope
+        else {
+            unreachable!("anonymous phase-2 completion returned above");
+        };
+        let scope_key = scope.phase2_key();
+        let mut tx = self.pool.begin().await?;
+        let rows_affected = mark_phase2_job_succeeded_row(
+            &mut tx,
+            JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
+            scope_key.as_str(),
+            ownership_token,
+            claimed_watermark,
+            completed_watermark,
+        )
+        .await?;
+        if rows_affected == 0 {
+            tx.commit().await?;
+            return Ok(false);
+        }
+
+        sqlx::query("DELETE FROM phase2_scope_outputs WHERE scope_key = ?")
+            .bind(scope_key.as_str())
+            .execute(&mut *tx)
+            .await?;
+        for output in selected_outputs {
+            sqlx::query(
+                r#"
+INSERT INTO phase2_scope_outputs (
+    scope_key, clanker_id, project_key, thread_id, source_updated_at
+)
+VALUES (?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(scope_key.as_str())
+            .bind(clanker_id.as_str())
+            .bind(project_key.as_str())
+            .bind(output.output.thread_id.to_string())
+            .bind(output.output.source_updated_at.timestamp())
+            .execute(&mut *tx)
+            .await?;
+        }
         tx.commit().await?;
         Ok(true)
     }
@@ -1819,6 +2238,30 @@ WHERE kind = ? AND job_key = ?
         Ok(rows_affected > 0)
     }
 
+    pub async fn mark_selection_phase2_job_failed(
+        &self,
+        scope: &MemorySelectionScope,
+        ownership_token: &str,
+        failure_reason: &str,
+        retry_delay_seconds: i64,
+    ) -> anyhow::Result<bool> {
+        if matches!(scope, MemorySelectionScope::Anonymous) {
+            return self
+                .mark_global_phase2_job_failed(ownership_token, failure_reason, retry_delay_seconds)
+                .await;
+        }
+        mark_phase2_job_failed(
+            self.pool.as_ref(),
+            JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
+            scope.phase2_key().as_str(),
+            ownership_token,
+            failure_reason,
+            retry_delay_seconds,
+            false,
+        )
+        .await
+    }
+
     /// Fallback failure finalization when ownership may have been lost.
     ///
     /// Query behavior:
@@ -1860,16 +2303,240 @@ WHERE kind = ? AND job_key = ?
 
         Ok(rows_affected > 0)
     }
+
+    pub async fn mark_selection_phase2_job_failed_if_unowned(
+        &self,
+        scope: &MemorySelectionScope,
+        ownership_token: &str,
+        failure_reason: &str,
+        retry_delay_seconds: i64,
+    ) -> anyhow::Result<bool> {
+        if matches!(scope, MemorySelectionScope::Anonymous) {
+            return self
+                .mark_global_phase2_job_failed_if_unowned(
+                    ownership_token,
+                    failure_reason,
+                    retry_delay_seconds,
+                )
+                .await;
+        }
+        mark_phase2_job_failed(
+            self.pool.as_ref(),
+            JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
+            scope.phase2_key().as_str(),
+            ownership_token,
+            failure_reason,
+            retry_delay_seconds,
+            true,
+        )
+        .await
+    }
 }
 
-async fn mark_global_phase2_job_succeeded_row<'e, E>(
-    executor: E,
+async fn try_claim_phase2_job(
+    pool: &SqlitePool,
+    kind: &str,
+    job_key: &str,
+    worker_id: ThreadId,
+    lease_seconds: i64,
+) -> anyhow::Result<Phase2JobClaimOutcome> {
+    let now = Utc::now().timestamp();
+    let lease_until = now.saturating_add(lease_seconds.max(0));
+    let cooldown_cutoff = now.saturating_sub(PHASE2_SUCCESS_COOLDOWN_SECONDS);
+    let ownership_token = Uuid::new_v4().to_string();
+    let worker_id = worker_id.to_string();
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let existing = sqlx::query(
+        "SELECT status, lease_until, retry_at, input_watermark, finished_at, last_error FROM jobs WHERE kind = ? AND job_key = ?",
+    )
+    .bind(kind)
+    .bind(job_key)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(existing) = existing else {
+        let inserted = sqlx::query(
+            r#"
+INSERT INTO jobs (
+    kind, job_key, status, worker_id, ownership_token, started_at, finished_at,
+    lease_until, retry_at, retry_remaining, last_error, input_watermark,
+    last_success_watermark
+) VALUES (?, ?, 'running', ?, ?, ?, NULL, ?, NULL, ?, NULL, 0, 0)
+            "#,
+        )
+        .bind(kind)
+        .bind(job_key)
+        .bind(worker_id.as_str())
+        .bind(ownership_token.as_str())
+        .bind(now)
+        .bind(lease_until)
+        .bind(DEFAULT_RETRY_REMAINING)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        tx.commit().await?;
+        return if inserted == 0 {
+            Ok(Phase2JobClaimOutcome::SkippedRunning)
+        } else {
+            Ok(Phase2JobClaimOutcome::Claimed {
+                ownership_token,
+                input_watermark: 0,
+            })
+        };
+    };
+
+    let input_watermark = existing
+        .try_get::<Option<i64>, _>("input_watermark")?
+        .unwrap_or(0);
+    let status: String = existing.try_get("status")?;
+    let existing_lease_until: Option<i64> = existing.try_get("lease_until")?;
+    let retry_at: Option<i64> = existing.try_get("retry_at")?;
+    let finished_at: Option<i64> = existing.try_get("finished_at")?;
+    let last_error: Option<String> = existing.try_get("last_error")?;
+    if retry_at.is_some_and(|retry_at| retry_at > now) {
+        tx.commit().await?;
+        return Ok(Phase2JobClaimOutcome::SkippedRetryUnavailable);
+    }
+    if status == "running" && existing_lease_until.is_some_and(|lease| lease > now) {
+        tx.commit().await?;
+        return Ok(Phase2JobClaimOutcome::SkippedRunning);
+    }
+    if last_error.is_none() && finished_at.is_some_and(|finished| finished > cooldown_cutoff) {
+        tx.commit().await?;
+        return Ok(Phase2JobClaimOutcome::SkippedCooldown);
+    }
+
+    let updated = sqlx::query(
+        r#"
+UPDATE jobs SET status = 'running', worker_id = ?, ownership_token = ?,
+    started_at = ?, finished_at = NULL, lease_until = ?, retry_at = NULL,
+    last_error = NULL
+WHERE kind = ? AND job_key = ?
+  AND (status != 'running' OR lease_until IS NULL OR lease_until <= ?)
+  AND (retry_at IS NULL OR retry_at <= ?)
+  AND (last_error IS NOT NULL OR finished_at IS NULL OR finished_at <= ?)
+        "#,
+    )
+    .bind(worker_id.as_str())
+    .bind(ownership_token.as_str())
+    .bind(now)
+    .bind(lease_until)
+    .bind(kind)
+    .bind(job_key)
+    .bind(now)
+    .bind(now)
+    .bind(cooldown_cutoff)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+    if updated == 0 {
+        Ok(Phase2JobClaimOutcome::SkippedRunning)
+    } else {
+        Ok(Phase2JobClaimOutcome::Claimed {
+            ownership_token,
+            input_watermark,
+        })
+    }
+}
+
+async fn heartbeat_phase2_job(
+    pool: &SqlitePool,
+    kind: &str,
+    job_key: &str,
     ownership_token: &str,
+    lease_seconds: i64,
+) -> anyhow::Result<bool> {
+    let lease_until = Utc::now().timestamp().saturating_add(lease_seconds.max(0));
+    let rows = sqlx::query(
+        "UPDATE jobs SET lease_until = ? WHERE kind = ? AND job_key = ? AND status = 'running' AND ownership_token = ?",
+    )
+    .bind(lease_until)
+    .bind(kind)
+    .bind(job_key)
+    .bind(ownership_token)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    Ok(rows > 0)
+}
+
+async fn mark_phase2_job_succeeded_row(
+    executor: &mut SqliteConnection,
+    kind: &str,
+    job_key: &str,
+    ownership_token: &str,
+    claimed_watermark: i64,
     completed_watermark: i64,
-) -> anyhow::Result<u64>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
+) -> anyhow::Result<u64> {
+    let rows_affected = sqlx::query(
+        r#"
+UPDATE jobs SET status = 'done', finished_at = ?, lease_until = NULL,
+    last_error = NULL,
+    last_success_watermark = max(COALESCE(last_success_watermark, 0), ?)
+WHERE kind = ? AND job_key = ? AND status = 'running' AND ownership_token = ?
+  AND input_watermark = ?
+        "#,
+    )
+    .bind(Utc::now().timestamp())
+    .bind(completed_watermark)
+    .bind(kind)
+    .bind(job_key)
+    .bind(ownership_token)
+    .bind(claimed_watermark)
+    .execute(&mut *executor)
+    .await?
+    .rows_affected();
+    if rows_affected == 0 {
+        release_stale_phase2_claim_in_tx(
+            executor,
+            kind,
+            job_key,
+            ownership_token,
+            claimed_watermark,
+        )
+        .await?;
+    }
+    Ok(rows_affected)
+}
+
+async fn mark_phase2_job_failed(
+    pool: &SqlitePool,
+    kind: &str,
+    job_key: &str,
+    ownership_token: &str,
+    failure_reason: &str,
+    retry_delay_seconds: i64,
+    include_unowned: bool,
+) -> anyhow::Result<bool> {
+    let now = Utc::now().timestamp();
+    let query = if include_unowned {
+        sqlx::query(
+            "UPDATE jobs SET status = 'error', finished_at = ?, lease_until = NULL, retry_at = ?, retry_remaining = max(retry_remaining - 1, 0), last_error = ? WHERE kind = ? AND job_key = ? AND status = 'running' AND (ownership_token = ? OR ownership_token IS NULL)",
+        )
+    } else {
+        sqlx::query(
+            "UPDATE jobs SET status = 'error', finished_at = ?, lease_until = NULL, retry_at = ?, retry_remaining = max(retry_remaining - 1, 0), last_error = ? WHERE kind = ? AND job_key = ? AND status = 'running' AND ownership_token = ?",
+        )
+    };
+    let rows = query
+        .bind(now)
+        .bind(now.saturating_add(retry_delay_seconds.max(0)))
+        .bind(failure_reason)
+        .bind(kind)
+        .bind(job_key)
+        .bind(ownership_token)
+        .execute(pool)
+        .await?
+        .rows_affected();
+    Ok(rows > 0)
+}
+
+async fn mark_global_phase2_job_succeeded_row(
+    executor: &mut SqliteConnection,
+    ownership_token: &str,
+    claimed_watermark: i64,
+    completed_watermark: i64,
+) -> anyhow::Result<u64> {
     let now = Utc::now().timestamp();
     let rows_affected = sqlx::query(
         r#"
@@ -1882,6 +2549,7 @@ SET
     last_success_watermark = max(COALESCE(last_success_watermark, 0), ?)
 WHERE kind = ? AND job_key = ?
   AND status = 'running' AND ownership_token = ?
+  AND input_watermark = ?
             "#,
     )
     .bind(now)
@@ -1889,11 +2557,49 @@ WHERE kind = ? AND job_key = ?
     .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
     .bind(MEMORY_CONSOLIDATION_JOB_KEY)
     .bind(ownership_token)
-    .execute(executor)
+    .bind(claimed_watermark)
+    .execute(&mut *executor)
     .await?
     .rows_affected();
 
+    if rows_affected == 0 {
+        release_stale_phase2_claim_in_tx(
+            executor,
+            JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL,
+            MEMORY_CONSOLIDATION_JOB_KEY,
+            ownership_token,
+            claimed_watermark,
+        )
+        .await?;
+    }
+
     Ok(rows_affected)
+}
+
+async fn release_stale_phase2_claim_in_tx(
+    executor: &mut SqliteConnection,
+    kind: &str,
+    job_key: &str,
+    ownership_token: &str,
+    claimed_watermark: i64,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+UPDATE jobs
+SET status = 'pending', worker_id = NULL, ownership_token = NULL,
+    started_at = NULL, finished_at = NULL, lease_until = NULL,
+    retry_at = NULL, last_error = NULL
+WHERE kind = ? AND job_key = ? AND status = 'running'
+  AND ownership_token = ? AND input_watermark != ?
+        "#,
+    )
+    .bind(kind)
+    .bind(job_key)
+    .bind(ownership_token)
+    .bind(claimed_watermark)
+    .execute(executor)
+    .await?;
+    Ok(())
 }
 
 pub(super) async fn clear_memory_data_in_pool(pool: &SqlitePool) -> anyhow::Result<()> {
@@ -1911,19 +2617,79 @@ DELETE FROM stage1_outputs
         .execute(&mut *tx)
         .await?;
 
+    sqlx::query("DELETE FROM phase2_scope_outputs")
+        .execute(&mut *tx)
+        .await?;
+
     sqlx::query(
         r#"
 DELETE FROM jobs
-WHERE kind = ? OR kind = ?
+WHERE kind = ? OR kind = ? OR kind = ?
             "#,
     )
     .bind(JOB_KIND_MEMORY_STAGE1)
     .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
+    .bind(JOB_KIND_MEMORY_CONSOLIDATE_SCOPED)
     .execute(&mut *tx)
     .await?;
 
     tx.commit().await?;
     Ok(())
+}
+
+async fn register_memory_scope_in_tx(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    scope: &MemoryScope,
+) -> Result<MemoryScopeRegistration, MemoryScopeError> {
+    let inserted = sqlx::query(
+        r#"
+INSERT INTO thread_memory_scopes (
+    thread_id, clanker_id, project_key, parent_thread_id, recorded_at
+) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(thread_id) DO NOTHING
+        "#,
+    )
+    .bind(scope.thread_id.to_string())
+    .bind(scope.clanker_id.as_ref().map(CanonicalClankerId::as_str))
+    .bind(scope.project_key.as_str())
+    .bind(scope.parent_thread_id.map(|id| id.to_string()))
+    .bind(scope.recorded_at.timestamp())
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+    if inserted == 1 {
+        return Ok(MemoryScopeRegistration::Inserted);
+    }
+
+    let existing = sqlx::query(
+        r#"
+SELECT clanker_id, project_key, parent_thread_id
+FROM thread_memory_scopes
+WHERE thread_id = ?
+        "#,
+    )
+    .bind(scope.thread_id.to_string())
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(existing) = existing else {
+        return Err(MemoryScopeError::ScopeNotFound {
+            thread_id: scope.thread_id,
+        });
+    };
+    let clanker_id: Option<String> = existing.try_get("clanker_id")?;
+    let project_key: String = existing.try_get("project_key")?;
+    let parent_thread_id: Option<String> = existing.try_get("parent_thread_id")?;
+    let expected_parent_thread_id = scope.parent_thread_id.map(|id| id.to_string());
+    if clanker_id.as_deref() == scope.clanker_id.as_ref().map(CanonicalClankerId::as_str)
+        && project_key == scope.project_key.as_str()
+        && parent_thread_id.as_deref() == expected_parent_thread_id.as_deref()
+    {
+        Ok(MemoryScopeRegistration::ReplayedExact)
+    } else {
+        Err(MemoryScopeError::ScopeConflict {
+            thread_id: scope.thread_id,
+        })
+    }
 }
 
 fn memory_scope_from_row(row: sqlx::sqlite::SqliteRow) -> Result<MemoryScope, MemoryScopeError> {
@@ -2038,6 +2804,43 @@ async fn affected_output_selection_scopes(
     Ok(scopes.into_iter().collect())
 }
 
+async fn snapshot_selection_scopes_for_thread(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    thread_id: ThreadId,
+) -> Result<BTreeSet<MemorySelectionScope>, MemoryScopeError> {
+    let thread_id = thread_id.to_string();
+    let selected_for_anonymous = sqlx::query_scalar::<_, i64>(
+        "SELECT selected_for_phase2 FROM stage1_outputs WHERE thread_id = ?",
+    )
+    .bind(thread_id.as_str())
+    .fetch_optional(&mut **tx)
+    .await?
+    .unwrap_or(0);
+    let mut scopes = BTreeSet::new();
+    if selected_for_anonymous != 0 {
+        scopes.insert(MemorySelectionScope::Anonymous);
+    }
+
+    let rows = sqlx::query(
+        r#"
+SELECT DISTINCT clanker_id, project_key
+FROM phase2_scope_outputs
+WHERE thread_id = ?
+ORDER BY clanker_id ASC, project_key ASC
+        "#,
+    )
+    .bind(thread_id.as_str())
+    .fetch_all(&mut **tx)
+    .await?;
+    for row in rows {
+        scopes.insert(MemorySelectionScope::Named {
+            clanker_id: CanonicalClankerId::from_stored(row.try_get::<String, _>("clanker_id")?)?,
+            project_key: MemoryProjectKey::from_stored(row.try_get::<String, _>("project_key")?)?,
+        });
+    }
+    Ok(scopes)
+}
+
 fn required_source_selection_scope(
     thread_id: ThreadId,
     clanker_id: Option<CanonicalClankerId>,
@@ -2131,6 +2934,24 @@ async fn enqueue_global_consolidation_with_executor<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
+    enqueue_consolidation_job_with_executor(
+        executor,
+        JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL,
+        MEMORY_CONSOLIDATION_JOB_KEY,
+        input_watermark,
+    )
+    .await
+}
+
+async fn enqueue_consolidation_job_with_executor<'e, E>(
+    executor: E,
+    kind: &str,
+    job_key: &str,
+    input_watermark: i64,
+) -> anyhow::Result<()>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
     sqlx::query(
         r#"
 INSERT INTO jobs (
@@ -2165,14 +2986,39 @@ ON CONFLICT(kind, job_key) DO UPDATE SET
     END
         "#,
     )
-    .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
-    .bind(MEMORY_CONSOLIDATION_JOB_KEY)
+    .bind(kind)
+    .bind(job_key)
     .bind(DEFAULT_RETRY_REMAINING)
     .bind(input_watermark)
     .execute(executor)
     .await?;
 
     Ok(())
+}
+
+async fn enqueue_selection_scope_with_executor<'e, E>(
+    executor: E,
+    scope: &MemorySelectionScope,
+    input_watermark: i64,
+) -> anyhow::Result<()>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    match scope {
+        MemorySelectionScope::Named { .. } => {
+            let job_key = scope.phase2_key();
+            enqueue_consolidation_job_with_executor(
+                executor,
+                JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
+                job_key.as_str(),
+                input_watermark,
+            )
+            .await
+        }
+        MemorySelectionScope::Anonymous => {
+            enqueue_global_consolidation_with_executor(executor, input_watermark).await
+        }
+    }
 }
 
 #[cfg(test)]
@@ -4860,7 +5706,7 @@ VALUES (?, ?, ?, ?, ?)
     }
 
     #[tokio::test]
-    async fn mark_global_phase2_job_succeeded_only_marks_exact_selected_snapshots() {
+    async fn stale_global_phase2_completion_does_not_mark_refreshed_snapshot() {
         let codex_home = unique_temp_dir();
         let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
             .await
@@ -4947,7 +5793,7 @@ VALUES (?, ?, ?, ?, ?)
         );
 
         assert!(
-            runtime
+            !runtime
                 .mark_global_phase2_job_succeeded(
                     phase2_token.as_str(),
                     input_watermark,
@@ -4955,7 +5801,7 @@ VALUES (?, ?, ?, ?, ?)
                 )
                 .await
                 .expect("mark phase2 success"),
-            "phase2 success should still complete"
+            "phase2 completion must fail after its input watermark advances"
         );
 
         let (selected_for_phase2, selected_for_phase2_source_updated_at) =

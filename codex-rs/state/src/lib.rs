@@ -33,6 +33,7 @@ pub use model::MemorySelectionScope;
 pub use model::MemoryVisibility;
 pub use model::Phase2JobClaimOutcome;
 pub use model::ScopedMemoryRecord;
+pub use model::Stage1MemoryPayload;
 /// Preferred entrypoint: owns configuration and metrics.
 pub use runtime::StateRuntime;
 

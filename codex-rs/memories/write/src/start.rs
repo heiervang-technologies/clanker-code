@@ -1,10 +1,10 @@
 use crate::extensions::seed_extension_instructions;
 use crate::guard;
-use crate::memory_root;
 use crate::metrics::MEMORY_STARTUP;
 use crate::phase1;
 use crate::phase2;
 use crate::runtime::MemoryStartupContext;
+use crate::scope;
 use codex_core::CodexThread;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
@@ -51,7 +51,28 @@ pub fn start_memories_startup_task(
     }
 
     tokio::spawn(async move {
-        let root = memory_root(&config.codex_home);
+        let Some(db) = context.state_db() else {
+            warn!("state DB became unavailable before memory startup");
+            return;
+        };
+        let parent_thread_id = context.lineage_parent_thread_id().await;
+        let memory_scope = match scope::current_thread_scope(
+            db.as_ref(),
+            context.thread_id(),
+            &config.codex_home,
+            &config.cwd,
+            parent_thread_id,
+        )
+        .await
+        {
+            Ok(scope) => scope,
+            Err(err) => {
+                warn!("failed registering immutable memory scope: {err}");
+                return;
+            }
+        };
+        let selection_scope = memory_scope.selection_scope();
+        let root = crate::memory_root_for_scope(&config.codex_home, &selection_scope);
         if let Err(err) = tokio::fs::create_dir_all(&root).await {
             warn!("failed creating memories root: {err}");
             return;
@@ -76,6 +97,6 @@ pub fn start_memories_startup_task(
         // Run phase 1.
         phase1::run(Arc::clone(&context), Arc::clone(&config)).await;
         // Run phase 2.
-        phase2::run(context, config, parent_permission_profile).await;
+        phase2::run(context, config, parent_permission_profile, selection_scope).await;
     });
 }
