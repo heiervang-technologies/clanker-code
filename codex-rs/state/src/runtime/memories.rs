@@ -2,7 +2,18 @@ use super::threads::ThreadFilterOptions;
 use super::threads::push_thread_filters;
 use super::*;
 use crate::SortDirection;
+use crate::model::CanonicalClankerId;
+use crate::model::MemoryCitationPath;
+use crate::model::MemoryProjectKey;
+use crate::model::MemoryRekeyReceipt;
+use crate::model::MemoryResetReceipt;
+use crate::model::MemoryScope;
+use crate::model::MemoryScopeError;
+use crate::model::MemoryScopeRegistration;
+use crate::model::MemorySelectionScope;
+use crate::model::MemoryVisibility;
 use crate::model::Phase2JobClaimOutcome;
+use crate::model::ScopedMemoryRecord;
 use crate::model::Stage1JobClaim;
 use crate::model::Stage1JobClaimOutcome;
 use crate::model::Stage1Output;
@@ -13,6 +24,8 @@ use chrono::Duration;
 use sqlx::Executor;
 use sqlx::QueryBuilder;
 use sqlx::Sqlite;
+use std::collections::BTreeSet;
+use std::str::FromStr;
 use uuid::Uuid;
 
 const JOB_KIND_MEMORY_STAGE1: &str = "memory_stage1";
@@ -20,6 +33,7 @@ const JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL: &str = "memory_consolidate_global";
 const MEMORY_CONSOLIDATION_JOB_KEY: &str = "global";
 const PHASE2_SUCCESS_COOLDOWN_SECONDS: i64 = 6 * 60 * 60;
 const PHASE2_INPUT_SELECTION_PAGE_SIZE: usize = 512;
+const SCOPED_MEMORY_SELECTION_SCAN_LIMIT: i64 = 128;
 
 const DEFAULT_RETRY_REMAINING: i64 = 3;
 
@@ -35,17 +49,464 @@ impl MemoryStore {
         Self { pool, state_pool }
     }
 
+    #[cfg(test)]
+    pub(super) fn pool_for_tests(&self) -> &SqlitePool {
+        self.pool.as_ref()
+    }
+
     pub(crate) async fn close(&self) {
         self.pool.close().await;
     }
 
     /// Deletes all persisted memory state in one transaction.
     ///
-    /// This removes every `stage1_outputs` row and all `jobs` rows for the
-    /// stage-1 (`memory_stage1`) and phase-2 (`memory_consolidate_global`)
-    /// memory pipelines.
+    /// This removes every output, job, and immutable thread scope for the
+    /// stage-1 and phase-2 memory pipelines.
     pub async fn clear_memory_data(&self) -> anyhow::Result<()> {
         clear_memory_data_in_pool(self.pool.as_ref()).await
+    }
+
+    /// Registers the immutable identity and project binding for one source thread.
+    pub async fn register_memory_scope(
+        &self,
+        scope: &MemoryScope,
+    ) -> Result<MemoryScopeRegistration, MemoryScopeError> {
+        let mut tx = self.pool.begin().await?;
+        let inserted = sqlx::query(
+            r#"
+INSERT INTO thread_memory_scopes (
+    thread_id,
+    clanker_id,
+    project_key,
+    parent_thread_id,
+    recorded_at
+) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(thread_id) DO NOTHING
+            "#,
+        )
+        .bind(scope.thread_id.to_string())
+        .bind(scope.clanker_id.as_ref().map(CanonicalClankerId::as_str))
+        .bind(scope.project_key.as_str())
+        .bind(scope.parent_thread_id.map(|id| id.to_string()))
+        .bind(scope.recorded_at.timestamp())
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if inserted == 1 {
+            tx.commit().await?;
+            return Ok(MemoryScopeRegistration::Inserted);
+        }
+
+        let existing = sqlx::query(
+            r#"
+SELECT clanker_id, project_key, parent_thread_id
+FROM thread_memory_scopes
+WHERE thread_id = ?
+            "#,
+        )
+        .bind(scope.thread_id.to_string())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let result = if let Some(existing) = existing {
+            let clanker_id: Option<String> = existing.try_get("clanker_id")?;
+            let project_key: String = existing.try_get("project_key")?;
+            let parent_thread_id: Option<String> = existing.try_get("parent_thread_id")?;
+            let exact = clanker_id.as_deref()
+                == scope.clanker_id.as_ref().map(CanonicalClankerId::as_str)
+                && project_key == scope.project_key.as_str()
+                && parent_thread_id.as_deref()
+                    == scope
+                        .parent_thread_id
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .as_deref();
+            if exact {
+                Ok(MemoryScopeRegistration::ReplayedExact)
+            } else {
+                Err(MemoryScopeError::ScopeConflict {
+                    thread_id: scope.thread_id,
+                })
+            }
+        } else {
+            Err(MemoryScopeError::ScopeNotFound {
+                thread_id: scope.thread_id,
+            })
+        };
+        tx.rollback().await?;
+        result
+    }
+
+    pub async fn memory_scope(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<MemoryScope>, MemoryScopeError> {
+        let row = sqlx::query(
+            r#"
+SELECT thread_id, clanker_id, project_key, parent_thread_id, recorded_at
+FROM thread_memory_scopes
+WHERE thread_id = ?
+            "#,
+        )
+        .bind(thread_id.to_string())
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        row.map(memory_scope_from_row).transpose()
+    }
+
+    /// Copies a source thread's pre-registered scope onto its generated output.
+    pub async fn bind_registered_scope_to_stage1_output(
+        &self,
+        thread_id: ThreadId,
+        citation_path: Option<&MemoryCitationPath>,
+    ) -> Result<bool, MemoryScopeError> {
+        let Some(scope) = self.memory_scope(thread_id).await? else {
+            return Err(MemoryScopeError::ScopeNotFound { thread_id });
+        };
+        let visibility = if scope.clanker_id.is_some() {
+            MemoryVisibility::PrivateCharacter
+        } else {
+            MemoryVisibility::AnonymousLegacy
+        };
+        if scope.clanker_id.is_some() && citation_path.is_none() {
+            return Err(MemoryScopeError::MissingCitation { thread_id });
+        }
+        let rows_affected = sqlx::query(
+            r#"
+UPDATE stage1_outputs
+SET
+    clanker_id = ?,
+    project_key = ?,
+    visibility = ?,
+    parent_thread_id = ?,
+    citation_path = ?
+WHERE thread_id = ?
+  AND clanker_id IS NULL
+  AND project_key IS NULL
+  AND visibility = 'anonymous_legacy'
+            "#,
+        )
+        .bind(scope.clanker_id.as_ref().map(CanonicalClankerId::as_str))
+        .bind(scope.project_key.as_str())
+        .bind(visibility.as_str())
+        .bind(scope.parent_thread_id.map(|id| id.to_string()))
+        .bind(citation_path.map(MemoryCitationPath::as_str))
+        .bind(thread_id.to_string())
+        .execute(self.pool.as_ref())
+        .await?
+        .rows_affected();
+        if rows_affected > 0 {
+            return Ok(true);
+        }
+
+        let existing = sqlx::query(
+            r#"
+SELECT clanker_id, project_key, visibility, parent_thread_id, citation_path
+FROM stage1_outputs
+WHERE thread_id = ?
+            "#,
+        )
+        .bind(thread_id.to_string())
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+        let Some(existing) = existing else {
+            return Ok(false);
+        };
+        let existing_clanker_id: Option<String> = existing.try_get("clanker_id")?;
+        let existing_project_key: Option<String> = existing.try_get("project_key")?;
+        let existing_visibility: String = existing.try_get("visibility")?;
+        let existing_parent_thread_id: Option<String> = existing.try_get("parent_thread_id")?;
+        let existing_citation_path: Option<String> = existing.try_get("citation_path")?;
+        let exact = existing_clanker_id.as_deref()
+            == scope.clanker_id.as_ref().map(CanonicalClankerId::as_str)
+            && existing_project_key.as_deref() == Some(scope.project_key.as_str())
+            && existing_visibility == visibility.as_str()
+            && existing_parent_thread_id.as_deref()
+                == scope.parent_thread_id.map(|id| id.to_string()).as_deref()
+            && existing_citation_path.as_deref() == citation_path.map(MemoryCitationPath::as_str);
+        if exact {
+            Ok(false)
+        } else {
+            Err(MemoryScopeError::OutputScopeConflict { thread_id })
+        }
+    }
+
+    /// Trusted-only visibility promotion. No public product surface calls this in CC-04.
+    pub async fn set_trusted_memory_visibility(
+        &self,
+        thread_id: ThreadId,
+        visibility: MemoryVisibility,
+    ) -> Result<bool, MemoryScopeError> {
+        if matches!(visibility, MemoryVisibility::AnonymousLegacy) {
+            return Err(MemoryScopeError::InvalidVisibility {
+                visibility: visibility.as_str().to_string(),
+            });
+        }
+        let scope = self
+            .memory_scope(thread_id)
+            .await?
+            .ok_or(MemoryScopeError::ScopeNotFound { thread_id })?;
+        if scope.clanker_id.is_none() {
+            return Err(MemoryScopeError::AnonymousScope { thread_id });
+        }
+        let rows_affected = sqlx::query(
+            r#"
+UPDATE stage1_outputs
+SET visibility = ?
+WHERE thread_id = ? AND clanker_id IS NOT NULL AND project_key IS NOT NULL
+            "#,
+        )
+        .bind(visibility.as_str())
+        .bind(thread_id.to_string())
+        .execute(self.pool.as_ref())
+        .await?
+        .rows_affected();
+        Ok(rows_affected > 0)
+    }
+
+    /// Selects DB-authoritative records for one anonymous or named startup scope.
+    ///
+    /// At most [`SCOPED_MEMORY_SELECTION_SCAN_LIMIT`] ranked candidates are
+    /// inspected. Disabled thread metadata can therefore underfill the
+    /// requested limit instead of causing an unbounded startup scan.
+    pub async fn select_scoped_memories(
+        &self,
+        scope: &MemorySelectionScope,
+        limit: usize,
+    ) -> Result<Vec<ScopedMemoryRecord>, MemoryScopeError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let rows = match scope {
+            MemorySelectionScope::Named {
+                clanker_id,
+                project_key,
+            } => {
+                sqlx::query(
+                    r#"
+SELECT
+    thread_id,
+    source_updated_at,
+    raw_memory,
+    rollout_summary,
+    rollout_slug,
+    generated_at,
+    usage_count,
+    last_usage,
+    clanker_id,
+    project_key,
+    visibility,
+    parent_thread_id,
+    citation_path
+FROM stage1_outputs
+WHERE (length(trim(raw_memory)) > 0 OR length(trim(rollout_summary)) > 0)
+  AND (
+        (visibility = 'private_character' AND clanker_id = ? AND project_key = ?)
+        OR (
+            visibility = 'project_shared'
+            AND clanker_id IS NOT NULL
+            AND project_key = ?
+        )
+        OR (
+            visibility = 'global_user_preference'
+            AND clanker_id IS NOT NULL
+            AND project_key IS NOT NULL
+        )
+  )
+ORDER BY
+    CASE visibility
+        WHEN 'private_character' THEN 0
+        WHEN 'project_shared' THEN 1
+        WHEN 'global_user_preference' THEN 2
+        ELSE 3
+    END ASC,
+    CASE WHEN project_key = ? THEN 0 ELSE 1 END ASC,
+    COALESCE(usage_count, 0) DESC,
+    COALESCE(last_usage, source_updated_at) DESC,
+    source_updated_at DESC,
+    thread_id ASC
+LIMIT ?
+                    "#,
+                )
+                .bind(clanker_id.as_str())
+                .bind(project_key.as_str())
+                .bind(project_key.as_str())
+                .bind(project_key.as_str())
+                .bind(SCOPED_MEMORY_SELECTION_SCAN_LIMIT)
+                .fetch_all(self.pool.as_ref())
+                .await?
+            }
+            MemorySelectionScope::Anonymous => {
+                sqlx::query(
+                    r#"
+SELECT
+    thread_id,
+    source_updated_at,
+    raw_memory,
+    rollout_summary,
+    rollout_slug,
+    generated_at,
+    usage_count,
+    last_usage,
+    clanker_id,
+    project_key,
+    visibility,
+    parent_thread_id,
+    citation_path
+FROM stage1_outputs
+WHERE (length(trim(raw_memory)) > 0 OR length(trim(rollout_summary)) > 0)
+  AND clanker_id IS NULL
+  AND visibility = 'anonymous_legacy'
+ORDER BY
+    COALESCE(usage_count, 0) DESC,
+    COALESCE(last_usage, source_updated_at) DESC,
+    source_updated_at DESC,
+    thread_id ASC
+LIMIT ?
+                    "#,
+                )
+                .bind(SCOPED_MEMORY_SELECTION_SCAN_LIMIT)
+                .fetch_all(self.pool.as_ref())
+                .await?
+            }
+        };
+
+        let selection_limit = limit.min(SCOPED_MEMORY_SELECTION_SCAN_LIMIT as usize);
+        let mut selected = Vec::with_capacity(selection_limit);
+        for row in rows {
+            if let Some(record) = self.scoped_record_from_row_if_thread_enabled(&row).await? {
+                selected.push(record);
+                if selected.len() == selection_limit {
+                    break;
+                }
+            }
+        }
+        Ok(selected)
+    }
+
+    /// Removes one source thread's generated record while preserving its immutable scope.
+    pub async fn reset_thread_memory(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<MemoryResetReceipt, MemoryScopeError> {
+        let mut tx = self.pool.begin().await?;
+        let affected_scopes =
+            affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None).await?;
+        let removed_outputs = sqlx::query("DELETE FROM stage1_outputs WHERE thread_id = ?")
+            .bind(thread_id.to_string())
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        sqlx::query("DELETE FROM jobs WHERE kind = ? AND job_key = ?")
+            .bind(JOB_KIND_MEMORY_STAGE1)
+            .bind(thread_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(MemoryResetReceipt {
+            removed_outputs,
+            affected_scopes,
+        })
+    }
+
+    /// Removes every source record for the character bound to `thread_id`.
+    pub async fn reset_character_memory_from_thread(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<MemoryResetReceipt, MemoryScopeError> {
+        let scope = self
+            .memory_scope(thread_id)
+            .await?
+            .ok_or(MemoryScopeError::ScopeNotFound { thread_id })?;
+        let clanker_id = scope
+            .clanker_id
+            .ok_or(MemoryScopeError::AnonymousScope { thread_id })?;
+        let mut tx = self.pool.begin().await?;
+        let affected_scopes =
+            affected_output_selection_scopes(&mut tx, /*thread_id*/ None, Some(&clanker_id))
+                .await?;
+        sqlx::query(
+            r#"
+DELETE FROM jobs
+WHERE kind = ?
+  AND job_key IN (SELECT thread_id FROM stage1_outputs WHERE clanker_id = ?)
+            "#,
+        )
+        .bind(JOB_KIND_MEMORY_STAGE1)
+        .bind(clanker_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+        let removed_outputs = sqlx::query("DELETE FROM stage1_outputs WHERE clanker_id = ?")
+            .bind(clanker_id.as_str())
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        tx.commit().await?;
+        Ok(MemoryResetReceipt {
+            removed_outputs,
+            affected_scopes,
+        })
+    }
+
+    /// Explicitly rekeys one character's memory without merging target records.
+    pub async fn rekey_character_memory(
+        &self,
+        old_id: &CanonicalClankerId,
+        new_id: &CanonicalClankerId,
+    ) -> Result<MemoryRekeyReceipt, MemoryScopeError> {
+        if old_id == new_id {
+            return Ok(MemoryRekeyReceipt {
+                updated_scopes: 0,
+                updated_outputs: 0,
+                affected_scopes: Vec::new(),
+            });
+        }
+        let mut tx = self.pool.begin().await?;
+        let target_count: i64 = sqlx::query_scalar(
+            r#"
+SELECT
+    (SELECT COUNT(*) FROM thread_memory_scopes WHERE clanker_id = ?)
+    + (SELECT COUNT(*) FROM stage1_outputs WHERE clanker_id = ?)
+            "#,
+        )
+        .bind(new_id.as_str())
+        .bind(new_id.as_str())
+        .fetch_one(&mut *tx)
+        .await?;
+        if target_count != 0 {
+            tx.rollback().await?;
+            return Err(MemoryScopeError::CharacterRekeyConflict {
+                clanker_id: new_id.clone(),
+            });
+        }
+        let mut affected_scopes =
+            affected_output_selection_scopes(&mut tx, /*thread_id*/ None, Some(old_id))
+                .await?
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+        let scope_rows =
+            sqlx::query("UPDATE thread_memory_scopes SET clanker_id = ? WHERE clanker_id = ?")
+                .bind(new_id.as_str())
+                .bind(old_id.as_str())
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+        let output_rows =
+            sqlx::query("UPDATE stage1_outputs SET clanker_id = ? WHERE clanker_id = ?")
+                .bind(new_id.as_str())
+                .bind(old_id.as_str())
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+        affected_scopes.extend(
+            affected_output_selection_scopes(&mut tx, /*thread_id*/ None, Some(new_id)).await?,
+        );
+        tx.commit().await?;
+        Ok(MemoryRekeyReceipt {
+            updated_scopes: scope_rows,
+            updated_outputs: output_rows,
+            affected_scopes: affected_scopes.into_iter().collect(),
+        })
     }
 
     /// Record usage for cited stage-1 outputs.
@@ -536,6 +997,58 @@ WHERE so.thread_id = ? AND so.source_updated_at = ?
             return Ok(None);
         };
         Ok(Some(stage1_output_from_row_and_thread(row, thread)?))
+    }
+
+    async fn scoped_record_from_row_if_thread_enabled(
+        &self,
+        row: &sqlx::sqlite::SqliteRow,
+    ) -> Result<Option<ScopedMemoryRecord>, MemoryScopeError> {
+        let Some(output) = self.stage1_output_from_row_if_thread_enabled(row).await? else {
+            return Ok(None);
+        };
+        let clanker_id = row
+            .try_get::<Option<String>, _>("clanker_id")?
+            .map(CanonicalClankerId::from_stored)
+            .transpose()?;
+        let project_key = row
+            .try_get::<Option<String>, _>("project_key")?
+            .map(MemoryProjectKey::from_stored)
+            .transpose()?;
+        let visibility = MemoryVisibility::from_str(row.try_get("visibility")?)?;
+        let parent_thread_id = row
+            .try_get::<Option<String>, _>("parent_thread_id")?
+            .map(|value| {
+                ThreadId::try_from(value.as_str())
+                    .map_err(|_| MemoryScopeError::InvalidStoredThreadId { value })
+            })
+            .transpose()?;
+        let last_usage = row
+            .try_get::<Option<i64>, _>("last_usage")?
+            .map(memory_datetime_from_epoch_seconds)
+            .transpose()?;
+        let usage_count = row
+            .try_get::<Option<i64>, _>("usage_count")?
+            .unwrap_or(0)
+            .max(0) as u64;
+        let citation_path = row
+            .try_get::<Option<String>, _>("citation_path")?
+            .map(MemoryCitationPath::from_stored)
+            .transpose()?;
+        if !matches!(visibility, MemoryVisibility::AnonymousLegacy) && citation_path.is_none() {
+            return Err(MemoryScopeError::MissingCitation {
+                thread_id: output.thread_id,
+            });
+        }
+        Ok(Some(ScopedMemoryRecord {
+            output,
+            clanker_id,
+            project_key,
+            visibility,
+            parent_thread_id,
+            citation_path,
+            usage_count,
+            last_usage,
+        }))
     }
 
     async fn enabled_thread_metadata(
@@ -1394,6 +1907,10 @@ DELETE FROM stage1_outputs
     .execute(&mut *tx)
     .await?;
 
+    sqlx::query("DELETE FROM thread_memory_scopes")
+        .execute(&mut *tx)
+        .await?;
+
     sqlx::query(
         r#"
 DELETE FROM jobs
@@ -1407,6 +1924,178 @@ WHERE kind = ? OR kind = ?
 
     tx.commit().await?;
     Ok(())
+}
+
+fn memory_scope_from_row(row: sqlx::sqlite::SqliteRow) -> Result<MemoryScope, MemoryScopeError> {
+    let thread_id_value: String = row.try_get("thread_id")?;
+    let thread_id = ThreadId::try_from(thread_id_value.as_str()).map_err(|_| {
+        MemoryScopeError::InvalidStoredThreadId {
+            value: thread_id_value,
+        }
+    })?;
+    let clanker_id = row
+        .try_get::<Option<String>, _>("clanker_id")?
+        .map(CanonicalClankerId::from_stored)
+        .transpose()?;
+    let project_key = MemoryProjectKey::from_stored(row.try_get::<String, _>("project_key")?)?;
+    let parent_thread_id = row
+        .try_get::<Option<String>, _>("parent_thread_id")?
+        .map(|value| {
+            ThreadId::try_from(value.as_str())
+                .map_err(|_| MemoryScopeError::InvalidStoredThreadId { value })
+        })
+        .transpose()?;
+    let recorded_at = memory_datetime_from_epoch_seconds(row.try_get("recorded_at")?)?;
+    Ok(MemoryScope {
+        thread_id,
+        clanker_id,
+        project_key,
+        parent_thread_id,
+        recorded_at,
+    })
+}
+
+fn memory_datetime_from_epoch_seconds(value: i64) -> Result<DateTime<Utc>, MemoryScopeError> {
+    DateTime::<Utc>::from_timestamp(value, 0)
+        .ok_or(MemoryScopeError::InvalidStoredTimestamp { value })
+}
+
+async fn affected_output_selection_scopes(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    thread_id: Option<ThreadId>,
+    clanker_id: Option<&CanonicalClankerId>,
+) -> Result<Vec<MemorySelectionScope>, MemoryScopeError> {
+    let rows = if let Some(thread_id) = thread_id {
+        sqlx::query(
+            "SELECT thread_id, clanker_id, project_key, visibility FROM stage1_outputs WHERE thread_id = ?",
+        )
+            .bind(thread_id.to_string())
+            .fetch_all(&mut **tx)
+            .await?
+    } else if let Some(clanker_id) = clanker_id {
+        sqlx::query(
+            "SELECT thread_id, clanker_id, project_key, visibility FROM stage1_outputs WHERE clanker_id = ?",
+        )
+            .bind(clanker_id.as_str())
+            .fetch_all(&mut **tx)
+            .await?
+    } else {
+        Vec::new()
+    };
+    let mut scopes = BTreeSet::new();
+    for row in rows {
+        let source_thread_id_value: String = row.try_get("thread_id")?;
+        let source_thread_id =
+            ThreadId::try_from(source_thread_id_value.as_str()).map_err(|_| {
+                MemoryScopeError::InvalidStoredThreadId {
+                    value: source_thread_id_value,
+                }
+            })?;
+        let clanker_id = row
+            .try_get::<Option<String>, _>("clanker_id")?
+            .map(CanonicalClankerId::from_stored)
+            .transpose()?;
+        let project_key = row
+            .try_get::<Option<String>, _>("project_key")?
+            .map(MemoryProjectKey::from_stored)
+            .transpose()?;
+        let visibility = MemoryVisibility::from_str(row.try_get("visibility")?)?;
+        match visibility {
+            MemoryVisibility::PrivateCharacter => {
+                scopes.insert(required_source_selection_scope(
+                    source_thread_id,
+                    clanker_id,
+                    project_key,
+                    visibility,
+                )?);
+            }
+            MemoryVisibility::ProjectShared => {
+                let source_scope = required_source_selection_scope(
+                    source_thread_id,
+                    clanker_id,
+                    project_key,
+                    visibility,
+                )?;
+                let MemorySelectionScope::Named { project_key, .. } = source_scope else {
+                    unreachable!("required source scope is always named");
+                };
+                scopes.extend(registered_selection_scopes(tx, Some(&project_key)).await?);
+            }
+            MemoryVisibility::GlobalUserPreference => {
+                required_source_selection_scope(
+                    source_thread_id,
+                    clanker_id,
+                    project_key,
+                    visibility,
+                )?;
+                scopes.extend(registered_selection_scopes(tx, None).await?);
+            }
+            MemoryVisibility::AnonymousLegacy => {
+                scopes.insert(MemorySelectionScope::Anonymous);
+            }
+        }
+    }
+    Ok(scopes.into_iter().collect())
+}
+
+fn required_source_selection_scope(
+    thread_id: ThreadId,
+    clanker_id: Option<CanonicalClankerId>,
+    project_key: Option<MemoryProjectKey>,
+    visibility: MemoryVisibility,
+) -> Result<MemorySelectionScope, MemoryScopeError> {
+    match (clanker_id, project_key) {
+        (Some(clanker_id), Some(project_key)) => Ok(MemorySelectionScope::Named {
+            clanker_id,
+            project_key,
+        }),
+        _ => Err(MemoryScopeError::MissingSourceProvenance {
+            thread_id,
+            visibility,
+        }),
+    }
+}
+
+async fn registered_selection_scopes(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    project_key: Option<&MemoryProjectKey>,
+) -> Result<Vec<MemorySelectionScope>, MemoryScopeError> {
+    let rows = if let Some(project_key) = project_key {
+        sqlx::query(
+            r#"
+SELECT DISTINCT clanker_id, project_key
+FROM thread_memory_scopes
+WHERE clanker_id IS NOT NULL AND project_key = ?
+ORDER BY clanker_id ASC, project_key ASC
+            "#,
+        )
+        .bind(project_key.as_str())
+        .fetch_all(&mut **tx)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+SELECT DISTINCT clanker_id, project_key
+FROM thread_memory_scopes
+WHERE clanker_id IS NOT NULL
+ORDER BY clanker_id ASC, project_key ASC
+            "#,
+        )
+        .fetch_all(&mut **tx)
+        .await?
+    };
+    rows.into_iter()
+        .map(|row| {
+            Ok(MemorySelectionScope::Named {
+                clanker_id: CanonicalClankerId::from_stored(
+                    row.try_get::<String, _>("clanker_id")?,
+                )?,
+                project_key: MemoryProjectKey::from_stored(
+                    row.try_get::<String, _>("project_key")?,
+                )?,
+            })
+        })
+        .collect()
 }
 
 fn stage1_output_from_row_and_thread(

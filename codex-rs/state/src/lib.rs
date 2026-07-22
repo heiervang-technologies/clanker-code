@@ -18,10 +18,21 @@ mod paths;
 mod runtime;
 mod telemetry;
 
+pub use model::CanonicalClankerId;
 pub use model::LogEntry;
 pub use model::LogQuery;
 pub use model::LogRow;
+pub use model::MemoryCitationPath;
+pub use model::MemoryProjectKey;
+pub use model::MemoryRekeyReceipt;
+pub use model::MemoryResetReceipt;
+pub use model::MemoryScope;
+pub use model::MemoryScopeError;
+pub use model::MemoryScopeRegistration;
+pub use model::MemorySelectionScope;
+pub use model::MemoryVisibility;
 pub use model::Phase2JobClaimOutcome;
+pub use model::ScopedMemoryRecord;
 /// Preferred entrypoint: owns configuration and metrics.
 pub use runtime::StateRuntime;
 
