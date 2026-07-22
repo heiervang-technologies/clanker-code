@@ -5,6 +5,7 @@ use crate::metrics::MEMORY_PHASE_ONE_OUTPUT;
 use crate::metrics::MEMORY_PHASE_ONE_TOKEN_USAGE;
 use crate::runtime::MemoryStartupContext;
 use crate::runtime::StageOneRequestContext;
+use crate::scope;
 use codex_config::types::MemoriesConfig;
 use codex_core::Prompt;
 use codex_core::RolloutRecorder;
@@ -231,6 +232,29 @@ mod job {
         stage_one_context: &StageOneRequestContext,
     ) -> JobResult {
         let claimed_thread = claim.thread;
+        let Some(state_db) = context.state_db() else {
+            return JobResult {
+                outcome: JobOutcome::Failed,
+                token_usage: None,
+            };
+        };
+        let memory_scope =
+            match scope::claimed_thread_scope(state_db.as_ref(), &claimed_thread).await {
+                Ok(scope) => scope,
+                Err(err) => {
+                    result::failed(
+                        context,
+                        claimed_thread.id,
+                        &claim.ownership_token,
+                        &format!("failed to derive persisted memory scope: {err}"),
+                    )
+                    .await;
+                    return JobResult {
+                        outcome: JobOutcome::Failed,
+                        token_usage: None,
+                    };
+                }
+            };
         let (stage_one_output, token_usage) = match sample(
             context,
             config,
@@ -258,8 +282,7 @@ mod job {
 
         if stage_one_output.raw_memory.is_empty() || stage_one_output.rollout_summary.is_empty() {
             return JobResult {
-                outcome: result::no_output(context, claimed_thread.id, &claim.ownership_token)
-                    .await,
+                outcome: result::no_output(context, &memory_scope, &claim.ownership_token).await,
                 token_usage,
             };
         }
@@ -267,7 +290,7 @@ mod job {
         JobResult {
             outcome: result::success(
                 context,
-                claimed_thread.id,
+                &memory_scope,
                 &claim.ownership_token,
                 claimed_thread.updated_at.timestamp(),
                 &stage_one_output.raw_memory,
@@ -348,7 +371,7 @@ mod job {
 
         pub(crate) async fn no_output(
             context: &MemoryStartupContext,
-            thread_id: codex_protocol::ThreadId,
+            scope: &codex_state::MemoryScope,
             ownership_token: &str,
         ) -> JobOutcome {
             let Some(state_db) = context.state_db() else {
@@ -357,7 +380,7 @@ mod job {
 
             if state_db
                 .memories()
-                .mark_stage1_job_succeeded_no_output(thread_id, ownership_token)
+                .mark_stage1_job_succeeded_no_output_scoped(scope, ownership_token)
                 .await
                 .unwrap_or(false)
             {
@@ -369,7 +392,7 @@ mod job {
 
         pub(crate) async fn success(
             context: &MemoryStartupContext,
-            thread_id: codex_protocol::ThreadId,
+            scope: &codex_state::MemoryScope,
             ownership_token: &str,
             source_updated_at: i64,
             raw_memory: &str,
@@ -379,16 +402,23 @@ mod job {
             let Some(state_db) = context.state_db() else {
                 return JobOutcome::Failed;
             };
+            let citation_path = match scope::citation_path_for_thread(scope.thread_id) {
+                Ok(path) => path,
+                Err(_) => return JobOutcome::Failed,
+            };
 
             if state_db
                 .memories()
-                .mark_stage1_job_succeeded(
-                    thread_id,
+                .mark_stage1_job_succeeded_scoped(
+                    scope,
+                    &citation_path,
                     ownership_token,
-                    source_updated_at,
-                    raw_memory,
-                    rollout_summary,
-                    rollout_slug,
+                    codex_state::Stage1MemoryPayload {
+                        source_updated_at,
+                        raw_memory,
+                        rollout_summary,
+                        rollout_slug,
+                    },
                 )
                 .await
                 .unwrap_or(false)

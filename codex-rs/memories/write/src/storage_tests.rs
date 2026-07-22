@@ -2,12 +2,20 @@ use super::rollout_summary_file_stem;
 use crate::ensure_layout;
 use crate::raw_memories_file;
 use crate::rebuild_raw_memories_file_from_memories;
+use crate::rebuild_raw_memories_file_from_scoped_memories;
 use crate::rollout_summaries_dir;
 use crate::sync_rollout_summaries_from_memories;
+use crate::sync_rollout_summaries_from_scoped_memories;
 use chrono::TimeZone;
 use chrono::Utc;
 use codex_config::types::DEFAULT_MEMORIES_MAX_RAW_MEMORIES_FOR_CONSOLIDATION;
 use codex_protocol::ThreadId;
+use codex_state::CanonicalClankerId;
+use codex_state::MemoryCitationPath;
+use codex_state::MemoryProjectKey;
+use codex_state::MemorySelectionScope;
+use codex_state::MemoryVisibility;
+use codex_state::ScopedMemoryRecord;
 use codex_state::Stage1Output;
 use pretty_assertions::assert_eq;
 use std::path::PathBuf;
@@ -146,4 +154,84 @@ async fn sync_rollout_summaries_and_raw_memories_file_keeps_latest_memories_only
     assert!(raw_memories.contains(&format!(
         "rollout_summary_file: {canonical_rollout_summary_file}"
     )));
+}
+
+#[tokio::test]
+async fn named_artifacts_use_stable_citation_and_complete_source_provenance() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path().join("named-memory");
+    let character_home = tempdir().expect("character home");
+    write_character(character_home.path(), "chloe");
+    let clanker_id = CanonicalClankerId::resolve_exact(
+        &codex_character::CharacterCatalog::load(character_home.path()),
+        "chloe",
+    )
+    .unwrap();
+    let project_key = MemoryProjectKey::from_git_origin(
+        "https://github.com/heiervang-technologies/clanker-code.git",
+    )
+    .unwrap();
+    let thread_id = fixed_thread_id();
+    let citation = MemoryCitationPath::new(format!("rollout_summaries/{thread_id}.md")).unwrap();
+    let record = ScopedMemoryRecord {
+        output: stage1_output_with_slug(thread_id, Some("ignored-for-citation")),
+        clanker_id: Some(clanker_id.clone()),
+        project_key: Some(project_key.clone()),
+        visibility: MemoryVisibility::GlobalUserPreference,
+        parent_thread_id: Some(ThreadId::default()),
+        citation_path: Some(citation.clone()),
+        usage_count: 0,
+        last_usage: None,
+    };
+    let scope = MemorySelectionScope::Named {
+        clanker_id,
+        project_key,
+    };
+
+    sync_rollout_summaries_from_scoped_memories(&root, &scope, std::slice::from_ref(&record), 10)
+        .await
+        .unwrap();
+    rebuild_raw_memories_file_from_scoped_memories(&root, &scope, &[record], 10)
+        .await
+        .unwrap();
+
+    let summary = tokio::fs::read_to_string(root.join(citation.as_str()))
+        .await
+        .unwrap();
+    for expected in [
+        format!("thread_id: {thread_id}"),
+        "source_character: chloe".to_string(),
+        "source_project: v1:git:github.com/heiervang-technologies/clanker-code".to_string(),
+        "visibility: global_user_preference".to_string(),
+        format!("citation: {citation}"),
+        "rollout_path: /tmp/rollout.jsonl".to_string(),
+        "cwd: /tmp/workspace".to_string(),
+    ] {
+        assert!(summary.contains(&expected), "missing {expected:?}");
+    }
+    let raw = tokio::fs::read_to_string(raw_memories_file(&root))
+        .await
+        .unwrap();
+    assert!(raw.contains(&format!("citation: {citation}")));
+    assert!(raw.contains("raw memory"));
+}
+
+fn write_character(home: &std::path::Path, id: &str) {
+    let avatar = home.join("characters").join(id).join("avatar");
+    std::fs::create_dir_all(&avatar).unwrap();
+    std::fs::write(
+        avatar.parent().unwrap().join("character.json"),
+        format!(r#"{{"schemaVersion":1,"id":"{id}","displayName":"{id}","avatar":"avatar/avatar.json"}}"#),
+    )
+    .unwrap();
+    std::fs::write(
+        avatar.join("avatar.json"),
+        r#"{"renderMode":"ansi-half-block","spritesheetPath":"sheet.ppm","frame":{"width":24,"height":24,"columns":1,"rows":1}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        avatar.join("sheet.ppm"),
+        format!("P3\n24 24\n255\n{}", "0 0 0\n".repeat(24 * 24)),
+    )
+    .unwrap();
 }

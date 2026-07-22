@@ -601,8 +601,9 @@ impl ThreadRequestProcessor {
 
     pub(crate) async fn memory_reset(
         &self,
+        params: Option<MemoryResetParams>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        self.memory_reset_response_inner()
+        self.memory_reset_response_inner(params)
             .await
             .map(|response: MemoryResetResponse| Some(response.into()))
     }
@@ -1619,28 +1620,77 @@ impl ThreadRequestProcessor {
         Ok(ThreadMemoryModeSetResponse {})
     }
 
-    async fn memory_reset_response_inner(&self) -> Result<MemoryResetResponse, JSONRPCErrorError> {
+    async fn memory_reset_response_inner(
+        &self,
+        params: Option<MemoryResetParams>,
+    ) -> Result<MemoryResetResponse, JSONRPCErrorError> {
         let state_db = self
             .state_db
             .clone()
             .ok_or_else(|| internal_error("sqlite state db unavailable for memory reset"))?;
 
-        state_db
-            .memories()
-            .clear_memory_data()
-            .await
-            .map_err(|err| {
-                internal_error(format!("failed to clear memory rows in memories db: {err}"))
-            })?;
+        let scope = params
+            .as_ref()
+            .map_or(MemoryResetScope::AllLocal, |params| params.scope);
+        let receipt = match scope {
+            MemoryResetScope::AllLocal => {
+                state_db
+                    .memories()
+                    .clear_memory_data()
+                    .await
+                    .map_err(|err| {
+                        internal_error(format!("failed to clear memory rows in memories db: {err}"))
+                    })?;
+                None
+            }
+            MemoryResetScope::Thread | MemoryResetScope::Character => {
+                let thread_id = params
+                    .as_ref()
+                    .and_then(|params| params.thread_id.as_deref())
+                    .ok_or_else(|| {
+                        invalid_request("threadId is required for scoped memory reset")
+                    })?;
+                let thread_id = ThreadId::from_string(thread_id)
+                    .map_err(|err| invalid_request(format!("invalid thread id: {err}")))?;
+                let receipt = match scope {
+                    MemoryResetScope::Thread => {
+                        state_db.memories().reset_thread_memory(thread_id).await
+                    }
+                    MemoryResetScope::Character => {
+                        state_db
+                            .memories()
+                            .reset_character_memory_from_thread(thread_id)
+                            .await
+                    }
+                    MemoryResetScope::AllLocal => unreachable!(),
+                }
+                .map_err(|err| match err {
+                    codex_state::MemoryScopeError::ScopeNotFound { .. }
+                    | codex_state::MemoryScopeError::AnonymousScope { .. } => {
+                        invalid_request(format!("memory reset scope error: {err}"))
+                    }
+                    _ => internal_error(format!("failed to reset scoped memory rows: {err}")),
+                })?;
+                Some(receipt)
+            }
+        };
 
-        clear_memory_roots_contents(&self.config.codex_home)
-            .await
-            .map_err(|err| {
-                internal_error(format!(
-                    "failed to clear memory directories under {}: {err}",
-                    self.config.codex_home.display()
-                ))
-            })?;
+        match receipt {
+            Some(receipt) => {
+                codex_memories_write::clear_memory_selection_scopes(
+                    &self.config.codex_home,
+                    receipt.affected_scopes.as_slice(),
+                )
+                .await
+            }
+            None => clear_memory_roots_contents(&self.config.codex_home).await,
+        }
+        .map_err(|err| {
+            internal_error(format!(
+                "memory rows committed but filesystem cleanup under {} failed: {err}",
+                self.config.codex_home.display()
+            ))
+        })?;
 
         Ok(MemoryResetResponse {})
     }

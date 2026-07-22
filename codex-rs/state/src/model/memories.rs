@@ -201,6 +201,18 @@ pub struct MemoryScope {
     pub recorded_at: DateTime<Utc>,
 }
 
+impl MemoryScope {
+    pub fn selection_scope(&self) -> MemorySelectionScope {
+        match self.clanker_id.as_ref() {
+            Some(clanker_id) => MemorySelectionScope::Named {
+                clanker_id: clanker_id.clone(),
+                project_key: self.project_key.clone(),
+            },
+            None => MemorySelectionScope::Anonymous,
+        }
+    }
+}
+
 /// Visibility policy persisted with every generated memory unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryVisibility {
@@ -247,6 +259,22 @@ pub enum MemorySelectionScope {
     Anonymous,
 }
 
+impl MemorySelectionScope {
+    pub fn phase2_key(&self) -> String {
+        match self {
+            Self::Named {
+                clanker_id,
+                project_key,
+            } => format!(
+                "character:{}:project:{}",
+                clanker_id.as_str(),
+                project_key.artifact_digest()
+            ),
+            Self::Anonymous => "anonymous".to_string(),
+        }
+    }
+}
+
 /// DB-backed memory record selected for one startup context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopedMemoryRecord {
@@ -258,6 +286,15 @@ pub struct ScopedMemoryRecord {
     pub citation_path: Option<MemoryCitationPath>,
     pub usage_count: u64,
     pub last_usage: Option<DateTime<Utc>>,
+}
+
+/// Borrowed stage-1 model output committed with immutable memory provenance.
+#[derive(Debug, Clone, Copy)]
+pub struct Stage1MemoryPayload<'a> {
+    pub source_updated_at: i64,
+    pub raw_memory: &'a str,
+    pub rollout_summary: &'a str,
+    pub rollout_slug: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
