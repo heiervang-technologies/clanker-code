@@ -75,6 +75,60 @@ pub struct Pet {
 }
 
 impl Pet {
+    pub(super) fn from_validated_avatar_pack(pack: &codex_character::ValidatedAvatarPack) -> Self {
+        let fallback_id = pack
+            .manifest_path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .unwrap_or("avatar");
+        let id = pack.id.clone().unwrap_or_else(|| fallback_id.to_string());
+        let display_name = pack
+            .display_name
+            .clone()
+            .or_else(|| pack.id.clone())
+            .unwrap_or_else(|| fallback_id.to_string());
+        let animations = pack
+            .animations
+            .iter()
+            .map(|(name, animation)| {
+                (
+                    name.clone(),
+                    Animation {
+                        frames: animation
+                            .frames
+                            .iter()
+                            .map(|frame| AnimationFrame {
+                                sprite_index: frame.sprite_index,
+                                duration: frame.duration,
+                            })
+                            .collect(),
+                        loop_start: animation.loop_start,
+                        fallback: animation.fallback.clone(),
+                    },
+                )
+            })
+            .collect();
+        let render_mode = match pack.render_mode {
+            codex_character::AvatarRenderMode::TerminalImage => PetRenderMode::TerminalImage,
+            codex_character::AvatarRenderMode::AnsiHalfBlock => PetRenderMode::AnsiHalfBlock,
+        };
+
+        Self {
+            id,
+            display_name,
+            description: pack.description.clone().unwrap_or_default(),
+            spritesheet_path: pack.spritesheet_path.clone(),
+            frame_width: pack.frame.width,
+            frame_height: pack.frame.height,
+            columns: pack.frame.columns,
+            rows: pack.frame.rows,
+            frame_count: pack.frame_count,
+            animations,
+            render_mode,
+        }
+    }
+
     /// Load a pet selector into a concrete local pet definition.
     ///
     /// Selectors may name a built-in catalog pet, a custom pet id, a legacy

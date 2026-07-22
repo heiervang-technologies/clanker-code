@@ -14,6 +14,54 @@ fn enable_test_ambient_pet(chat: &mut ChatWidget) {
     chat.install_test_ambient_pet_for_tests(/*animations_enabled*/ false);
 }
 
+fn write_test_character_avatar(root: &Path, id: &str, color: [u8; 4]) -> PathBuf {
+    let directory = root.join(id);
+    std::fs::create_dir_all(&directory).unwrap();
+    image::RgbaImage::from_pixel(24, 24, image::Rgba(color))
+        .save(directory.join("sheet.png"))
+        .unwrap();
+    std::fs::write(
+        directory.join("avatar.json"),
+        r#"{
+            "renderMode":"ansi-half-block",
+            "spritesheetPath":"sheet.png",
+            "frame":{"width":24,"height":24,"columns":1,"rows":1},
+            "animations":{
+                "idle":{"frames":[0],"fps":1},
+                "planning":{"frames":[0],"fps":1},
+                "talking":{"frames":[0],"fps":1}
+            }
+        }"#,
+    )
+    .unwrap();
+    directory.join("avatar.json")
+}
+
+fn write_test_terminal_character_avatar(root: &Path, id: &str) -> PathBuf {
+    let directory = root.join(id);
+    std::fs::create_dir_all(&directory).unwrap();
+    image::RgbaImage::new(192 * 8, 208 * 9)
+        .save(directory.join("sheet.png"))
+        .unwrap();
+    std::fs::write(
+        directory.join("avatar.json"),
+        r#"{
+            "renderMode":"terminal-image",
+            "spritesheetPath":"sheet.png"
+        }"#,
+    )
+    .unwrap();
+    directory.join("avatar.json")
+}
+
+fn validated_test_avatar(root: &Path, id: &str) -> codex_character::ValidatedAvatarPack {
+    codex_character::validate_avatar_selector(
+        root,
+        &codex_character::AvatarSelector(format!("{id}/avatar.json")),
+    )
+    .unwrap()
+}
+
 fn take_workspace_headline_request_id(
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
 ) -> u64 {
@@ -2376,6 +2424,268 @@ async fn ambient_pet_reserves_history_wrap_width() {
 }
 
 #[tokio::test]
+async fn character_avatar_mode_and_pet_selection_are_independent() {
+    use codex_config::types::TuiPetSide;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_tui_pet_loaded(
+        Some("ansi-pet".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    chat.set_tui_pet_side(TuiPetSide::FarRight);
+    let dir = tempfile::tempdir().unwrap();
+    let _default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
+    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255]);
+    chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
+        "chloe".to_string(),
+        validated_test_avatar(dir.path(), "default"),
+        std::collections::HashMap::from([(
+            ModeKind::LockedIn,
+            validated_test_avatar(dir.path(), "locked"),
+        )]),
+        crate::avatars::AvatarPlacement::FarRight,
+        dir.path().to_path_buf(),
+    ))
+    .unwrap();
+
+    assert_eq!(chat.config.tui_pet.as_deref(), Some("ansi-pet"));
+    assert_eq!(
+        chat.resolved_ambient_pet_side(80),
+        Some(TuiPetSide::FarLeft)
+    );
+    assert_eq!(chat.ambient_visual_horizontal_reserves(80), (26, 26));
+
+    set_fast_mode_test_catalog(&mut chat);
+    let locked_mask =
+        collaboration_modes::mask_for_kind(chat.model_catalog.as_ref(), ModeKind::LockedIn)
+            .expect("Locked In should be available");
+    chat.set_collaboration_mask(locked_mask);
+
+    assert_eq!(
+        chat.ambient_avatar_active_manifest_for_tests(),
+        Some(&locked)
+    );
+    assert_eq!(chat.config.tui_pet.as_deref(), Some("ansi-pet"));
+    assert_eq!(chat.config.tui_pet_side, TuiPetSide::FarRight);
+
+    chat.set_tui_pet(Some(crate::pets::DISABLED_PET_ID.to_string()));
+    assert_eq!(
+        chat.ambient_avatar_active_manifest_for_tests(),
+        Some(&locked)
+    );
+    assert_eq!(chat.ambient_visual_horizontal_reserves(80), (0, 26));
+}
+
+#[tokio::test]
+async fn character_avatar_wins_when_viewport_cannot_fit_companion() {
+    use codex_config::types::TuiPetSide;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_tui_pet_loaded(
+        Some("ansi-pet".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    chat.set_tui_pet_side(TuiPetSide::FarRight);
+    let dir = tempfile::tempdir().unwrap();
+    let _default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
+    chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
+        "chloe".to_string(),
+        validated_test_avatar(dir.path(), "default"),
+        std::collections::HashMap::new(),
+        crate::avatars::AvatarPlacement::FarRight,
+        dir.path().to_path_buf(),
+    ))
+    .unwrap();
+
+    for width in [40, 48, 52] {
+        assert_eq!(chat.resolved_ambient_pet_side(width), None);
+        assert_eq!(chat.ambient_visual_horizontal_reserves(width), (0, 26));
+    }
+    assert_eq!(
+        chat.resolved_ambient_pet_side(53),
+        Some(TuiPetSide::FarLeft)
+    );
+    assert_eq!(chat.ambient_visual_horizontal_reserves(53), (26, 26));
+    assert_eq!(chat.history_wrap_width(53), 1);
+    assert_eq!(chat.config.tui_pet.as_deref(), Some("ansi-pet"));
+    assert_eq!(chat.config.tui_pet_side, TuiPetSide::FarRight);
+}
+
+#[tokio::test]
+async fn character_avatar_talks_only_for_voice_playback() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    let dir = tempfile::tempdir().unwrap();
+    let _default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
+    chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
+        "chloe".to_string(),
+        validated_test_avatar(dir.path(), "default"),
+        std::collections::HashMap::new(),
+        crate::avatars::AvatarPlacement::FarRight,
+        dir.path().to_path_buf(),
+    ))
+    .unwrap();
+    let mut controller = crate::streaming::controller::StreamController::new(
+        Some(80),
+        chat.config.cwd.as_path(),
+        HistoryRenderMode::Rich,
+    );
+    assert!(controller.push("ordinary text response\n"));
+    chat.stream_controller = Some(controller);
+
+    chat.sync_ambient_visual_state();
+    assert_eq!(chat.ambient_avatar_semantic_state_for_tests(), Some("idle"));
+
+    chat.pet_talking_signal.set_active_for_tests(true);
+    chat.sync_ambient_visual_state();
+    assert_eq!(
+        chat.ambient_avatar_semantic_state_for_tests(),
+        Some("talking")
+    );
+
+    chat.pet_talking_signal.set_active_for_tests(false);
+    chat.sync_ambient_visual_state();
+    assert_eq!(chat.ambient_avatar_semantic_state_for_tests(), Some("idle"));
+}
+
+#[tokio::test]
+async fn failed_avatar_mode_swap_retains_pack_but_continues_lifecycle() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    set_fast_mode_test_catalog(&mut chat);
+    let locked_mask =
+        collaboration_modes::mask_for_kind(chat.model_catalog.as_ref(), ModeKind::LockedIn)
+            .expect("Locked In should be available");
+    chat.set_collaboration_mask(locked_mask);
+    let dir = tempfile::tempdir().unwrap();
+    let default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
+    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255]);
+    chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
+        "chloe".to_string(),
+        validated_test_avatar(dir.path(), "default"),
+        std::collections::HashMap::from([(
+            ModeKind::LockedIn,
+            validated_test_avatar(dir.path(), "locked"),
+        )]),
+        crate::avatars::AvatarPlacement::FarRight,
+        dir.path().to_path_buf(),
+    ))
+    .unwrap();
+    std::fs::remove_file(default.parent().unwrap().join("sheet.png")).unwrap();
+
+    let plan_mask = collaboration_modes::mask_for_kind(chat.model_catalog.as_ref(), ModeKind::Plan)
+        .expect("Plan should be available");
+    chat.set_collaboration_mask(plan_mask);
+
+    assert_eq!(
+        chat.ambient_avatar_active_manifest_for_tests(),
+        Some(&locked)
+    );
+    assert_eq!(
+        chat.ambient_avatar_semantic_state_for_tests(),
+        Some("planning")
+    );
+
+    chat.pet_talking_signal.set_active_for_tests(true);
+    chat.sync_ambient_visual_state();
+    assert_eq!(
+        chat.ambient_avatar_semantic_state_for_tests(),
+        Some("talking")
+    );
+    chat.pet_talking_signal.set_active_for_tests(false);
+    chat.sync_ambient_visual_state();
+    assert_eq!(
+        chat.ambient_avatar_semantic_state_for_tests(),
+        Some("planning")
+    );
+}
+
+#[tokio::test]
+async fn character_avatar_terminal_image_ignores_pet_anchor() {
+    use codex_config::types::TuiPetAnchor;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_pet_image_support_for_tests(crate::pets::PetImageSupport::Supported(
+        crate::pets::ImageProtocol::Kitty,
+    ));
+    let dir = tempfile::tempdir().unwrap();
+    let _default = write_test_terminal_character_avatar(dir.path(), "default");
+    chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
+        "chloe".to_string(),
+        validated_test_avatar(dir.path(), "default"),
+        std::collections::HashMap::new(),
+        crate::avatars::AvatarPlacement::FarRight,
+        dir.path().to_path_buf(),
+    ))
+    .unwrap();
+    let area = Rect::new(0, 0, 80, 24);
+
+    chat.config.tui_pet_anchor = TuiPetAnchor::Composer;
+    let composer_y = chat
+        .ambient_avatar_draw(area, 20)
+        .expect("composer-anchored avatar")
+        .y;
+    chat.config.tui_pet_anchor = TuiPetAnchor::ScreenBottom;
+    let screen_setting_y = chat
+        .ambient_avatar_draw(area, 20)
+        .expect("avatar remains composer-anchored")
+        .y;
+
+    assert_eq!(screen_setting_y, composer_y);
+}
+
+#[tokio::test]
+async fn character_avatar_image_failure_degrades_visual_not_identity() {
+    use codex_config::types::TuiPetSide;
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.set_pet_image_support_for_tests(crate::pets::PetImageSupport::Supported(
+        crate::pets::ImageProtocol::Kitty,
+    ));
+    chat.set_tui_pet_loaded(
+        Some("ansi-pet".to_string()),
+        Some(crate::pets::test_ansi_ambient_pet(
+            chat.frame_requester.clone(),
+            /*animations_enabled*/ false,
+        )),
+    );
+    chat.set_tui_pet_side(TuiPetSide::FarRight);
+    let dir = tempfile::tempdir().unwrap();
+    let _default = write_test_terminal_character_avatar(dir.path(), "default");
+    chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
+        "chloe".to_string(),
+        validated_test_avatar(dir.path(), "default"),
+        std::collections::HashMap::new(),
+        crate::avatars::AvatarPlacement::FarRight,
+        dir.path().to_path_buf(),
+    ))
+    .unwrap();
+    assert!(chat.ambient_avatar_image_enabled());
+    assert_eq!(
+        chat.resolved_ambient_pet_side(/*viewport_width*/ 80),
+        Some(TuiPetSide::FarLeft)
+    );
+    assert_eq!(chat.ambient_visual_horizontal_reserves(80), (26, 26));
+
+    chat.degrade_ambient_avatar_image_for_session("test failure".to_string());
+
+    assert!(!chat.ambient_avatar_image_enabled());
+    assert_eq!(chat.ambient_avatar_character_id_for_tests(), Some("chloe"));
+    assert_eq!(chat.ambient_avatar_semantic_state_for_tests(), Some("idle"));
+    assert_eq!(
+        chat.resolved_ambient_pet_side(/*viewport_width*/ 80),
+        Some(TuiPetSide::FarRight)
+    );
+    assert_eq!(chat.ambient_visual_horizontal_reserves(80), (0, 26));
+    assert_eq!(chat.config.tui_pet.as_deref(), Some("ansi-pet"));
+    assert_eq!(chat.config.tui_pet_side, TuiPetSide::FarRight);
+}
+
+#[tokio::test]
 #[serial]
 async fn ambient_pet_reduces_stream_width_and_composer_text_width() {
     use ratatui::Terminal;
@@ -2491,7 +2801,7 @@ async fn ambient_pet_hides_notification_text_overlay() {
         (crate::pets::PetNotificationKind::Review, "Ready"),
         (crate::pets::PetNotificationKind::Failed, "Blocked"),
     ] {
-        chat.set_ambient_pet_notification(kind, /*body*/ None);
+        chat.set_ambient_visual_notification(kind, /*body*/ None);
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).expect("create terminal");
         terminal
             .draw(|f| chat.render(f.area(), f.buffer_mut()))

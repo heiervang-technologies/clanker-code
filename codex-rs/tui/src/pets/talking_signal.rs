@@ -60,6 +60,12 @@ impl TalkingSignal {
     pub(crate) fn poll_interval() -> Duration {
         POLL_INTERVAL
     }
+
+    #[cfg(test)]
+    pub(crate) fn set_active_for_tests(&mut self, active: bool) {
+        self.last_check = Some(Instant::now());
+        self.cached_active = active;
+    }
 }
 
 fn resolve_agent_name() -> Option<String> {

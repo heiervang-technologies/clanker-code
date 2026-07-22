@@ -54,16 +54,6 @@ pub(super) fn start_configured_pet_load_if_needed(
 }
 
 impl ChatWidget {
-    pub(super) fn set_ambient_pet_notification(
-        &mut self,
-        kind: crate::pets::PetNotificationKind,
-        body: Option<String>,
-    ) {
-        if let Some(pet) = self.ambient_pet.as_mut() {
-            pet.set_notification(kind, body);
-        }
-    }
-
     pub(crate) fn ambient_pet_image_enabled(&self) -> bool {
         self.ambient_pet
             .as_ref()
@@ -88,37 +78,10 @@ impl ChatWidget {
             TuiPetAnchor::Composer => composer_bottom_y,
             TuiPetAnchor::ScreenBottom => area.bottom(),
         };
+        let side = self.resolved_ambient_pet_side(area.width)?;
         self.ambient_pet
             .as_ref()?
-            .draw_request(area, anchor_bottom_y)
-    }
-
-    pub(super) fn ambient_pet_wrap_reserved_cols(&self) -> u16 {
-        if !self.effective_ambient_pet_side().is_far_side() {
-            return 0;
-        }
-        self.ambient_pet
-            .as_ref()
-            .filter(|pet| pet.visual_enabled())
-            .map(|pet| {
-                pet.visual_columns()
-                    .saturating_add(AMBIENT_PET_WRAP_GAP_COLUMNS)
-            })
-            .unwrap_or(0)
-    }
-
-    pub(super) fn ambient_pet_horizontal_reserves(&self) -> (u16, u16) {
-        let reserved = self.ambient_pet_wrap_reserved_cols();
-        match self.effective_ambient_pet_side() {
-            TuiPetSide::FarLeft => (reserved, 0),
-            TuiPetSide::FarRight => (0, reserved),
-            TuiPetSide::BelowLeft
-            | TuiPetSide::BelowCenter
-            | TuiPetSide::BelowRight
-            | TuiPetSide::AboveLeft
-            | TuiPetSide::AboveCenter
-            | TuiPetSide::AboveRight => (0, 0),
-        }
+            .draw_request_at_side(area, anchor_bottom_y, side)
     }
 
     pub(super) fn effective_ambient_pet_side(&self) -> TuiPetSide {
@@ -130,57 +93,6 @@ impl ChatWidget {
             self.config.tui_pet_side
         } else {
             TuiPetSide::FarRight
-        }
-    }
-
-    pub(super) fn ambient_pet_min_height(&self) -> u16 {
-        if !self.effective_ambient_pet_side().is_far_side() {
-            return 0;
-        }
-        self.ambient_pet
-            .as_ref()
-            .map_or(0, crate::pets::AmbientPet::ansi_min_height)
-    }
-
-    pub(super) fn ambient_pet_band_height(&self, placement: TuiPetSide) -> u16 {
-        if !self.bottom_pane.no_modal_or_popup_active()
-            || self.effective_ambient_pet_side() != placement
-        {
-            return 0;
-        }
-        self.ambient_pet
-            .as_ref()
-            .map_or(0, crate::pets::AmbientPet::ansi_min_height)
-    }
-
-    pub(super) fn render_ambient_pet_band(
-        &self,
-        placement: TuiPetSide,
-        area: Rect,
-        buf: &mut Buffer,
-    ) {
-        if self.ambient_pet_band_height(placement) == 0 {
-            return;
-        }
-        if let Some(pet) = self.ambient_pet.as_ref() {
-            pet.render_ansi(area, area.bottom(), placement, buf);
-        }
-    }
-
-    pub(super) fn render_ambient_pet_ansi(&self, area: Rect, buf: &mut Buffer) {
-        if !self.bottom_pane.no_modal_or_popup_active()
-            || !self.effective_ambient_pet_side().is_far_side()
-        {
-            return;
-        }
-        let anchor_bottom_y = area.bottom();
-        if let Some(pet) = self.ambient_pet.as_ref() {
-            pet.render_ansi(
-                area,
-                anchor_bottom_y,
-                self.effective_ambient_pet_side(),
-                buf,
-            );
         }
     }
 
@@ -201,13 +113,17 @@ impl ChatWidget {
     }
 
     pub(crate) fn history_wrap_width(&self, width: u16) -> u16 {
-        width
-            .saturating_sub(self.ambient_pet_wrap_reserved_cols())
-            .max(1)
+        let (left, right) = self.ambient_visual_horizontal_reserves(width);
+        width.saturating_sub(left).saturating_sub(right).max(1)
     }
 
     pub(crate) fn history_left_padding(&self) -> u16 {
-        self.ambient_pet_horizontal_reserves().0
+        let width = self
+            .last_rendered_width
+            .get()
+            .and_then(|width| u16::try_from(width).ok())
+            .unwrap_or(u16::MAX);
+        self.ambient_visual_horizontal_reserves(width).0
     }
 
     pub(crate) fn pet_picker_preview_draw(&self) -> Option<crate::pets::AmbientPetDraw> {
@@ -266,34 +182,11 @@ impl ChatWidget {
         self.select_pet_by_id(pet_id);
     }
 
-    pub(super) fn sync_ambient_pet_semantic_state(&mut self) {
-        if self.ambient_pet.is_some() {
-            self.frame_requester
-                .schedule_frame_in(crate::pets::TalkingSignal::poll_interval());
-        }
-        let planning = self.active_mode_kind() == ModeKind::Plan;
-        let talking = self.stream_controller.is_some()
-            || (self.ambient_pet.is_some() && self.pet_talking_signal.is_active());
-        let context_used_percent = self.token_info.as_ref().and_then(|info| {
-            info.model_context_window.map(|window| {
-                100 - info
-                    .last_token_usage
-                    .percent_of_context_window_remaining(window)
-                    .clamp(0, 100)
-            })
-        });
-        if let Some(pet) = self.ambient_pet.as_mut() {
-            pet.set_planning(planning);
-            pet.set_talking(talking);
-            pet.set_context_used_percent(context_used_percent);
-        }
-    }
-
     /// Set the pet preselected by the TUI picker in the widget's config copy.
     pub(crate) fn set_tui_pet(&mut self, pet: Option<String>) {
         self.config.tui_pet = pet;
         self.ambient_pet = load_ambient_pet(&self.config, self.frame_requester.clone());
-        self.sync_ambient_pet_semantic_state();
+        self.sync_ambient_visual_state();
         self.apply_ambient_pet_image_support_override_for_tests();
         self.request_redraw();
     }
@@ -310,7 +203,7 @@ impl ChatWidget {
     ) {
         self.config.tui_pet = pet;
         self.ambient_pet = ambient_pet;
-        self.sync_ambient_pet_semantic_state();
+        self.sync_ambient_visual_state();
         self.apply_ambient_pet_image_support_override_for_tests();
         self.request_redraw();
     }

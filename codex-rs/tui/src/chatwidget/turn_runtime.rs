@@ -82,7 +82,7 @@ impl ChatWidget {
         }
         self.reasoning_summary_parts.clear();
         self.reasoning_buffer.clear();
-        self.set_ambient_pet_notification(
+        self.set_ambient_visual_notification(
             crate::pets::PetNotificationKind::Running,
             /*body*/ None,
         );
@@ -185,7 +185,7 @@ impl ChatWidget {
         self.unified_exec_wait_streak = None;
         if !from_replay {
             let body = Notification::agent_turn_preview(&notification_response);
-            self.set_ambient_pet_notification(crate::pets::PetNotificationKind::Review, body);
+            self.set_ambient_visual_notification(crate::pets::PetNotificationKind::Review, body);
         }
         self.request_redraw();
 
@@ -358,7 +358,7 @@ impl ChatWidget {
         self.flush_answer_stream_with_separator();
         self.finalize_turn();
         self.add_to_history(history_cell::new_error_event(message));
-        self.set_ambient_pet_notification(
+        self.set_ambient_visual_notification(
             crate::pets::PetNotificationKind::Failed,
             /*body*/ None,
         );

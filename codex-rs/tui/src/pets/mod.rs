@@ -147,6 +147,14 @@ pub(crate) fn render_ambient_pet_image(
     render_pet_image(writer, state, /*image_id*/ 0xC0DE, request)
 }
 
+pub(crate) fn render_ambient_avatar_image(
+    writer: &mut impl Write,
+    state: &mut PetImageRenderState,
+    request: Option<AmbientPetDraw>,
+) -> std::result::Result<(), PetImageRenderError> {
+    render_pet_image(writer, state, /*image_id*/ 0xC0DC, request)
+}
+
 pub(crate) fn render_pet_picker_preview_image(
     writer: &mut impl Write,
     state: &mut PetImageRenderState,
@@ -359,6 +367,42 @@ mod tests {
         assert!(!output.contains("\x1b7"));
         assert!(!output.contains("\x1b["));
         assert!(!output.contains("\x1b8"));
+    }
+
+    #[test]
+    fn avatar_and_pet_use_distinct_terminal_image_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let frame = dir.path().join("frame.png");
+        std::fs::write(&frame, b"png").unwrap();
+        let request = AmbientPetDraw {
+            frame,
+            protocol: ImageProtocol::Kitty,
+            x: 2,
+            y: 3,
+            clear_top_y: 3,
+            columns: 4,
+            rows: 5,
+            height_px: 75,
+            sixel_dir: PathBuf::new(),
+        };
+        let mut output = Vec::new();
+
+        render_ambient_avatar_image(
+            &mut output,
+            &mut PetImageRenderState::default(),
+            Some(request.clone()),
+        )
+        .unwrap();
+        render_ambient_pet_image(
+            &mut output,
+            &mut PetImageRenderState::default(),
+            Some(request),
+        )
+        .unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("i=49372"));
+        assert!(output.contains("i=49374"));
     }
 
     #[test]

@@ -46,6 +46,7 @@ use supports_color::Stream;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;
+mod character_cmd;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod desktop_app;
 mod doctor;
@@ -60,6 +61,7 @@ mod state_db_recovery;
 #[cfg(not(windows))]
 mod wsl_paths;
 
+use crate::character_cmd::CharacterCli;
 use crate::mcp_cmd::McpCli;
 use crate::plugin_cmd::PluginCli;
 use crate::plugin_cmd::PluginSubcommand;
@@ -142,6 +144,9 @@ enum Subcommand {
 
     /// Manage Codex plugins.
     Plugin(PluginCli),
+
+    /// Inspect and validate local clanker character manifests.
+    Character(CharacterCli),
 
     /// Start Codex as an MCP server (stdio).
     McpServer(McpServerCommand),
@@ -1097,6 +1102,17 @@ async fn cli_main(
                         .map_err(anyhow::Error::msg)?;
                     plugin_cmd::run_plugin_remove(overrides, args).await?;
                 }
+            }
+        }
+        Some(Subcommand::Character(character_cli)) => {
+            reject_remote_mode_for_subcommand(
+                root_remote.as_deref(),
+                root_remote_auth_token_env.as_deref(),
+                "character",
+            )?;
+            let codex_home = find_codex_home()?;
+            if !character_cli.run(&codex_home)? {
+                std::process::exit(1);
             }
         }
         Some(Subcommand::AppServer(app_server_cli)) => {
@@ -2126,6 +2142,7 @@ fn unsupported_subcommand_name_for_strict_config(
         Some(Subcommand::RemoteControl(remote_control)) => Some(remote_control.subcommand_name()),
         Some(Subcommand::Mcp(_)) => Some("mcp"),
         Some(Subcommand::Plugin(_)) => Some("plugin"),
+        Some(Subcommand::Character(_)) => Some("character"),
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         Some(Subcommand::App(_)) => Some("app"),
         Some(Subcommand::Login(_)) => Some("login"),
@@ -2463,6 +2480,7 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
         approval_policy,
         web_search,
         prompt,
+        name,
         config_overrides,
         ..
     } = subcommand_cli;
@@ -2481,6 +2499,9 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
     if let Some(prompt) = prompt {
         // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.
         interactive.prompt = Some(prompt.replace("\r\n", "\n").replace('\r', "\n"));
+    }
+    if name.is_some() {
+        interactive.name = name;
     }
 
     interactive
@@ -3231,6 +3252,20 @@ mod tests {
     }
 
     #[test]
+    fn resume_preserves_root_and_subcommand_names_with_subcommand_precedence() {
+        let root = finalize_resume_from_args(["codex", "--name", "root", "resume"].as_ref());
+        let subcommand =
+            finalize_resume_from_args(["codex", "resume", "--name", "subcommand"].as_ref());
+        let both = finalize_resume_from_args(
+            ["codex", "--name", "root", "resume", "--name", "subcommand"].as_ref(),
+        );
+
+        assert_eq!(root.name.as_deref(), Some("root"));
+        assert_eq!(subcommand.name.as_deref(), Some("subcommand"));
+        assert_eq!(both.name.as_deref(), Some("subcommand"));
+    }
+
+    #[test]
     fn resume_picker_logic_none_and_not_last() {
         let interactive = finalize_resume_from_args(["codex", "resume"].as_ref());
         assert!(interactive.resume_picker);
@@ -3400,6 +3435,20 @@ mod tests {
         assert!(!interactive.fork_last);
         assert_eq!(interactive.fork_session_id, None);
         assert!(!interactive.fork_show_all);
+    }
+
+    #[test]
+    fn fork_preserves_root_and_subcommand_names_with_subcommand_precedence() {
+        let root = finalize_fork_from_args(["codex", "--name", "root", "fork"].as_ref());
+        let subcommand =
+            finalize_fork_from_args(["codex", "fork", "--name", "subcommand"].as_ref());
+        let both = finalize_fork_from_args(
+            ["codex", "--name", "root", "fork", "--name", "subcommand"].as_ref(),
+        );
+
+        assert_eq!(root.name.as_deref(), Some("root"));
+        assert_eq!(subcommand.name.as_deref(), Some("subcommand"));
+        assert_eq!(both.name.as_deref(), Some("subcommand"));
     }
 
     #[test]

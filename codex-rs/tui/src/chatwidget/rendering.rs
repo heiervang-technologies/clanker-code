@@ -3,9 +3,9 @@
 use super::*;
 
 impl ChatWidget {
-    pub(super) fn as_renderable(&self) -> RenderableItem<'_> {
+    pub(super) fn as_renderable(&self, width: u16) -> RenderableItem<'_> {
         let (active_cell_left_reserve, active_cell_right_reserve) =
-            self.ambient_pet_horizontal_reserves();
+            self.ambient_visual_horizontal_reserves(width);
         let active_cell_renderable = match &self.transcript.active_cell {
             Some(cell) => RenderableItem::Owned(Box::new(TranscriptAreaRenderable {
                 child: cell.as_ref(),
@@ -53,7 +53,7 @@ impl ChatWidget {
         }
         flex.push(
             /*flex*/ 0,
-            RenderableItem::Owned(Box::new(AmbientPetBandRenderable {
+            RenderableItem::Owned(Box::new(AmbientVisualBandRenderable {
                 chat_widget: self,
                 position: AmbientPetBandPosition::Above,
             })),
@@ -71,7 +71,7 @@ impl ChatWidget {
         );
         flex.push(
             /*flex*/ 0,
-            RenderableItem::Owned(Box::new(AmbientPetBandRenderable {
+            RenderableItem::Owned(Box::new(AmbientVisualBandRenderable {
                 chat_widget: self,
                 position: AmbientPetBandPosition::Below,
             })),
@@ -80,7 +80,7 @@ impl ChatWidget {
     }
 }
 
-struct AmbientPetBandRenderable<'a> {
+struct AmbientVisualBandRenderable<'a> {
     chat_widget: &'a ChatWidget,
     position: AmbientPetBandPosition,
 }
@@ -91,31 +91,20 @@ enum AmbientPetBandPosition {
     Below,
 }
 
-impl Renderable for AmbientPetBandRenderable<'_> {
+impl Renderable for AmbientVisualBandRenderable<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        let placement = self.chat_widget.effective_ambient_pet_side();
-        if self.matches(placement) {
-            self.chat_widget
-                .render_ambient_pet_band(placement, area, buf);
-        }
+        self.chat_widget.render_ambient_visual_band(
+            matches!(self.position, AmbientPetBandPosition::Above),
+            area,
+            buf,
+        );
     }
 
-    fn desired_height(&self, _width: u16) -> u16 {
-        let placement = self.chat_widget.effective_ambient_pet_side();
-        if self.matches(placement) {
-            self.chat_widget.ambient_pet_band_height(placement)
-        } else {
-            0
-        }
-    }
-}
-
-impl AmbientPetBandRenderable<'_> {
-    fn matches(&self, placement: codex_config::types::TuiPetSide) -> bool {
-        match self.position {
-            AmbientPetBandPosition::Above => placement.is_above(),
-            AmbientPetBandPosition::Below => placement.is_below(),
-        }
+    fn desired_height(&self, width: u16) -> u16 {
+        self.chat_widget.ambient_visual_band_height(
+            matches!(self.position, AmbientPetBandPosition::Above),
+            width,
+        )
     }
 }
 
@@ -214,23 +203,23 @@ impl TranscriptAreaRenderable<'_> {
 
 impl Renderable for ChatWidget {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        self.as_renderable().render(area, buf);
-        self.render_ambient_pet_ansi(area, buf);
+        self.as_renderable(area.width).render(area, buf);
+        self.render_ambient_visual_ansi(area, buf);
         self.render_pet_picker_preview_ansi(buf);
         self.last_rendered_width.set(Some(area.width as usize));
     }
 
     fn desired_height(&self, width: u16) -> u16 {
-        self.as_renderable()
+        self.as_renderable(width)
             .desired_height(width)
-            .max(self.ambient_pet_min_height())
+            .max(self.ambient_visual_min_height(width))
     }
 
     fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
-        self.as_renderable().cursor_pos(area)
+        self.as_renderable(area.width).cursor_pos(area)
     }
 
     fn cursor_style(&self, area: Rect) -> crossterm::cursor::SetCursorStyle {
-        self.as_renderable().cursor_style(area)
+        self.as_renderable(area.width).cursor_style(area)
     }
 }

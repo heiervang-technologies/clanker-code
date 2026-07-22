@@ -2,9 +2,35 @@
 
 use super::*;
 
+#[derive(Debug)]
+enum AmbientAvatarImageFailure {
+    Fatal(std::io::Error),
+    Degrade(anyhow::Error),
+}
+
+fn classify_ambient_avatar_image_failure(
+    err: crate::pets::PetImageRenderError,
+) -> AmbientAvatarImageFailure {
+    match err {
+        crate::pets::PetImageRenderError::Terminal(err) => AmbientAvatarImageFailure::Fatal(err),
+        crate::pets::PetImageRenderError::Asset(err) => AmbientAvatarImageFailure::Degrade(err),
+    }
+}
+
 impl App {
     pub(super) fn disable_ambient_pet_before_shutdown(&mut self, tui: &mut tui::Tui) -> Result<()> {
         self.chat_widget.disable_ambient_pet_for_session();
+        if let Err(clear_err) = tui.clear_ambient_avatar_image() {
+            match clear_err {
+                crate::pets::PetImageRenderError::Terminal(err) => return Err(err.into()),
+                crate::pets::PetImageRenderError::Asset(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "failed to clear ambient avatar image before shutdown feedback"
+                    );
+                }
+            }
+        }
         if let Err(clear_err) = tui.clear_ambient_pet_image() {
             match clear_err {
                 crate::pets::PetImageRenderError::Terminal(err) => return Err(err.into()),
@@ -39,6 +65,38 @@ impl App {
                             tracing::warn!(
                                 error = %err,
                                 "failed to clear ambient pet image after render failure"
+                            );
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub(super) fn handle_ambient_avatar_image_render_error(
+        &mut self,
+        tui: &mut tui::Tui,
+        err: crate::pets::PetImageRenderError,
+    ) -> Result<()> {
+        match classify_ambient_avatar_image_failure(err) {
+            AmbientAvatarImageFailure::Fatal(err) => Err(err.into()),
+            AmbientAvatarImageFailure::Degrade(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "failed to render character avatar image; retaining identity with degraded visual"
+                );
+                self.chat_widget
+                    .degrade_ambient_avatar_image_for_session(format!(
+                        "Character avatar image unavailable; identity remains active: {err}"
+                    ));
+                if let Err(clear_err) = tui.clear_ambient_avatar_image() {
+                    match clear_err {
+                        crate::pets::PetImageRenderError::Terminal(err) => return Err(err.into()),
+                        crate::pets::PetImageRenderError::Asset(err) => {
+                            tracing::warn!(
+                                error = %err,
+                                "failed to clear character avatar image after render failure"
                             );
                         }
                     }
@@ -221,5 +279,29 @@ impl App {
                     .add_warning_message(format!("Failed to load configured pet: {err}"));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn avatar_asset_failure_degrades_locally() {
+        let failure = classify_ambient_avatar_image_failure(
+            crate::pets::PetImageRenderError::Asset(anyhow::anyhow!("missing frame")),
+        );
+
+        assert!(matches!(failure, AmbientAvatarImageFailure::Degrade(_)));
+    }
+
+    #[test]
+    fn avatar_terminal_failure_remains_fatal() {
+        let failure =
+            classify_ambient_avatar_image_failure(crate::pets::PetImageRenderError::Terminal(
+                std::io::Error::new(std::io::ErrorKind::BrokenPipe, "terminal closed"),
+            ));
+
+        assert!(matches!(failure, AmbientAvatarImageFailure::Fatal(_)));
     }
 }

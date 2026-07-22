@@ -200,6 +200,30 @@ impl AmbientPet {
             /*codex_home*/ Some(codex_home),
         )
         .with_context(|| "load ambient pet")?;
+        Self::from_pet(pet, codex_home, frame_requester, animations_enabled)
+    }
+
+    pub(crate) fn from_validated_avatar_pack(
+        pack: &codex_character::ValidatedAvatarPack,
+        cache_root: &std::path::Path,
+        frame_requester: FrameRequester,
+        animations_enabled: bool,
+    ) -> Result<Self> {
+        Self::from_pet(
+            Pet::from_validated_avatar_pack(pack),
+            cache_root,
+            frame_requester,
+            animations_enabled,
+        )
+        .with_context(|| format!("load avatar {}", pack.manifest_path.display()))
+    }
+
+    fn from_pet(
+        pet: Pet,
+        codex_home: &std::path::Path,
+        frame_requester: FrameRequester,
+        animations_enabled: bool,
+    ) -> Result<Self> {
         let cache_dir = codex_home
             .join("cache")
             .join("tui-pets")
@@ -269,6 +293,19 @@ impl AmbientPet {
         }
     }
 
+    /// Carry semantic and animation state across a visual-pack swap.
+    ///
+    /// Avatar mode variants use the same sprite engine as pets, but changing a
+    /// mode must not restart the character's lifecycle animation. Asset and
+    /// terminal support stay owned by the newly loaded pack.
+    pub(crate) fn inherit_runtime_state_from(&mut self, previous: &Self) {
+        self.notification = previous.notification.clone();
+        self.planning = previous.planning;
+        self.talking = previous.talking;
+        self.context_tier = previous.context_tier;
+        self.animation_started_at = previous.animation_started_at;
+    }
+
     pub(crate) fn set_preview_animation(&mut self, animation_name: &str) {
         if self.preview_animation != animation_name {
             self.preview_animation = animation_name.to_string();
@@ -278,6 +315,10 @@ impl AmbientPet {
 
     pub(crate) fn image_enabled(&self) -> bool {
         self.pet.render_mode == PetRenderMode::TerminalImage && self.support.protocol().is_some()
+    }
+
+    pub(crate) fn uses_terminal_image(&self) -> bool {
+        self.pet.render_mode == PetRenderMode::TerminalImage
     }
 
     pub(crate) fn ansi_enabled(&self) -> bool {
@@ -355,10 +396,11 @@ impl AmbientPet {
     /// fit the image without overlapping reserved UI. Callers should not try to
     /// partially clip the image themselves; that would desynchronize the image
     /// protocol output from the TUI's notion of cleared rows.
-    pub(crate) fn draw_request(
+    pub(crate) fn draw_request_at_side(
         &self,
         area: Rect,
         composer_bottom_y: u16,
+        side: TuiPetSide,
     ) -> Option<AmbientPetDraw> {
         if self.pet.render_mode != PetRenderMode::TerminalImage {
             return None;
@@ -373,7 +415,15 @@ impl AmbientPet {
             return None;
         }
 
-        let x = area.x + area.width.saturating_sub(size.columns);
+        let x = match side {
+            TuiPetSide::FarLeft | TuiPetSide::AboveLeft | TuiPetSide::BelowLeft => area.x,
+            TuiPetSide::AboveCenter | TuiPetSide::BelowCenter => {
+                area.x + area.width.saturating_sub(size.columns) / 2
+            }
+            TuiPetSide::FarRight | TuiPetSide::AboveRight | TuiPetSide::BelowRight => {
+                area.x + area.width.saturating_sub(size.columns)
+            }
+        };
         let y = sprite_bottom_y.saturating_sub(size.rows);
         Some(AmbientPetDraw {
             frame: self.current_frame_path()?,
@@ -424,14 +474,7 @@ impl AmbientPet {
     }
 
     fn current_animation(&self) -> Option<&Animation> {
-        let base_animation = if self.planning {
-            "planning"
-        } else if self.talking {
-            "talking"
-        } else {
-            self.visible_notification(Instant::now())
-                .map_or("idle", |notification| notification.kind.animation_name())
-        };
+        let base_animation = self.semantic_animation_name();
         let tier_animation = (!self.planning)
             .then(|| self.context_tier?.animation_name(base_animation))
             .flatten();
@@ -455,6 +498,27 @@ impl AmbientPet {
             }
         }
         Some(animation)
+    }
+
+    fn semantic_animation_name(&self) -> &'static str {
+        if self.talking {
+            "talking"
+        } else if self.planning {
+            "planning"
+        } else {
+            self.visible_notification(Instant::now())
+                .map_or("idle", |notification| notification.kind.animation_name())
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn semantic_animation_name_for_tests(&self) -> &'static str {
+        self.semantic_animation_name()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn animation_started_at_for_tests(&self) -> Instant {
+        self.animation_started_at
     }
 
     fn preview_animation(&self) -> Option<&Animation> {
@@ -985,7 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn talking_falls_back_to_running_and_planning_has_priority() {
+    fn talking_outranks_planning_for_playback_lifetime() {
         let mut pet = test_ambient_pet(
             FrameRequester::test_dummy(),
             /*animations_enabled*/ false,
@@ -1007,12 +1071,17 @@ mod tests {
             );
         }
 
-        pet.set_talking(true);
-        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-2.png")));
-        pet.pet.animations.remove("talking");
-        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-1.png")));
         pet.set_planning(true);
         assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-3.png")));
+        pet.set_talking(true);
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-2.png")));
+        pet.set_talking(false);
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-3.png")));
+
+        pet.set_planning(false);
+        pet.set_talking(true);
+        pet.pet.animations.remove("talking");
+        assert_eq!(pet.current_frame_path(), Some(PathBuf::from("frame-1.png")));
     }
 
     #[test]
