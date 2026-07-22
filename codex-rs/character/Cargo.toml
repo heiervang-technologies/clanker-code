@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 codex-protocol = { workspace = true }
+image = { workspace = true, features = ["gif", "jpeg", "png", "pnm", "webp"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

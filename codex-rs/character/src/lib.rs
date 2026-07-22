@@ -1,5 +1,14 @@
+mod avatar;
 mod manifest;
 
+pub use avatar::AvatarAnimation;
+pub use avatar::AvatarAnimationFrame;
+pub use avatar::AvatarFrameSpec;
+pub use avatar::AvatarPackErrorKind;
+pub use avatar::AvatarPackValidationError;
+pub use avatar::AvatarRenderMode;
+pub use avatar::ValidatedAvatarPack;
+pub use avatar::validate_avatar_selector;
 pub use manifest::AvatarPlacement;
 pub use manifest::AvatarSelector;
 pub use manifest::CharacterCatalog;

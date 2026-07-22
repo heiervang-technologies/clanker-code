@@ -2480,6 +2480,7 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
         approval_policy,
         web_search,
         prompt,
+        name,
         config_overrides,
         ..
     } = subcommand_cli;
@@ -2498,6 +2499,9 @@ fn merge_interactive_cli_flags(interactive: &mut TuiCli, subcommand_cli: TuiCli)
     if let Some(prompt) = prompt {
         // Normalize CRLF/CR to LF so CLI-provided text can't leak `\r` into TUI state.
         interactive.prompt = Some(prompt.replace("\r\n", "\n").replace('\r', "\n"));
+    }
+    if name.is_some() {
+        interactive.name = name;
     }
 
     interactive
@@ -3248,6 +3252,20 @@ mod tests {
     }
 
     #[test]
+    fn resume_preserves_root_and_subcommand_names_with_subcommand_precedence() {
+        let root = finalize_resume_from_args(["codex", "--name", "root", "resume"].as_ref());
+        let subcommand =
+            finalize_resume_from_args(["codex", "resume", "--name", "subcommand"].as_ref());
+        let both = finalize_resume_from_args(
+            ["codex", "--name", "root", "resume", "--name", "subcommand"].as_ref(),
+        );
+
+        assert_eq!(root.name.as_deref(), Some("root"));
+        assert_eq!(subcommand.name.as_deref(), Some("subcommand"));
+        assert_eq!(both.name.as_deref(), Some("subcommand"));
+    }
+
+    #[test]
     fn resume_picker_logic_none_and_not_last() {
         let interactive = finalize_resume_from_args(["codex", "resume"].as_ref());
         assert!(interactive.resume_picker);
@@ -3417,6 +3435,20 @@ mod tests {
         assert!(!interactive.fork_last);
         assert_eq!(interactive.fork_session_id, None);
         assert!(!interactive.fork_show_all);
+    }
+
+    #[test]
+    fn fork_preserves_root_and_subcommand_names_with_subcommand_precedence() {
+        let root = finalize_fork_from_args(["codex", "--name", "root", "fork"].as_ref());
+        let subcommand =
+            finalize_fork_from_args(["codex", "fork", "--name", "subcommand"].as_ref());
+        let both = finalize_fork_from_args(
+            ["codex", "--name", "root", "fork", "--name", "subcommand"].as_ref(),
+        );
+
+        assert_eq!(root.name.as_deref(), Some("root"));
+        assert_eq!(subcommand.name.as_deref(), Some("subcommand"));
+        assert_eq!(both.name.as_deref(), Some("subcommand"));
     }
 
     #[test]

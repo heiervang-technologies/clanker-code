@@ -9,7 +9,9 @@ use codex_protocol::config_types::ModeKind;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::AvatarPackErrorKind;
 use crate::CHARACTER_SCHEMA_VERSION;
+use crate::validate_avatar_selector;
 
 const CHARACTER_MANIFEST_FILE: &str = "character.json";
 
@@ -113,6 +115,7 @@ impl ValidationIssue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidationReport {
     pub manifest_path: PathBuf,
+    pub storage_id: Option<String>,
     pub manifest: Option<CharacterManifestV1>,
     pub errors: Vec<ValidationIssue>,
     pub warnings: Vec<ValidationIssue>,
@@ -150,6 +153,7 @@ pub struct CharacterCatalog {
     registry_root: PathBuf,
     entries: Vec<ValidationReport>,
     errors: Vec<ValidationIssue>,
+    collision_errors: Vec<ValidationIssue>,
 }
 
 impl CharacterCatalog {
@@ -158,32 +162,40 @@ impl CharacterCatalog {
     }
 
     pub fn load_registry(registry_root: PathBuf) -> Self {
-        let mut manifest_paths = Vec::new();
+        let mut packages = Vec::new();
         if let Ok(entries) = fs::read_dir(&registry_root) {
             for entry in entries.flatten() {
                 if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
-                    let manifest_path = entry.path().join(CHARACTER_MANIFEST_FILE);
-                    if manifest_path.is_file() {
-                        manifest_paths.push(manifest_path);
-                    }
+                    packages.push(entry.path());
                 }
             }
         }
-        manifest_paths.sort();
+        packages.sort();
 
-        let entries = manifest_paths
+        let entries = packages
             .iter()
-            .map(|path| validate_manifest_path(path))
+            .map(|package| {
+                let storage_id = package
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string);
+                validate_manifest_path_for_storage(
+                    &package.join(CHARACTER_MANIFEST_FILE),
+                    storage_id,
+                )
+            })
             .collect::<Vec<_>>();
         let mut errors = entries
             .iter()
             .flat_map(|report| report.errors.iter().cloned())
             .collect::<Vec<_>>();
-        errors.extend(collision_errors(&entries));
+        let collision_errors = collision_errors(&entries);
+        errors.extend(collision_errors.iter().cloned());
         Self {
             registry_root,
             entries,
             errors,
+            collision_errors,
         }
     }
 
@@ -200,31 +212,52 @@ impl CharacterCatalog {
     }
 
     pub fn resolve(&self, input: &str) -> Result<ResolvedCharacter, Vec<ValidationIssue>> {
-        if !self.errors.is_empty() {
-            return Err(self.errors.clone());
+        if !self.collision_errors.is_empty() {
+            return Err(self.collision_errors.clone());
         }
-        let manifests = self.valid_manifests();
-        let exact = manifests
+        let exact = self
+            .entries
             .iter()
-            .find(|(_, manifest)| manifest.id == input)
-            .map(|entry| (*entry, MatchKind::ExactCanonical));
-        let casefold = manifests
-            .iter()
-            .find(|(_, manifest)| manifest.id.eq_ignore_ascii_case(input))
-            .map(|entry| (*entry, MatchKind::CasefoldCanonical));
-        let alias = manifests
-            .iter()
-            .find(|(_, manifest)| {
-                manifest
-                    .aliases
-                    .iter()
-                    .any(|alias| alias.eq_ignore_ascii_case(input))
+            .find(|report| {
+                report.storage_id.as_deref() == Some(input) || report.id() == Some(input)
             })
-            .map(|entry| (*entry, MatchKind::ExplicitAlias));
-        let Some(((report, manifest), match_kind)) = exact.or(casefold).or(alias) else {
+            .map(|report| (report, MatchKind::ExactCanonical));
+        let casefold = self
+            .entries
+            .iter()
+            .find(|report| {
+                report
+                    .storage_id
+                    .as_deref()
+                    .is_some_and(|id| id.eq_ignore_ascii_case(input))
+                    || report.id().is_some_and(|id| id.eq_ignore_ascii_case(input))
+            })
+            .map(|report| (report, MatchKind::CasefoldCanonical));
+        let alias = self
+            .entries
+            .iter()
+            .find(|report| {
+                report.manifest.as_ref().is_some_and(|manifest| {
+                    manifest
+                        .aliases
+                        .iter()
+                        .any(|alias| alias.eq_ignore_ascii_case(input))
+                })
+            })
+            .map(|report| (report, MatchKind::ExplicitAlias));
+        let Some((report, match_kind)) = exact.or(casefold).or(alias) else {
             return Err(vec![ValidationIssue::new(
                 ValidationIssueCode::NotFound,
                 format!("no character matches {input:?}"),
+            )]);
+        };
+        if !report.errors.is_empty() {
+            return Err(report.errors.clone());
+        }
+        let Some(manifest) = report.manifest.as_ref() else {
+            return Err(vec![ValidationIssue::new(
+                ValidationIssueCode::InvalidManifest,
+                "character report has no parsed manifest",
             )]);
         };
         let manifest_path = report.manifest_path.clone();
@@ -240,19 +273,16 @@ impl CharacterCatalog {
             match_kind,
         })
     }
-
-    fn valid_manifests(&self) -> Vec<(&ValidationReport, &CharacterManifestV1)> {
-        self.entries
-            .iter()
-            .filter(|report| report.is_valid())
-            .filter_map(|report| report.manifest.as_ref().map(|manifest| (report, manifest)))
-            .collect()
-    }
 }
 
 pub fn validate_manifest_path(path: &Path) -> ValidationReport {
+    validate_manifest_path_for_storage(path, inferred_storage_id(path))
+}
+
+fn validate_manifest_path_for_storage(path: &Path, storage_id: Option<String>) -> ValidationReport {
     let mut report = ValidationReport {
         manifest_path: path.to_path_buf(),
+        storage_id,
         manifest: None,
         errors: Vec::new(),
         warnings: Vec::new(),
@@ -284,8 +314,80 @@ pub fn validate_manifest_path(path: &Path) -> ValidationReport {
         }
     };
     validate_manifest_fields(&manifest, &mut report.errors);
+    if report
+        .storage_id
+        .as_deref()
+        .is_some_and(|storage_id| storage_id != manifest.id)
+    {
+        report.errors.push(
+            ValidationIssue::new(
+                ValidationIssueCode::InvalidManifest,
+                format!(
+                    "manifest id {:?} must match character package directory {:?}",
+                    manifest.id,
+                    report.storage_id.as_deref().unwrap_or_default()
+                ),
+            )
+            .at_path("id"),
+        );
+    }
+    if let Some(package_root) = path.parent() {
+        validate_avatar_packs(package_root, &manifest, &mut report.errors);
+    }
     report.manifest = Some(manifest);
     report
+}
+
+fn inferred_storage_id(path: &Path) -> Option<String> {
+    let package = path.parent()?;
+    if package.parent()?.file_name()?.to_str()? != "characters" {
+        return None;
+    }
+    package.file_name()?.to_str().map(str::to_string)
+}
+
+fn validate_avatar_packs(
+    package_root: &Path,
+    manifest: &CharacterManifestV1,
+    errors: &mut Vec<ValidationIssue>,
+) {
+    if !manifest.avatar.as_str().trim().is_empty()
+        && is_safe_relative_selector(manifest.avatar.as_str())
+        && let Err(error) = validate_avatar_selector(package_root, &manifest.avatar)
+    {
+        let code = if error.kind == AvatarPackErrorKind::MissingManifest {
+            ValidationIssueCode::MissingAvatar
+        } else {
+            ValidationIssueCode::InvalidManifest
+        };
+        errors.push(ValidationIssue::new(code, error.message).at_path("avatar"));
+    }
+    let mut mode_avatars = manifest.avatar_by_mode.iter().collect::<Vec<_>>();
+    mode_avatars.sort_by_key(|(mode, _)| mode_key(**mode));
+    for (mode, selector) in mode_avatars {
+        if !selector.as_str().trim().is_empty()
+            && is_safe_relative_selector(selector.as_str())
+            && let Err(error) = validate_avatar_selector(package_root, selector)
+        {
+            errors.push(
+                ValidationIssue::new(ValidationIssueCode::InvalidManifest, error.message)
+                    .at_path(format!("avatarByMode.{}", mode_key(*mode))),
+            );
+        }
+    }
+}
+
+fn mode_key(mode: ModeKind) -> &'static str {
+    match mode {
+        ModeKind::Plan => "plan",
+        ModeKind::Larp => "larp",
+        ModeKind::LockedIn => "locked_in",
+        ModeKind::Based => "based",
+        ModeKind::Cringe => "cringe",
+        ModeKind::Ultrachill => "ultrachill",
+        ModeKind::PairProgramming => "pair_programming",
+        ModeKind::Execute => "execute",
+    }
 }
 
 fn validate_manifest_fields(manifest: &CharacterManifestV1, errors: &mut Vec<ValidationIssue>) {
@@ -333,14 +435,16 @@ fn validate_manifest_fields(manifest: &CharacterManifestV1, errors: &mut Vec<Val
             .at_path("avatar"),
         );
     }
-    for (mode, selector) in &manifest.avatar_by_mode {
+    let mut mode_avatars = manifest.avatar_by_mode.iter().collect::<Vec<_>>();
+    mode_avatars.sort_by_key(|(mode, _)| mode_key(**mode));
+    for (mode, selector) in mode_avatars {
         if selector.as_str().trim().is_empty() || !is_safe_relative_selector(selector.as_str()) {
             errors.push(
                 ValidationIssue::new(
                     ValidationIssueCode::InvalidManifest,
                     "avatarByMode values must be safe relative character-package paths",
                 )
-                .at_path(format!("avatarByMode.{}", mode.display_name())),
+                .at_path(format!("avatarByMode.{}", mode_key(*mode))),
             );
         }
     }
@@ -358,14 +462,13 @@ fn validate_manifest_fields(manifest: &CharacterManifestV1, errors: &mut Vec<Val
 }
 
 fn collision_errors(entries: &[ValidationReport]) -> Vec<ValidationIssue> {
-    let valid = entries
+    let parsed = entries
         .iter()
-        .filter(|report| report.is_valid())
         .filter_map(|report| report.manifest.as_ref().map(|manifest| (report, manifest)))
         .collect::<Vec<_>>();
     let mut canonical_owners = BTreeMap::<String, Vec<&ValidationReport>>::new();
     let mut alias_owners = BTreeMap::<String, Vec<(&ValidationReport, &str)>>::new();
-    for (report, manifest) in &valid {
+    for (report, manifest) in &parsed {
         canonical_owners
             .entry(manifest.id.to_ascii_lowercase())
             .or_default()
