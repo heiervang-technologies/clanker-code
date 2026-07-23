@@ -1488,6 +1488,21 @@ impl Session {
             .map(|configuration| configuration.thread_config_snapshot())
     }
 
+    pub(crate) async fn preview_effective_settings(
+        &self,
+        updates: &SessionSettingsUpdate,
+    ) -> ConstraintResult<(ThreadConfigSnapshot, Arc<Config>)> {
+        let state = self.state.lock().await;
+        state
+            .session_configuration
+            .apply(updates)
+            .map(|configuration| {
+                let snapshot = configuration.thread_config_snapshot();
+                let config = Arc::new(Self::build_effective_session_config(&configuration));
+                (snapshot, config)
+            })
+    }
+
     pub(crate) async fn thread_config_snapshot(&self) -> ThreadConfigSnapshot {
         let state = self.state.lock().await;
         state.session_configuration.thread_config_snapshot()

@@ -360,6 +360,15 @@ impl CodexThread {
         self.session.preview_settings(&updates).await
     }
 
+    /// Previews settings and returns the same concrete config a turn would use.
+    pub async fn preview_effective_thread_settings_overrides(
+        &self,
+        overrides: CodexThreadSettingsOverrides,
+    ) -> ConstraintResult<(ThreadConfigSnapshot, Arc<crate::config::Config>)> {
+        let updates = self.thread_settings_update(overrides).await;
+        self.session.preview_effective_settings(&updates).await
+    }
+
     async fn thread_settings_update(
         &self,
         overrides: CodexThreadSettingsOverrides,

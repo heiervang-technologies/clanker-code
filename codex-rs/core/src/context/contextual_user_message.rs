@@ -16,12 +16,15 @@ use super::TurnAborted;
 use super::UserInstructions;
 use super::UserShellCommand;
 use super::world_state::EnvironmentsState;
+use codex_context_fragments::CharacterMemoryContext;
 
 static USER_INSTRUCTIONS_REGISTRATION: FragmentRegistrationProxy<UserInstructions> =
     FragmentRegistrationProxy::new();
 static ENVIRONMENT_CONTEXT_REGISTRATION: FragmentRegistrationProxy<EnvironmentsState> =
     FragmentRegistrationProxy::new();
 static ADDITIONAL_CONTEXT_REGISTRATION: FragmentRegistrationProxy<AdditionalContextUserFragment> =
+    FragmentRegistrationProxy::new();
+static CHARACTER_MEMORY_CONTEXT_REGISTRATION: FragmentRegistrationProxy<CharacterMemoryContext> =
     FragmentRegistrationProxy::new();
 static SKILL_INSTRUCTIONS_REGISTRATION: FragmentRegistrationProxy<SkillInstructions> =
     FragmentRegistrationProxy::new();
@@ -50,6 +53,7 @@ static CONTEXTUAL_USER_FRAGMENTS: &[&dyn FragmentRegistration] = &[
     &USER_INSTRUCTIONS_REGISTRATION,
     &ENVIRONMENT_CONTEXT_REGISTRATION,
     &ADDITIONAL_CONTEXT_REGISTRATION,
+    &CHARACTER_MEMORY_CONTEXT_REGISTRATION,
     &SKILL_INSTRUCTIONS_REGISTRATION,
     &USER_SHELL_COMMAND_REGISTRATION,
     &TURN_ABORTED_REGISTRATION,

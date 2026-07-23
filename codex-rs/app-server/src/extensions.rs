@@ -60,10 +60,10 @@ where
         thread_store: _thread_store,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(event_sink);
-    if let Some(state_db) = state_db {
+    if let Some(state_db) = state_db.as_ref() {
         codex_goal_extension::install_with_backend(
             &mut builder,
-            state_db,
+            Arc::clone(state_db),
             analytics_events_client,
             codex_otel::global(),
             thread_manager,
@@ -72,7 +72,7 @@ where
         );
     }
     codex_guardian::install(&mut builder, guardian_agent_spawner);
-    codex_memories_extension::install(&mut builder, codex_otel::global());
+    codex_memories_extension::install(&mut builder, codex_otel::global(), state_db);
     codex_mcp_extension::install(&mut builder);
     codex_mcp_extension::install_executor_plugins(&mut builder, environment_manager);
     codex_web_search_extension::install(&mut builder, auth_manager.clone());

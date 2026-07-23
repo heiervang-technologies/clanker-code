@@ -7,14 +7,20 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::PromptFragment;
+use codex_extension_api::PromptSlot;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ToolContributor;
 use codex_features::Feature;
 use codex_otel::MetricsClient;
+use codex_protocol::ThreadId;
+use codex_state::MemorySelectionScope;
+use codex_state::StateRuntime;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
-use crate::local::LocalMemoriesBackend;
+use crate::character_context::CHARACTER_MEMORY_SELECTION_LIMIT;
+use crate::character_context::build_character_memory_context;
+use crate::local::ScopedLocalMemoriesBackend;
 use crate::prompts::build_memory_tool_developer_instructions;
 use crate::tools;
 
@@ -22,11 +28,18 @@ use crate::tools;
 #[derive(Clone, Default)]
 pub(crate) struct MemoriesExtension {
     metrics_client: Option<MetricsClient>,
+    state_db: Option<Arc<StateRuntime>>,
 }
 
 impl MemoriesExtension {
-    fn new(metrics_client: Option<MetricsClient>) -> Self {
-        Self { metrics_client }
+    pub(crate) fn new(
+        metrics_client: Option<MetricsClient>,
+        state_db: Option<Arc<StateRuntime>>,
+    ) -> Self {
+        Self {
+            metrics_client,
+            state_db,
+        }
     }
 }
 
@@ -61,9 +74,38 @@ impl ContextContributor for MemoriesExtension {
                 return Vec::new();
             }
 
-            build_memory_tool_developer_instructions(&config.codex_home)
+            let Some(state_db) = self.state_db.as_ref() else {
+                return legacy_memory_context(&config.codex_home).await;
+            };
+            let thread_id = match ThreadId::try_from(thread_store.level_id()) {
+                Ok(thread_id) => thread_id,
+                Err(_) => return Vec::new(),
+            };
+            let scope = match state_db.memories().memory_scope(thread_id).await {
+                Ok(Some(scope)) => scope.selection_scope(),
+                Ok(None) => return legacy_memory_context(&config.codex_home).await,
+                Err(error) => {
+                    tracing::warn!(%thread_id, "failed to resolve memory context scope: {error}");
+                    return Vec::new();
+                }
+            };
+            let MemorySelectionScope::Named { .. } = &scope else {
+                return legacy_memory_context(&config.codex_home).await;
+            };
+            let records = match state_db
+                .memories()
+                .select_scoped_memories(&scope, CHARACTER_MEMORY_SELECTION_LIMIT)
                 .await
-                .map(PromptFragment::developer_policy)
+            {
+                Ok(records) => records,
+                Err(error) => {
+                    tracing::warn!(%thread_id, "failed to select character memory context: {error}");
+                    return Vec::new();
+                }
+            };
+            build_character_memory_context(&config.codex_home, &scope, &records)
+                .await
+                .map(|context| PromptFragment::new(PromptSlot::ContextualUser, context))
                 .into_iter()
                 .collect()
         })
@@ -108,8 +150,22 @@ impl ToolContributor for MemoriesExtension {
             return Vec::new();
         }
 
+        let Some(state_db) = self.state_db.as_ref() else {
+            return tools::memory_tools(
+                crate::local::LocalMemoriesBackend::from_codex_home(&config.codex_home),
+                self.metrics_client.clone(),
+            );
+        };
+
         tools::memory_tools(
-            LocalMemoriesBackend::from_codex_home(&config.codex_home),
+            ScopedLocalMemoriesBackend::new(
+                config.codex_home.clone(),
+                Some(Arc::clone(state_db)),
+                match ThreadId::try_from(thread_store.level_id()) {
+                    Ok(thread_id) => thread_id,
+                    Err(_) => return Vec::new(),
+                },
+            ),
             self.metrics_client.clone(),
         )
     }
@@ -119,10 +175,19 @@ impl ToolContributor for MemoriesExtension {
 pub fn install(
     registry: &mut ExtensionRegistryBuilder<Config>,
     metrics_client: Option<MetricsClient>,
+    state_db: Option<Arc<StateRuntime>>,
 ) {
-    let extension = Arc::new(MemoriesExtension::new(metrics_client));
+    let extension = Arc::new(MemoriesExtension::new(metrics_client, state_db));
     registry.thread_lifecycle_contributor(extension.clone());
     registry.config_contributor(extension.clone());
     registry.prompt_contributor(extension.clone());
     registry.tool_contributor(extension);
+}
+
+async fn legacy_memory_context(codex_home: &AbsolutePathBuf) -> Vec<PromptFragment> {
+    build_memory_tool_developer_instructions(codex_home)
+        .await
+        .map(PromptFragment::developer_policy)
+        .into_iter()
+        .collect()
 }

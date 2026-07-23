@@ -150,6 +150,21 @@ assistant turn 1"#
 }
 
 #[test]
+fn current_thread_section_filters_character_memory_context() {
+    let items = vec![
+        user_message("<character_memory_context>must-not-leak</character_memory_context>"),
+        user_message("visible user turn"),
+        assistant_message("visible assistant turn"),
+    ];
+
+    let section = build_current_thread_section(&items).expect("current thread section");
+
+    assert!(section.contains("visible user turn"));
+    assert!(section.contains("visible assistant turn"));
+    assert!(!section.contains("must-not-leak"));
+}
+
+#[test]
 fn current_thread_turn_truncation_preserves_start_and_end() {
     let items = vec![user_message(long_turn_text(/*index*/ 0))];
     let section = build_current_thread_section(&items).expect("current thread section");

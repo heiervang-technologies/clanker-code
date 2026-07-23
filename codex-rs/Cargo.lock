@@ -3460,10 +3460,17 @@ dependencies = [
 name = "codex-memories-extension"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "codex-character",
+ "codex-context-fragments",
  "codex-core",
  "codex-extension-api",
  "codex-features",
+ "codex-memories-read",
+ "codex-memories-write",
  "codex-otel",
+ "codex-protocol",
+ "codex-state",
  "codex-tools",
  "codex-utils-absolute-path",
  "codex-utils-output-truncation",
@@ -3475,6 +3482,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

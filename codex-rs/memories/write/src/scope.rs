@@ -5,6 +5,7 @@ use codex_state::MemoryProjectKey;
 use codex_state::MemoryScope;
 use codex_state::StateRuntime;
 use codex_state::ThreadMetadata;
+use std::ffi::OsString;
 use std::path::Path;
 
 pub(crate) async fn current_thread_scope(
@@ -13,8 +14,31 @@ pub(crate) async fn current_thread_scope(
     codex_home: &Path,
     current_cwd: &Path,
     parent_thread_id: Option<codex_protocol::ThreadId>,
+    launcher_identity: Option<OsString>,
 ) -> anyhow::Result<MemoryScope> {
-    let launcher_id = std::env::var_os("CLANKER_ID")
+    current_thread_scope_with_launcher_identity(
+        db,
+        thread_id,
+        codex_home,
+        current_cwd,
+        parent_thread_id,
+        launcher_identity,
+    )
+    .await
+}
+
+async fn current_thread_scope_with_launcher_identity(
+    db: &StateRuntime,
+    thread_id: codex_protocol::ThreadId,
+    codex_home: &Path,
+    current_cwd: &Path,
+    parent_thread_id: Option<codex_protocol::ThreadId>,
+    launcher_identity: Option<OsString>,
+) -> anyhow::Result<MemoryScope> {
+    if let Some(scope) = db.memories().memory_scope(thread_id).await? {
+        return Ok(scope);
+    }
+    let launcher_id = launcher_identity
         .map(|value| {
             value
                 .into_string()
@@ -54,10 +78,7 @@ async fn current_thread_scope_with_identity(
     let scope = MemoryScope {
         thread_id,
         clanker_id,
-        project_key: match thread.as_ref() {
-            Some(thread) => project_key_from_thread(thread)?,
-            None => project_key_from_live_cwd(current_cwd).await?,
-        },
+        project_key: project_key_from_live_cwd(current_cwd).await?,
         parent_thread_id,
         recorded_at: thread.map_or_else(chrono::Utc::now, |thread| thread.created_at),
     };
@@ -163,6 +184,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn existing_scope_wins_before_invalid_launcher_identity_is_decoded_or_resolved() {
+        let home = tempdir().unwrap();
+        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
+            .await
+            .unwrap();
+        let thread_id = ThreadId::new();
+        seed_thread(&runtime, thread_id, "/persisted/project", None).await;
+        let stored = current_thread_scope_with_identity(
+            runtime.as_ref(),
+            thread_id,
+            home.path(),
+            Path::new("/persisted/project"),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        for launcher in [
+            None,
+            Some(OsString::from("Missing")),
+            Some(OsString::from("not-an-id")),
+        ] {
+            let replay = current_thread_scope_with_launcher_identity(
+                runtime.as_ref(),
+                thread_id,
+                home.path(),
+                Path::new("/different/project"),
+                Some(ThreadId::new()),
+                launcher,
+            )
+            .await
+            .unwrap();
+            assert_eq!(replay.thread_id, stored.thread_id);
+            assert_eq!(replay.clanker_id, stored.clanker_id);
+            assert_eq!(replay.project_key, stored.project_key);
+            assert_eq!(replay.parent_thread_id, stored.parent_thread_id);
+            assert_eq!(
+                replay.recorded_at.timestamp(),
+                stored.recorded_at.timestamp()
+            );
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let replay = current_thread_scope_with_launcher_identity(
+                runtime.as_ref(),
+                thread_id,
+                home.path(),
+                Path::new("/different/project"),
+                Some(ThreadId::new()),
+                Some(OsString::from_vec(vec![0xff])),
+            )
+            .await
+            .unwrap();
+            assert_eq!(replay.project_key, stored.project_key);
+        }
+    }
+
+    #[tokio::test]
     async fn current_named_scope_requires_exact_canonical_transport() {
         let home = tempdir().unwrap();
         write_character(home.path(), "chloe", &["cleo"]);
@@ -229,6 +311,39 @@ mod tests {
         assert_eq!(
             stored.recorded_at.timestamp(),
             scope.recorded_at.timestamp()
+        );
+    }
+
+    #[tokio::test]
+    async fn new_live_scope_uses_effective_turn_cwd_instead_of_stale_thread_metadata() {
+        let home = tempdir().unwrap();
+        let project = tempdir().unwrap();
+        let effective_cwd = project.path().canonicalize().unwrap();
+        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
+            .await
+            .unwrap();
+        let thread_id = ThreadId::new();
+        seed_thread(&runtime, thread_id, "/stale/thread-start/project", None).await;
+
+        let scope = current_thread_scope_with_identity(
+            runtime.as_ref(),
+            thread_id,
+            home.path(),
+            &effective_cwd,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            scope.project_key,
+            MemoryProjectKey::from_canonical_path(&effective_cwd).unwrap()
+        );
+        assert_ne!(
+            scope.project_key,
+            MemoryProjectKey::from_canonical_path(Path::new("/stale/thread-start/project"))
+                .unwrap()
         );
     }
 

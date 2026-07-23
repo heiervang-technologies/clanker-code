@@ -751,6 +751,16 @@ fn collect_guardian_transcript_entries_skips_contextual_user_messages() {
         },
         ResponseItem::Message {
             id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "<character_memory_context>must-not-leak</character_memory_context>"
+                    .to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::Message {
+            id: None,
             role: "assistant".to_string(),
             content: vec![ContentItem::OutputText {
                 text: "hello".to_string(),
