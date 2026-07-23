@@ -12,6 +12,10 @@ pub struct Cli {
     #[arg(value_name = "PROMPT", value_hint = clap::ValueHint::Other)]
     pub prompt: Option<String>,
 
+    /// Switch to the clanker identified by this canonical id or declared alias.
+    #[arg(long, value_name = "ID_OR_ALIAS")]
+    pub name: Option<String>,
+
     /// Error out when config.toml contains fields that are not recognized by this version of Codex.
     #[arg(long = "strict-config", default_value_t = false)]
     pub strict_config: bool,

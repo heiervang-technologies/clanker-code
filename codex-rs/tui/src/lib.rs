@@ -94,6 +94,8 @@ mod app_server_approval_conversions;
 mod app_server_session;
 mod approval_events;
 mod ascii_animation;
+mod avatars;
+pub use avatars::ensure_bundled_character_for_name;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;
@@ -896,6 +898,12 @@ pub async fn run_main(
             std::process::exit(1);
         }
     };
+    let avatar_binding = cli
+        .name
+        .as_deref()
+        .map(|name| avatars::resolve_named_avatar_binding(&codex_home, name))
+        .transpose()
+        .map_err(std::io::Error::other)?;
 
     let mut launch_loader_overrides = loader_overrides.clone();
     if let Some(profile_v2) = cli.config_profile_v2.as_ref() {
@@ -1229,6 +1237,7 @@ pub async fn run_main(
         log_db,
         state_db,
         environment_manager,
+        avatar_binding,
     )
     .await
     .map_err(|err| std::io::Error::other(err.to_string()))
@@ -1251,6 +1260,7 @@ async fn run_ratatui_app(
     log_db: Option<log_db::LogDbLayer>,
     state_db: Option<StateDbHandle>,
     environment_manager: Arc<EnvironmentManager>,
+    avatar_binding: Option<crate::avatars::AvatarBinding>,
 ) -> color_eyre::Result<AppExitInfo> {
     let uses_remote_workspace = app_server_target.uses_remote_workspace();
     color_eyre::install()?;
@@ -1748,6 +1758,7 @@ async fn run_ratatui_app(
         cloud_config_bundle,
         prompt,
         images,
+        avatar_binding,
         session_selection,
         feedback,
         should_show_trust_screen, // Proxy to: is it a first run in this directory?

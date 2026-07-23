@@ -325,6 +325,7 @@ use crate::status_indicator_widget::STATUS_DETAILS_DEFAULT_MAX_LINES;
 use crate::status_indicator_widget::StatusDetailsCapitalization;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
+mod avatars;
 mod command_lifecycle;
 mod connectors;
 mod constructor;
@@ -634,6 +635,10 @@ pub(crate) struct ChatWidget {
     active_hook_cell: Option<HookCell>,
     // Ambient companion rendered over the transcript area, never inside the footer rows.
     ambient_pet: Option<crate::pets::AmbientPet>,
+    // Mandatory character embodiment. Selection is owned by character binding, never pet config.
+    ambient_avatar: Option<crate::avatars::AvatarRuntime>,
+    // Asset failure degrades only image rendering; canonical identity remains bound.
+    ambient_avatar_image_degraded: bool,
     pet_picker_preview_state: crate::pets::PetPickerPreviewState,
     pet_picker_preview_pet: Option<crate::pets::AmbientPet>,
     pet_picker_preview_animation: String,
@@ -1132,7 +1137,7 @@ impl ChatWidget {
                 self.bottom_pane
                     .set_context_window(/*percent*/ None, /*used_tokens*/ None);
                 self.token_info = None;
-                self.sync_ambient_pet_semantic_state();
+                self.sync_ambient_visual_state();
             }
         }
     }
@@ -1142,7 +1147,7 @@ impl ChatWidget {
         let used_tokens = self.context_used_tokens(&info, percent.is_some());
         self.bottom_pane.set_context_window(percent, used_tokens);
         self.token_info = Some(info);
-        self.sync_ambient_pet_semantic_state();
+        self.sync_ambient_visual_state();
     }
 
     fn context_remaining_percent(&self, info: &TokenUsageInfo) -> Option<i64> {
@@ -1184,10 +1189,13 @@ impl ChatWidget {
     }
 
     pub(crate) fn pre_draw_tick(&mut self) {
-        self.sync_ambient_pet_semantic_state();
+        self.sync_ambient_visual_state();
         self.update_due_hook_visibility();
         self.schedule_hook_timer_if_needed();
         self.bottom_pane.pre_draw_tick();
+        if let Some(avatar) = self.ambient_avatar.as_ref() {
+            avatar.schedule_next_frame();
+        }
         if let Some(pet) = self.ambient_pet.as_ref() {
             pet.schedule_next_frame();
         }

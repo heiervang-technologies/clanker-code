@@ -509,6 +509,7 @@ pub(crate) struct App {
     pub(crate) session_telemetry: SessionTelemetry,
     pub(crate) app_event_tx: AppEventSender,
     pub(crate) chat_widget: ChatWidget,
+    avatar_binding: Option<crate::avatars::AvatarBinding>,
     workspace_command_runner: Option<WorkspaceCommandRunner>,
     /// Config is stored here so we can recreate ChatWidgets as needed.
     pub(crate) config: Config,
@@ -728,7 +729,23 @@ fn active_turn_interrupt_race(error: &TypedRequestError) -> Option<String> {
     )
 }
 
+fn bind_character_avatar(
+    chat_widget: &mut ChatWidget,
+    binding: Option<&crate::avatars::AvatarBinding>,
+) -> Result<()> {
+    if let Some(binding) = binding {
+        chat_widget
+            .set_avatar_binding(binding.clone())
+            .map_err(|err| color_eyre::eyre::eyre!(err.to_string()))?;
+    }
+    Ok(())
+}
+
 impl App {
+    pub(super) fn bind_character_avatar(&self, chat_widget: &mut ChatWidget) -> Result<()> {
+        bind_character_avatar(chat_widget, self.avatar_binding.as_ref())
+    }
+
     pub fn chatwidget_init_for_forked_or_resumed_thread(
         &self,
         tui: &mut tui::Tui,
@@ -772,6 +789,7 @@ impl App {
         cloud_config_bundle: CloudConfigBundleLoader,
         initial_prompt: Option<String>,
         initial_images: Vec<PathBuf>,
+        avatar_binding: Option<crate::avatars::AvatarBinding>,
         session_selection: SessionSelection,
         feedback: codex_feedback::CodexFeedback,
         is_first_run: bool,
@@ -930,6 +948,7 @@ impl App {
                     session_telemetry: session_telemetry.clone(),
                 };
                 let mut chat_widget = ChatWidget::new_with_app_event(init);
+                bind_character_avatar(&mut chat_widget, avatar_binding.as_ref())?;
                 chat_widget.set_queue_submissions_until_session_configured(/*queue*/ true);
                 (chat_widget, None)
             }
@@ -969,7 +988,9 @@ impl App {
                         .clone(),
                     session_telemetry: session_telemetry.clone(),
                 };
-                (ChatWidget::new_with_app_event(init), Some(resumed))
+                let mut chat_widget = ChatWidget::new_with_app_event(init);
+                bind_character_avatar(&mut chat_widget, avatar_binding.as_ref())?;
+                (chat_widget, Some(resumed))
             }
             SessionSelection::Fork(target_session) => {
                 session_telemetry.counter(
@@ -1008,7 +1029,9 @@ impl App {
                         .clone(),
                     session_telemetry: session_telemetry.clone(),
                 };
-                (ChatWidget::new_with_app_event(init), Some(forked))
+                let mut chat_widget = ChatWidget::new_with_app_event(init);
+                bind_character_avatar(&mut chat_widget, avatar_binding.as_ref())?;
+                (chat_widget, Some(forked))
             }
         };
         chat_widget.remote_connection = remote_connection;
@@ -1032,6 +1055,7 @@ See the Codex keymap documentation for supported actions and examples."
             session_telemetry: session_telemetry.clone(),
             app_event_tx,
             chat_widget,
+            avatar_binding,
             workspace_command_runner: Some(workspace_command_runner),
             config,
             state_db,
@@ -1243,15 +1267,20 @@ See the Codex keymap documentation for supported actions and examples."
         if let Err(err) = app_server.shutdown().await {
             tracing::warn!(error = %err, "failed to shut down embedded app server");
         }
+        let clear_avatar_result = tui.clear_ambient_avatar_image();
         let clear_pet_result = tui.clear_ambient_pet_image();
         let clear_result = tui.terminal.clear();
         let exit_reason = match exit_reason_result {
             Ok(exit_reason) => {
+                clear_avatar_result?;
                 clear_pet_result?;
                 clear_result?;
                 exit_reason
             }
             Err(err) => {
+                if let Err(clear_avatar_err) = clear_avatar_result {
+                    tracing::warn!(error = %clear_avatar_err, "failed to clear ambient avatar image");
+                }
                 if let Err(clear_pet_err) = clear_pet_result {
                     tracing::warn!(error = %clear_pet_err, "failed to clear ambient pet image");
                 }
@@ -1316,6 +1345,23 @@ See the Codex keymap documentation for supported actions and examples."
                     // Allow widgets to process any pending timers before rendering.
                     self.chat_widget.pre_draw_tick();
                     let rendered_area = self.render_chat_widget_frame(tui)?;
+                    if self.chat_widget.ambient_avatar_image_enabled() {
+                        let terminal_size = tui.terminal.size()?;
+                        let ambient_avatar_area = Rect::new(
+                            /*x*/ 0,
+                            /*y*/ 0,
+                            terminal_size.width,
+                            terminal_size.height,
+                        );
+                        if let Err(err) = tui.draw_ambient_avatar_image(
+                            self.chat_widget
+                                .ambient_avatar_draw(ambient_avatar_area, rendered_area.bottom()),
+                        ) {
+                            self.handle_ambient_avatar_image_render_error(tui, err)?;
+                        }
+                    } else if let Err(err) = tui.clear_ambient_avatar_image() {
+                        self.handle_ambient_avatar_image_render_error(tui, err)?;
+                    }
                     if self.chat_widget.ambient_pet_image_enabled() {
                         let terminal_size = tui.terminal.size()?;
                         let ambient_pet_area = Rect::new(

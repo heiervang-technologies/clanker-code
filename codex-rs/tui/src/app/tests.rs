@@ -4103,6 +4103,35 @@ async fn clear_ui_header_shows_fast_status_for_fast_capable_models() {
     assert_app_snapshot!("clear_ui_header_fast_status_fast_capable_models", rendered);
 }
 
+#[tokio::test]
+async fn canonical_avatar_binding_survives_chatwidget_replacement() -> Result<()> {
+    let mut app = make_test_app().await;
+    let home = tempfile::tempdir()?;
+    app.avatar_binding = Some(
+        crate::avatars::resolve_named_avatar_binding(home.path(), "cleo")
+            .map_err(|err| color_eyre::eyre::eyre!(err.to_string()))?,
+    );
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+    let init = app.chatwidget_init_for_forked_or_resumed_thread(
+        &mut tui,
+        app.config.clone(),
+        /*initial_user_message*/ None,
+    );
+    let mut replacement = ChatWidget::new_with_app_event(init);
+
+    app.bind_character_avatar(&mut replacement)?;
+
+    assert_eq!(
+        replacement.ambient_avatar_character_id_for_tests(),
+        Some("chloe")
+    );
+    assert_eq!(
+        replacement.ambient_avatar_semantic_state_for_tests(),
+        Some("idle")
+    );
+    Ok(())
+}
+
 async fn make_test_app() -> App {
     let (chat_widget, app_event_tx, _rx, _op_rx) = make_chatwidget_manual_with_sender().await;
     let config = chat_widget.config_ref().clone();
@@ -4115,6 +4144,7 @@ async fn make_test_app() -> App {
         session_telemetry,
         app_event_tx,
         chat_widget,
+        avatar_binding: None,
         workspace_command_runner: None,
         config,
         state_db: None,
@@ -4181,6 +4211,7 @@ async fn make_test_app_with_channels() -> (
             session_telemetry,
             app_event_tx,
             chat_widget,
+            avatar_binding: None,
             workspace_command_runner: None,
             config,
             state_db: None,

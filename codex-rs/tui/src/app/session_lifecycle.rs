@@ -428,7 +428,9 @@ impl App {
             self.config.clone(),
             /*initial_user_message*/ None,
         );
-        self.replace_chat_widget(ChatWidget::new_with_app_event(init));
+        let mut chat_widget = ChatWidget::new_with_app_event(init);
+        self.bind_character_avatar(&mut chat_widget)?;
+        self.replace_chat_widget(chat_widget);
 
         self.reset_for_thread_switch(tui)?;
         self.replay_thread_snapshot(snapshot, !is_replay_only);
@@ -624,7 +626,9 @@ impl App {
             self.config.clone(),
             initial_user_message,
         );
-        self.replace_chat_widget(ChatWidget::new_with_app_event(init));
+        let mut chat_widget = ChatWidget::new_with_app_event(init);
+        self.bind_character_avatar(&mut chat_widget)?;
+        self.replace_chat_widget(chat_widget);
         self.enqueue_primary_thread_session_with_presentation(
             started.session,
             started.turns,

@@ -612,7 +612,7 @@ impl ChatWidget {
     }
 
     pub(super) fn update_collaboration_mode_indicator(&mut self) {
-        self.sync_ambient_pet_semantic_state();
+        self.sync_ambient_visual_state();
         let mode_indicator = self.collaboration_mode_indicator();
         // LARP is home base: an active goal indicator outranks it, while every
         // other mode keeps priority over goal status.
