@@ -2,7 +2,9 @@ use crate::extensions::seed_extension_instructions;
 use crate::memory_root;
 use crate::phase1;
 use crate::phase2;
+use crate::prepare_memories_startup_scope;
 use crate::runtime::MemoryStartupContext;
+use crate::start::prepare_memories_startup_scope_with_state_db;
 use crate::start_memories_startup_task;
 use crate::storage::rebuild_raw_memories_file_from_memories;
 use crate::storage::sync_rollout_summaries_from_memories;
@@ -48,6 +50,75 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::time::Duration;
 use tokio::time::Instant;
+
+#[tokio::test]
+async fn explicit_named_prepare_fails_without_state_db_and_anonymous_proceeds() {
+    let server = start_mock_server().await;
+    let home = Arc::new(TempDir::new().unwrap());
+    let test = test_codex()
+        .with_home(Arc::clone(&home))
+        .with_config(|config| {
+            config
+                .features
+                .enable(Feature::MemoryTool)
+                .expect("enable memory tool");
+            config
+                .features
+                .disable(Feature::Sqlite)
+                .expect("disable sqlite");
+        })
+        .build(&server)
+        .await
+        .unwrap();
+    let snapshot = test.codex.config_snapshot().await;
+
+    let error = prepare_memories_startup_scope_with_state_db(
+        test.session_configured.thread_id,
+        test.codex.as_ref(),
+        &test.config,
+        &snapshot.session_source,
+        None,
+        Some(std::ffi::OsString::from("chloe")),
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("state db unavailable"));
+    assert!(
+        prepare_memories_startup_scope_with_state_db(
+            test.session_configured.thread_id,
+            test.codex.as_ref(),
+            &test.config,
+            &snapshot.session_source,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    shutdown_test_codex(&test).await.unwrap();
+}
+
+#[tokio::test]
+async fn effective_settings_preview_materializes_turn_model_for_memory_startup() {
+    let server = start_mock_server().await;
+    let home = Arc::new(TempDir::new().unwrap());
+    let test = build_test_codex(&server, home).await.unwrap();
+    let (snapshot, config) = test
+        .codex
+        .preview_effective_thread_settings_overrides(codex_core::CodexThreadSettingsOverrides {
+            model: Some("effective-memory-model".to_string()),
+            effort: Some(Some(ReasoningEffort::High)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(snapshot.model, "effective-memory-model");
+    assert_eq!(config.model.as_deref(), Some("effective-memory-model"));
+    assert_eq!(config.model_reasoning_effort, Some(ReasoningEffort::High));
+    shutdown_test_codex(&test).await.unwrap();
+}
 
 #[tokio::test]
 async fn memories_startup_creates_memory_root() -> anyhow::Result<()> {
@@ -555,7 +626,13 @@ async fn run_memory_phase_two_model_request_test(
     seed_extension_instructions(&root).await?;
     seed_required_memory_artifacts(&root).await?;
     let parent_permission_profile = config.permissions.effective_permission_profile();
-    phase2::run(context, config, parent_permission_profile).await;
+    phase2::run(
+        context,
+        config,
+        parent_permission_profile,
+        codex_state::MemorySelectionScope::Anonymous,
+    )
+    .await;
     let request = wait_for_single_request(&response).await;
     wait_for_phase2_workspace_reset(&home.path().join("memories")).await?;
     shutdown_test_codex(&test).await?;
@@ -610,14 +687,23 @@ async fn trigger_memories_startup(test: &TestCodex) {
         .enable(Feature::MemoryTool)
         .expect("test config should allow feature update");
     let parent_permission_profile = config.permissions.effective_permission_profile();
+    let memory_scope = prepare_memories_startup_scope(
+        test.session_configured.thread_id,
+        test.codex.as_ref(),
+        &config,
+        &config_snapshot.session_source,
+    )
+    .await
+    .expect("prepare startup memory scope")
+    .expect("memory scope should be eligible");
     start_memories_startup_task(
         Arc::clone(&test.thread_manager),
         test.thread_manager.auth_manager(),
-        test.session_configured.thread_id,
         Arc::clone(&test.codex),
         Arc::new(config),
         parent_permission_profile,
         &config_snapshot.session_source,
+        memory_scope,
     );
 }
 

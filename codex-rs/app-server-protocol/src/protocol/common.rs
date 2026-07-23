@@ -8,6 +8,7 @@ use crate::export::GeneratedSchema;
 use crate::export::write_json_schema;
 use crate::protocol::v1;
 use crate::protocol::v2;
+use crate::protocol::v2::MemoryResetParams;
 use codex_experimental_api_macros::ExperimentalApi;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -571,7 +572,7 @@ client_request_definitions! {
     },
     #[experimental("memory/reset")]
     MemoryReset => "memory/reset" {
-        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
+        params: #[serde(skip_serializing_if = "Option::is_none")] Option<MemoryResetParams>,
         serialization: global("memory"),
         response: v2::MemoryResetResponse,
     },

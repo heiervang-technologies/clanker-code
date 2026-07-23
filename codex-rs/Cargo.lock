@@ -1962,6 +1962,7 @@ dependencies = [
  "codex-app-server-transport",
  "codex-arg0",
  "codex-backend-client",
+ "codex-character",
  "codex-chatgpt",
  "codex-cloud-config",
  "codex-config",
@@ -3459,10 +3460,17 @@ dependencies = [
 name = "codex-memories-extension"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "codex-character",
+ "codex-context-fragments",
  "codex-core",
  "codex-extension-api",
  "codex-features",
+ "codex-memories-read",
+ "codex-memories-write",
  "codex-otel",
+ "codex-protocol",
+ "codex-state",
  "codex-tools",
  "codex-utils-absolute-path",
  "codex-utils-output-truncation",
@@ -3474,6 +3482,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -3493,6 +3503,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "codex-backend-client",
+ "codex-character",
  "codex-config",
  "codex-core",
  "codex-features",
@@ -3994,6 +4005,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "codex-character",
  "codex-git-utils",
  "codex-protocol",
  "dirs",
@@ -4003,8 +4015,11 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "strum 0.27.2",
+ "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",

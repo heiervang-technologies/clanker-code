@@ -1,7 +1,11 @@
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use codex_protocol::ThreadId;
+use codex_state::MemorySelectionScope;
+use codex_state::StateRuntime;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 use crate::backend::AddAdHocMemoryNoteRequest;
@@ -21,9 +25,51 @@ mod path;
 mod read;
 mod search;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct LocalMemoriesBackend {
     root: PathBuf,
+}
+
+#[derive(Clone)]
+pub(crate) struct ScopedLocalMemoriesBackend {
+    codex_home: AbsolutePathBuf,
+    state_db: Option<Arc<StateRuntime>>,
+    thread_id: ThreadId,
+}
+
+impl ScopedLocalMemoriesBackend {
+    pub(crate) fn new(
+        codex_home: AbsolutePathBuf,
+        state_db: Option<Arc<StateRuntime>>,
+        thread_id: ThreadId,
+    ) -> Self {
+        Self {
+            codex_home,
+            state_db,
+            thread_id,
+        }
+    }
+
+    async fn resolve_backend(&self) -> Result<LocalMemoriesBackend, MemoriesBackendError> {
+        let selection_scope = match self.state_db.as_ref() {
+            Some(state_db) => state_db
+                .memories()
+                .memory_scope(self.thread_id)
+                .await
+                .map_err(memory_scope_error)?
+                .map(|scope| scope.selection_scope())
+                .unwrap_or(MemorySelectionScope::Anonymous),
+            None => MemorySelectionScope::Anonymous,
+        };
+        let root = codex_memories_write::memory_root_for_scope(&self.codex_home, &selection_scope);
+        Ok(LocalMemoriesBackend::from_memory_root(root))
+    }
+}
+
+fn memory_scope_error(error: codex_state::MemoryScopeError) -> MemoriesBackendError {
+    MemoriesBackendError::Io(std::io::Error::other(format!(
+        "failed to resolve immutable memory scope: {error}"
+    )))
 }
 
 impl LocalMemoriesBackend {
@@ -125,5 +171,35 @@ impl MemoriesBackend for LocalMemoriesBackend {
         request: SearchMemoriesRequest,
     ) -> Result<SearchMemoriesResponse, MemoriesBackendError> {
         search::search(self, request).await
+    }
+}
+
+impl MemoriesBackend for ScopedLocalMemoriesBackend {
+    async fn add_ad_hoc_note(
+        &self,
+        request: AddAdHocMemoryNoteRequest,
+    ) -> Result<AddAdHocMemoryNoteResponse, MemoriesBackendError> {
+        self.resolve_backend().await?.add_ad_hoc_note(request).await
+    }
+
+    async fn list(
+        &self,
+        request: ListMemoriesRequest,
+    ) -> Result<ListMemoriesResponse, MemoriesBackendError> {
+        self.resolve_backend().await?.list(request).await
+    }
+
+    async fn read(
+        &self,
+        request: ReadMemoryRequest,
+    ) -> Result<ReadMemoryResponse, MemoriesBackendError> {
+        self.resolve_backend().await?.read(request).await
+    }
+
+    async fn search(
+        &self,
+        request: SearchMemoriesRequest,
+    ) -> Result<SearchMemoriesResponse, MemoriesBackendError> {
+        self.resolve_backend().await?.search(request).await
     }
 }

@@ -12,22 +12,30 @@ mod phase1;
 mod phase2;
 mod prompts;
 mod runtime;
+mod scope;
 mod start;
 mod storage;
 pub mod workspace;
 
+use codex_state::MemorySelectionScope;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::path::Path;
 use std::path::PathBuf;
 
 pub use control::clear_memory_roots_contents;
+pub use control::clear_memory_selection_scopes;
 pub use extensions::prune_old_extension_resources;
 pub use prompts::build_consolidation_prompt;
 pub use prompts::build_stage_one_input_message;
+pub use start::prepare_memories_startup_scope;
 pub use start::start_memories_startup_task;
 pub use storage::rebuild_raw_memories_file_from_memories;
+pub use storage::rebuild_raw_memories_file_from_scoped_memories;
+pub use storage::render_scoped_rollout_summary;
 pub use storage::rollout_summary_file_stem;
+pub use storage::scoped_episode_body;
 pub use storage::sync_rollout_summaries_from_memories;
+pub use storage::sync_rollout_summaries_from_scoped_memories;
 
 #[cfg(test)]
 mod startup_tests;
@@ -115,6 +123,24 @@ mod workspace_diff {
 
 pub fn memory_root(codex_home: &AbsolutePathBuf) -> AbsolutePathBuf {
     codex_home.join("memories")
+}
+
+pub fn memory_root_for_scope(
+    codex_home: &AbsolutePathBuf,
+    scope: &MemorySelectionScope,
+) -> AbsolutePathBuf {
+    match scope {
+        MemorySelectionScope::Named {
+            clanker_id,
+            project_key,
+        } => codex_home
+            .join("character_memories")
+            .join("characters")
+            .join(clanker_id.as_str())
+            .join("projects")
+            .join(project_key.artifact_digest()),
+        MemorySelectionScope::Anonymous => memory_root(codex_home),
+    }
 }
 
 pub fn rollout_summaries_dir(root: &Path) -> PathBuf {

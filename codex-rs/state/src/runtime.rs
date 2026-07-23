@@ -62,6 +62,8 @@ use tracing::warn;
 
 mod agent_jobs;
 mod backfill;
+#[cfg(test)]
+mod character_memory_tests;
 mod external_agent_config_imports;
 mod goals;
 mod logs;

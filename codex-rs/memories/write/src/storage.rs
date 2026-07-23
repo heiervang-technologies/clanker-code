@@ -1,3 +1,5 @@
+use codex_state::MemorySelectionScope;
+use codex_state::ScopedMemoryRecord;
 use codex_state::Stage1Output;
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -8,6 +10,171 @@ use uuid::Uuid;
 use crate::ensure_layout;
 use crate::raw_memories_file;
 use crate::rollout_summaries_dir;
+
+pub async fn rebuild_raw_memories_file_from_scoped_memories(
+    root: &Path,
+    scope: &MemorySelectionScope,
+    memories: &[ScopedMemoryRecord],
+    limit: usize,
+) -> std::io::Result<()> {
+    if matches!(scope, MemorySelectionScope::Anonymous) {
+        let legacy = memories
+            .iter()
+            .map(|record| record.output.clone())
+            .collect::<Vec<_>>();
+        return rebuild_raw_memories_file_from_memories(root, legacy.as_slice(), limit).await;
+    }
+    ensure_layout(root).await?;
+    let retained = &memories[..memories.len().min(limit)];
+    let mut body = String::from("# Raw Memories\n\n");
+    if retained.is_empty() {
+        body.push_str("No raw memories yet.\n");
+    } else {
+        body.push_str("Scoped stage-1 memories (stable ascending thread-id order):\n\n");
+        for record in retained {
+            writeln!(body, "## Thread `{}`", record.output.thread_id)
+                .map_err(raw_memories_format_error)?;
+            write_scoped_provenance(&mut body, record).map_err(raw_memories_format_error)?;
+            writeln!(body).map_err(raw_memories_format_error)?;
+            body.push_str(record.output.raw_memory.trim());
+            body.push_str("\n\n");
+        }
+    }
+    tokio::fs::write(raw_memories_file(root), body).await
+}
+
+pub async fn sync_rollout_summaries_from_scoped_memories(
+    root: &Path,
+    scope: &MemorySelectionScope,
+    memories: &[ScopedMemoryRecord],
+    limit: usize,
+) -> std::io::Result<()> {
+    if matches!(scope, MemorySelectionScope::Anonymous) {
+        let legacy = memories
+            .iter()
+            .map(|record| record.output.clone())
+            .collect::<Vec<_>>();
+        return sync_rollout_summaries_from_memories(root, legacy.as_slice(), limit).await;
+    }
+    ensure_layout(root).await?;
+    let retained = &memories[..memories.len().min(limit)];
+    let keep = retained
+        .iter()
+        .map(scoped_rollout_summary_file_name)
+        .collect::<std::io::Result<HashSet<_>>>()?;
+    prune_rollout_summaries(root, &keep).await?;
+    for record in retained {
+        let citation = record.citation_path.as_ref().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("named memory {} has no citation", record.output.thread_id),
+            )
+        })?;
+        let relative = Path::new(citation.as_str());
+        if relative.parent() != Some(Path::new("rollout_summaries")) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("unsupported named memory citation {citation}"),
+            ));
+        }
+        let path = root.join(relative);
+        let body = render_scoped_rollout_summary(record)?;
+        tokio::fs::write(path, body).await?;
+    }
+    Ok(())
+}
+
+/// Returns the exact episode body stored in a named rollout-summary artifact
+/// and exposed to character startup context.
+pub fn scoped_episode_body(record: &ScopedMemoryRecord) -> Option<&str> {
+    let summary = record.output.rollout_summary.trim();
+    if !summary.is_empty() {
+        return Some(summary);
+    }
+    let raw = record.output.raw_memory.trim();
+    (!raw.is_empty()).then_some(raw)
+}
+
+/// Renders the canonical bytes for a named rollout-summary artifact.
+pub fn render_scoped_rollout_summary(record: &ScopedMemoryRecord) -> std::io::Result<String> {
+    let mut body = String::new();
+    write_scoped_provenance(&mut body, record).map_err(rollout_summary_format_error)?;
+    writeln!(body).map_err(rollout_summary_format_error)?;
+    body.push_str(scoped_episode_body(record).unwrap_or_default());
+    body.push('\n');
+    Ok(body)
+}
+
+fn scoped_rollout_summary_file_name(record: &ScopedMemoryRecord) -> std::io::Result<String> {
+    let citation = record.citation_path.as_ref().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("named memory {} has no citation", record.output.thread_id),
+        )
+    })?;
+    let path = Path::new(citation.as_str());
+    if path.parent() != Some(Path::new("rollout_summaries")) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unsupported named memory citation {citation}"),
+        ));
+    }
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(str::to_string)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid citation"))
+}
+
+fn write_scoped_provenance(body: &mut String, record: &ScopedMemoryRecord) -> std::fmt::Result {
+    writeln!(body, "thread_id: {}", record.output.thread_id)?;
+    writeln!(
+        body,
+        "source_character: {}",
+        record
+            .clanker_id
+            .as_ref()
+            .map_or("anonymous", |id| id.as_str())
+    )?;
+    writeln!(
+        body,
+        "source_project: {}",
+        record
+            .project_key
+            .as_ref()
+            .map_or("unknown", |key| key.as_str())
+    )?;
+    writeln!(body, "visibility: {}", record.visibility.as_str())?;
+    writeln!(
+        body,
+        "parent_thread_id: {}",
+        record
+            .parent_thread_id
+            .map_or_else(|| "none".to_string(), |id| id.to_string())
+    )?;
+    writeln!(
+        body,
+        "citation: {}",
+        record
+            .citation_path
+            .as_ref()
+            .map_or("none", |path| path.as_str())
+    )?;
+    writeln!(
+        body,
+        "updated_at: {}",
+        record.output.source_updated_at.to_rfc3339()
+    )?;
+    writeln!(
+        body,
+        "rollout_path: {}",
+        record.output.rollout_path.display()
+    )?;
+    writeln!(body, "cwd: {}", record.output.cwd.display())?;
+    if let Some(git_branch) = record.output.git_branch.as_deref() {
+        writeln!(body, "git_branch: {git_branch}")?;
+    }
+    Ok(())
+}
 
 /// Rebuild `raw_memories.md` from DB-backed stage-1 outputs.
 pub async fn rebuild_raw_memories_file_from_memories(
