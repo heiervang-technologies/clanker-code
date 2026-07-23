@@ -54,6 +54,11 @@ fix *args:
 clippy *args:
     cargo clippy --tests {args}
 
+# Show which Cargo target directories consume the most disk space.
+[no-cd]
+target-size:
+    {{ python }} {{ justfile_directory() }}/scripts/cargo_target_size.py
+
 [unix]
 install:
     rustup show active-toolchain
