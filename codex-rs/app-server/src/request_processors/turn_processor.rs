@@ -125,6 +125,12 @@ struct ThreadSettingsBuildParams {
     personality: Option<Personality>,
 }
 
+struct BuiltThreadSettings {
+    overrides: codex_protocol::protocol::ThreadSettingsOverrides,
+    config_snapshot: codex_core::ThreadConfigSnapshot,
+    effective_config: Arc<Config>,
+}
+
 impl TurnRequestProcessor {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -525,7 +531,11 @@ impl TurnRequestProcessor {
                 environment_selections,
             )
             .await;
-        let thread_settings = self
+        let BuiltThreadSettings {
+            overrides: thread_settings,
+            config_snapshot,
+            effective_config: config,
+        } = self
             .build_thread_settings_overrides(
                 thread.as_ref(),
                 ThreadSettingsBuildParams {
@@ -552,6 +562,25 @@ impl TurnRequestProcessor {
                     .map(PermissionProfile::from_legacy_sandbox_policy)
             });
 
+        let prepared_memory_scope = if turn_has_input {
+            codex_memories_write::prepare_memories_startup_scope(
+                thread_id,
+                thread.as_ref(),
+                config.as_ref(),
+                &config_snapshot.session_source,
+            )
+            .await
+            .map_err(|err| {
+                let error = invalid_request(format!(
+                    "failed to prepare explicit character memory scope: {err}"
+                ));
+                self.track_error_response(&request_id, &error, /*error_type*/ None);
+                error
+            })?
+        } else {
+            None
+        };
+
         // Start the turn by submitting the user input. Return its submission id as turn_id.
         let turn_op = Op::UserInput {
             items: mapped_items,
@@ -573,18 +602,17 @@ impl TurnRequestProcessor {
                 error
             })?;
 
-        if turn_has_input {
-            let config_snapshot = thread.config_snapshot().await;
+        if let Some(memory_scope) = prepared_memory_scope {
             let parent_permission_profile =
                 parent_permission_profile_override.unwrap_or(config_snapshot.permission_profile);
             codex_memories_write::start_memories_startup_task(
                 Arc::clone(&self.thread_manager),
                 Arc::clone(&self.auth_manager),
-                thread_id,
                 Arc::clone(&thread),
-                thread.config().await,
+                config,
                 parent_permission_profile,
                 &config_snapshot.session_source,
+                memory_scope,
             );
         }
 
@@ -672,7 +700,7 @@ impl TurnRequestProcessor {
         &self,
         thread: &CodexThread,
         params: ThreadSettingsBuildParams,
-    ) -> Result<codex_protocol::protocol::ThreadSettingsOverrides, JSONRPCErrorError> {
+    ) -> Result<BuiltThreadSettings, JSONRPCErrorError> {
         let ThreadSettingsBuildParams {
             method,
             environments,
@@ -768,31 +796,28 @@ impl TurnRequestProcessor {
             };
         let effort = effort.map(Some);
 
-        if has_any_overrides {
-            thread
-                .preview_thread_settings_overrides(CodexThreadSettingsOverrides {
-                    environments: environments.clone(),
-                    approval_policy,
-                    approvals_reviewer,
-                    sandbox_policy: sandbox_policy.clone(),
-                    permission_profile: permission_profile.clone(),
-                    active_permission_profile: active_permission_profile.clone(),
-                    profile_workspace_roots: profile_workspace_roots.clone(),
-                    windows_sandbox_level: None,
-                    model: model.clone(),
-                    effort: effort.clone(),
-                    summary,
-                    service_tier: service_tier.clone(),
-                    collaboration_mode: collaboration_mode.clone(),
-                    personality,
-                })
-                .await
-                .map_err(|err| {
-                    invalid_request(format!("invalid thread settings override: {err}"))
-                })?;
-        }
+        let core_overrides = CodexThreadSettingsOverrides {
+            environments: environments.clone(),
+            approval_policy,
+            approvals_reviewer,
+            sandbox_policy: sandbox_policy.clone(),
+            permission_profile: permission_profile.clone(),
+            active_permission_profile: active_permission_profile.clone(),
+            profile_workspace_roots: profile_workspace_roots.clone(),
+            windows_sandbox_level: None,
+            model: model.clone(),
+            effort: effort.clone(),
+            summary,
+            service_tier: service_tier.clone(),
+            collaboration_mode: collaboration_mode.clone(),
+            personality,
+        };
+        let (config_snapshot, effective_config) = thread
+            .preview_effective_thread_settings_overrides(core_overrides)
+            .await
+            .map_err(|err| invalid_request(format!("invalid thread settings override: {err}")))?;
 
-        Ok(codex_protocol::protocol::ThreadSettingsOverrides {
+        let overrides = codex_protocol::protocol::ThreadSettingsOverrides {
             environments,
             profile_workspace_roots,
             approval_policy,
@@ -807,6 +832,15 @@ impl TurnRequestProcessor {
             service_tier,
             collaboration_mode,
             personality,
+        };
+        debug_assert!(
+            has_any_overrides
+                || overrides == codex_protocol::protocol::ThreadSettingsOverrides::default()
+        );
+        Ok(BuiltThreadSettings {
+            overrides,
+            config_snapshot,
+            effective_config,
         })
     }
 
@@ -843,7 +877,8 @@ impl TurnRequestProcessor {
                     personality: params.personality,
                 },
             )
-            .await?;
+            .await?
+            .overrides;
 
         if thread_settings != codex_protocol::protocol::ThreadSettingsOverrides::default() {
             self.submit_core_op(

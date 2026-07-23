@@ -78,14 +78,31 @@ pub async fn sync_rollout_summaries_from_scoped_memories(
             ));
         }
         let path = root.join(relative);
-        let mut body = String::new();
-        write_scoped_provenance(&mut body, record).map_err(rollout_summary_format_error)?;
-        writeln!(body).map_err(rollout_summary_format_error)?;
-        body.push_str(&record.output.rollout_summary);
-        body.push('\n');
+        let body = render_scoped_rollout_summary(record)?;
         tokio::fs::write(path, body).await?;
     }
     Ok(())
+}
+
+/// Returns the exact episode body stored in a named rollout-summary artifact
+/// and exposed to character startup context.
+pub fn scoped_episode_body(record: &ScopedMemoryRecord) -> Option<&str> {
+    let summary = record.output.rollout_summary.trim();
+    if !summary.is_empty() {
+        return Some(summary);
+    }
+    let raw = record.output.raw_memory.trim();
+    (!raw.is_empty()).then_some(raw)
+}
+
+/// Renders the canonical bytes for a named rollout-summary artifact.
+pub fn render_scoped_rollout_summary(record: &ScopedMemoryRecord) -> std::io::Result<String> {
+    let mut body = String::new();
+    write_scoped_provenance(&mut body, record).map_err(rollout_summary_format_error)?;
+    writeln!(body).map_err(rollout_summary_format_error)?;
+    body.push_str(scoped_episode_body(record).unwrap_or_default());
+    body.push('\n');
+    Ok(body)
 }
 
 fn scoped_rollout_summary_file_name(record: &ScopedMemoryRecord) -> std::io::Result<String> {

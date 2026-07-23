@@ -16,6 +16,14 @@ fn detects_environment_context_fragment() {
 }
 
 #[test]
+fn detects_character_memory_context_fragment() {
+    assert!(is_contextual_user_fragment(&ContentItem::InputText {
+        text: "<character_memory_context>\nschema_version=1\n</character_memory_context>"
+            .to_string(),
+    }));
+}
+
+#[test]
 fn detects_agents_instructions_fragment() {
     for text in [
         "# AGENTS.md instructions for /tmp\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>",

@@ -27,10 +27,13 @@ pub use control::clear_memory_selection_scopes;
 pub use extensions::prune_old_extension_resources;
 pub use prompts::build_consolidation_prompt;
 pub use prompts::build_stage_one_input_message;
+pub use start::prepare_memories_startup_scope;
 pub use start::start_memories_startup_task;
 pub use storage::rebuild_raw_memories_file_from_memories;
 pub use storage::rebuild_raw_memories_file_from_scoped_memories;
+pub use storage::render_scoped_rollout_summary;
 pub use storage::rollout_summary_file_stem;
+pub use storage::scoped_episode_body;
 pub use storage::sync_rollout_summaries_from_memories;
 pub use storage::sync_rollout_summaries_from_scoped_memories;
 

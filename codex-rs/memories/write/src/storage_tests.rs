@@ -216,6 +216,56 @@ async fn named_artifacts_use_stable_citation_and_complete_source_provenance() {
     assert!(raw.contains("raw memory"));
 }
 
+#[tokio::test]
+async fn named_artifact_and_context_source_share_raw_memory_fallback() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path().join("named-memory");
+    let character_home = tempdir().expect("character home");
+    write_character(character_home.path(), "chloe");
+    let clanker_id = CanonicalClankerId::resolve_exact(
+        &codex_character::CharacterCatalog::load(character_home.path()),
+        "chloe",
+    )
+    .unwrap();
+    let project_key = MemoryProjectKey::from_canonical_path("/workspace/project").unwrap();
+    let thread_id = fixed_thread_id();
+    let citation = MemoryCitationPath::new(format!("rollout_summaries/{thread_id}.md")).unwrap();
+    let mut output = stage1_output_with_slug(thread_id, None);
+    output.rollout_summary = " \n".to_string();
+    output.raw_memory = "  raw fallback body  \n".to_string();
+    let record = ScopedMemoryRecord {
+        output,
+        clanker_id: Some(clanker_id.clone()),
+        project_key: Some(project_key.clone()),
+        visibility: MemoryVisibility::PrivateCharacter,
+        parent_thread_id: None,
+        citation_path: Some(citation.clone()),
+        usage_count: 0,
+        last_usage: None,
+    };
+
+    sync_rollout_summaries_from_scoped_memories(
+        &root,
+        &MemorySelectionScope::Named {
+            clanker_id,
+            project_key,
+        },
+        std::slice::from_ref(&record),
+        10,
+    )
+    .await
+    .unwrap();
+
+    let artifact = tokio::fs::read_to_string(root.join(citation.as_str()))
+        .await
+        .unwrap();
+    assert_eq!(
+        crate::scoped_episode_body(&record),
+        Some("raw fallback body")
+    );
+    assert!(artifact.ends_with("\nraw fallback body\n"));
+}
+
 fn write_character(home: &std::path::Path, id: &str) {
     let avatar = home.join("characters").join(id).join("avatar");
     std::fs::create_dir_all(&avatar).unwrap();

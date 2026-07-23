@@ -78,6 +78,8 @@ use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
+use codex_state::MemoryProjectKey;
+use codex_state::StateRuntime;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -1352,6 +1354,145 @@ async fn turn_start_rejects_combined_oversized_text_input() -> Result<()> {
         "did not expect a turn/started notification for rejected input"
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn named_turn_start_scope_error_fails_before_user_input_submission() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("must not run").await;
+    let codex_home = TempDir::new()?;
+    write_test_character(codex_home.path(), "chloe", "Chloe")?;
+    create_config_toml(
+        codex_home.path(),
+        &server.uri(),
+        "never",
+        &BTreeMap::from([(Feature::MemoryTool, true), (Feature::Sqlite, true)]),
+    )?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .with_env_overrides(&[("CLANKER_ID", Some("Chloe"))])
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+    let thread_req = mcp
+        .send_thread_start_request_with_auto_env(ThreadStartParams::default())
+        .await?;
+    let thread_resp = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(thread_req)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response(thread_resp)?;
+
+    let turn_req = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id,
+            input: vec![V2UserInput::Text {
+                text: "must be rejected".to_string(),
+                text_elements: Vec::new(),
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let error: JSONRPCError = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(turn_req)),
+    )
+    .await??;
+    assert_eq!(error.error.code, INVALID_REQUEST_ERROR_CODE);
+    assert!(error.error.message.contains("exact canonical"));
+    assert!(
+        timeout(
+            std::time::Duration::from_millis(250),
+            mcp.read_stream_until_notification_message("turn/started"),
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("done").await;
+    let temp = TempDir::new()?;
+    let codex_home = temp.path().join("home");
+    let initial_cwd = temp.path().join("initial");
+    let turn_cwd = temp.path().join("turn");
+    std::fs::create_dir_all(&codex_home)?;
+    std::fs::create_dir_all(&initial_cwd)?;
+    std::fs::create_dir_all(&turn_cwd)?;
+    write_test_character(&codex_home, "chloe", "Chloe")?;
+    create_config_toml(
+        &codex_home,
+        &server.uri(),
+        "never",
+        &BTreeMap::from([(Feature::MemoryTool, true), (Feature::Sqlite, true)]),
+    )?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(&codex_home)
+        .with_env_overrides(&[("CLANKER_ID", Some("chloe"))])
+        .build()
+        .await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+    let thread_req = mcp
+        .send_thread_start_request_with_auto_env(ThreadStartParams {
+            cwd: Some(initial_cwd.to_string_lossy().into_owned()),
+            ..Default::default()
+        })
+        .await?;
+    let thread_resp = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(thread_req)),
+    )
+    .await??;
+    let ThreadStartResponse { thread, .. } = to_response(thread_resp)?;
+    let thread_id = codex_protocol::ThreadId::from_string(&thread.id)?;
+
+    let turn_req = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id,
+            cwd: Some(turn_cwd.canonicalize()?),
+            input: vec![V2UserInput::Text {
+                text: "register effective scope".to_string(),
+                text_elements: Vec::new(),
+            }],
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let response = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(turn_req)),
+    )
+    .await??;
+    let _: TurnStartResponse = to_response(response)?;
+
+    let state = StateRuntime::init(codex_home.clone(), "test-reader".to_string()).await?;
+    let scope = state
+        .memories()
+        .memory_scope(thread_id)
+        .await?
+        .expect("named scope should be registered before turn submission");
+    assert_eq!(
+        scope.clanker_id.as_ref().map(|id| id.as_str()),
+        Some("chloe")
+    );
+    assert_eq!(
+        scope.project_key,
+        MemoryProjectKey::from_canonical_path(&turn_cwd.canonicalize()?)?
+    );
+    assert_ne!(
+        scope.project_key,
+        MemoryProjectKey::from_canonical_path(&initial_cwd.canonicalize()?)?
+    );
     Ok(())
 }
 
@@ -4696,5 +4837,29 @@ fn write_test_skill(codex_home: &Path, name: &str) -> std::io::Result<()> {
     std::fs::write(
         skill_dir.join("SKILL.md"),
         format!("---\nname: {name}\ndescription: {name} description\n---\n\n# Body\n"),
+    )
+}
+
+fn write_test_character(codex_home: &Path, id: &str, display_name: &str) -> std::io::Result<()> {
+    let package = codex_home.join("characters").join(id);
+    let avatar = package.join("avatar");
+    std::fs::create_dir_all(&avatar)?;
+    std::fs::write(
+        package.join("character.json"),
+        serde_json::to_vec(&json!({
+            "schemaVersion": 1,
+            "id": id,
+            "displayName": display_name,
+            "avatar": "avatar/avatar.json"
+        }))
+        .expect("serialize test character"),
+    )?;
+    std::fs::write(
+        avatar.join("avatar.json"),
+        r#"{"renderMode":"ansi-half-block","spritesheetPath":"sheet.ppm","frame":{"width":24,"height":24,"columns":1,"rows":1}}"#,
+    )?;
+    std::fs::write(
+        avatar.join("sheet.ppm"),
+        format!("P3\n24 24\n255\n{}", "0 0 0\n".repeat(24 * 24)),
     )
 }
