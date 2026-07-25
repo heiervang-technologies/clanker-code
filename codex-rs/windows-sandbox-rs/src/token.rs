@@ -491,3 +491,123 @@ unsafe fn create_token_with_caps_from(
     enable_single_privilege(new_token, "SeChangeNotifyPrivilege")?;
     Ok(new_token)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+    use std::path::Path;
+    use windows_sys::Win32::Security::Authorization::SetNamedSecurityInfoW;
+    use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
+    use windows_sys::Win32::Security::ImpersonateLoggedOnUser;
+    use windows_sys::Win32::Security::PROTECTED_DACL_SECURITY_INFORMATION;
+    use windows_sys::Win32::Security::RevertToSelf;
+
+    struct OwnedHandle(HANDLE);
+
+    impl Drop for OwnedHandle {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+
+    unsafe fn set_protected_full_access_acl(path: &Path, sids: &[*mut c_void]) {
+        let entries = sids
+            .iter()
+            .map(|sid| EXPLICIT_ACCESS_W {
+                grfAccessPermissions: GENERIC_ALL,
+                grfAccessMode: GRANT_ACCESS,
+                grfInheritance: 0,
+                Trustee: TRUSTEE_W {
+                    pMultipleTrustee: std::ptr::null_mut(),
+                    MultipleTrusteeOperation: 0,
+                    TrusteeForm: TRUSTEE_IS_SID,
+                    TrusteeType: TRUSTEE_IS_UNKNOWN,
+                    ptstrName: *sid as *mut u16,
+                },
+            })
+            .collect::<Vec<_>>();
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let acl_result = SetEntriesInAclW(
+            entries.len() as u32,
+            entries.as_ptr(),
+            std::ptr::null_mut(),
+            &mut dacl,
+        );
+        assert_eq!(acl_result, ERROR_SUCCESS, "SetEntriesInAclW failed");
+
+        let mut path = to_wide(path);
+        let security_result = SetNamedSecurityInfoW(
+            path.as_mut_ptr(),
+            1, // SE_FILE_OBJECT
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            dacl,
+            std::ptr::null_mut(),
+        );
+        if !dacl.is_null() {
+            LocalFree(dacl as HLOCAL);
+        }
+        assert_eq!(
+            security_result, ERROR_SUCCESS,
+            "SetNamedSecurityInfoW failed"
+        );
+    }
+
+    unsafe fn write_as(token: HANDLE, path: &Path) -> io::Result<()> {
+        if ImpersonateLoggedOnUser(token) == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let result = std::fs::write(path, b"restricted-token-write");
+        assert_ne!(RevertToSelf(), 0, "RevertToSelf failed");
+        result
+    }
+
+    #[test]
+    fn write_restricted_token_denies_world_only_and_allows_restricted_code() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let world_only = temp.path().join("world-only");
+        let restricted_code = temp.path().join("restricted-code");
+        std::fs::create_dir_all(&world_only).expect("create world-only directory");
+        std::fs::create_dir_all(&restricted_code).expect("create restricted-code directory");
+
+        unsafe {
+            let mut world_sid = world_sid().expect("world SID");
+            let world_sid = world_sid.as_mut_ptr() as *mut c_void;
+            let mut restricted_code_sid =
+                well_known_sid(WIN_RESTRICTED_CODE_SID).expect("restricted-code SID");
+            let restricted_code_sid = restricted_code_sid.as_mut_ptr() as *mut c_void;
+
+            set_protected_full_access_acl(&world_only, &[world_sid]);
+            set_protected_full_access_acl(&restricted_code, &[world_sid, restricted_code_sid]);
+
+            let capability = LocalSid::from_string("S-1-5-21-1-2-3-4").expect("capability SID");
+            let base = OwnedHandle(
+                get_current_token_for_restriction().expect("current process restriction token"),
+            );
+            let token = OwnedHandle(
+                create_workspace_write_token_with_caps_from(base.0, &[capability.as_ptr()])
+                    .expect("restricted token"),
+            );
+
+            let denied_path = world_only.join("denied.txt");
+            let denied = write_as(token.0, &denied_path);
+            assert!(
+                denied.is_err(),
+                "Everyone-only ACL must not satisfy the restricting SID check"
+            );
+            assert!(!denied_path.exists());
+
+            let allowed_path = restricted_code.join("allowed.txt");
+            write_as(token.0, &allowed_path)
+                .expect("Restricted Code ACL should satisfy the restricting SID check");
+            assert_eq!(
+                std::fs::read(&allowed_path).expect("read allowed write"),
+                b"restricted-token-write"
+            );
+        }
+    }
+}
