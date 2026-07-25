@@ -8,23 +8,23 @@ For questions about this fork, use the [HT Discussions page](https://github.com/
 
 Each fork has two key branches:
 
-| Branch     | Purpose                                | Default?                 |
-| ---------- | -------------------------------------- | ------------------------ |
-| **`ht`**   | HT-specific changes on top of upstream | **Yes** (default branch) |
-| **`main`** | Clean mirror of upstream `main`        | No                       |
+| Branch        | Purpose                                | Default?                 |
+| ------------- | -------------------------------------- | ------------------------ |
+| **`clanker`** | HT-specific changes on top of upstream | **Yes** (default branch) |
+| **`main`**    | Clean mirror of upstream `main`        | No                       |
 
 ### `main` — Upstream Mirror
 
 - Always a clean fast-forward of the upstream `main` branch
 - **Never** commit HT-specific changes to `main`
 - Enable GitHub's "Sync fork" button or use `git fetch upstream && git merge --ff-only upstream/main`
-- Used as the merge base when syncing upstream changes into `ht`
+- Used as the merge base when syncing upstream changes into `clanker`
 
-### `ht` — Default Branch
+### `clanker` — Default Branch
 
 - Contains all HT-specific features, fixes, and configuration on top of `main`
 - Set as the repo's **default branch** on GitHub so that clones, PRs, and the README all reference it
-- All PRs target `ht` unless they're upstream contributions
+- All PRs target `clanker` unless they're upstream contributions
 
 ## Syncing with Upstream
 
@@ -37,22 +37,22 @@ git fetch upstream
 git merge --ff-only upstream/main
 git push origin main
 
-# 2. Rebase ht onto updated main
-git checkout ht
+# 2. Rebase clanker onto updated main
+git checkout clanker
 git rebase main
 
 # 3. Resolve any conflicts, then force-push
-git push --force-with-lease origin ht
+git push --force-with-lease origin clanker
 ```
 
 ## Feature Development
 
-1. Create a feature branch from `ht`:
+1. Create a feature branch from `clanker`:
    ```bash
-   git checkout -b feat/my-feature ht
+   git checkout -b feat/my-feature clanker
    ```
 2. Develop, commit, push
-3. Open a PR targeting `ht`
+3. Open a PR targeting `clanker`
 4. Squash-merge the PR
 5. Delete the feature branch after merge
 
