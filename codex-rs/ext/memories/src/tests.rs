@@ -798,7 +798,7 @@ async fn named_tool_scope_failure_never_falls_back_to_anonymous() {
             thread_id,
             clanker_id: Some(canonical_id(home.path(), "chloe")),
             project_key: MemoryProjectKey::from_canonical_path(
-                home.path().join("workspace/project"),
+                home.path().join("workspace").join("project"),
             )
             .unwrap(),
             parent_thread_id: None,

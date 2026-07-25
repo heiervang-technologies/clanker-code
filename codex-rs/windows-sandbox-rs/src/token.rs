@@ -44,7 +44,7 @@ const LUA_TOKEN: u32 = 0x04;
 const WRITE_RESTRICTED: u32 = 0x08;
 const GENERIC_ALL: u32 = 0x1000_0000;
 const WIN_WORLD_SID: i32 = 1;
-const WIN_RESTRICTED_CODE_SID: i32 = 18;
+const WIN_WRITE_RESTRICTED_CODE_SID: i32 = 70;
 const SE_GROUP_LOGON_ID: u32 = 0xC0000000;
 
 #[repr(C)]
@@ -441,13 +441,13 @@ unsafe fn create_token_with_caps_from(
     let psid_logon = logon_sid_bytes.as_mut_ptr() as *mut c_void;
     let mut everyone = world_sid()?;
     let psid_everyone = everyone.as_mut_ptr() as *mut c_void;
-    let mut restricted_code = well_known_sid(WIN_RESTRICTED_CODE_SID)?;
-    let psid_restricted_code = restricted_code.as_mut_ptr() as *mut c_void;
+    let mut write_restricted_code = well_known_sid(WIN_WRITE_RESTRICTED_CODE_SID)?;
+    let psid_write_restricted_code = write_restricted_code.as_mut_ptr() as *mut c_void;
 
     // The logon SID keeps private desktop and session-scoped IPC access
-    // available. Restricted Code permits operating-system resources intended
-    // for sandboxed processes without letting a world-writable host ACL
-    // satisfy the restricting access check.
+    // available. Write Restricted Code permits operating-system resources
+    // intended for write-restricted processes without letting a world-writable
+    // host ACL satisfy the restricting access check.
     let mut entries: Vec<SID_AND_ATTRIBUTES> =
         vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len() + 2];
     for (i, psid) in psid_capabilities.iter().enumerate() {
@@ -462,7 +462,7 @@ unsafe fn create_token_with_caps_from(
     let logon_idx = extras_idx + extra_restricting_sids.len();
     entries[logon_idx].Sid = psid_logon;
     entries[logon_idx].Attributes = 0;
-    entries[logon_idx + 1].Sid = psid_restricted_code;
+    entries[logon_idx + 1].Sid = psid_write_restricted_code;
     entries[logon_idx + 1].Attributes = 0;
 
     let mut new_token: HANDLE = 0;
@@ -592,22 +592,26 @@ mod tests {
     }
 
     #[test]
-    fn write_restricted_token_denies_world_only_and_allows_restricted_code() {
+    fn write_restricted_token_denies_world_only_and_allows_write_restricted_code() {
         let temp = tempfile::tempdir().expect("tempdir");
         let world_only = temp.path().join("world-only");
-        let restricted_code = temp.path().join("restricted-code");
+        let write_restricted_code = temp.path().join("write-restricted-code");
         std::fs::create_dir_all(&world_only).expect("create world-only directory");
-        std::fs::create_dir_all(&restricted_code).expect("create restricted-code directory");
+        std::fs::create_dir_all(&write_restricted_code)
+            .expect("create write-restricted-code directory");
 
         unsafe {
             let mut world_sid = world_sid().expect("world SID");
             let world_sid = world_sid.as_mut_ptr() as *mut c_void;
-            let mut restricted_code_sid =
-                well_known_sid(WIN_RESTRICTED_CODE_SID).expect("restricted-code SID");
-            let restricted_code_sid = restricted_code_sid.as_mut_ptr() as *mut c_void;
+            let mut write_restricted_code_sid =
+                well_known_sid(WIN_WRITE_RESTRICTED_CODE_SID).expect("write-restricted-code SID");
+            let write_restricted_code_sid = write_restricted_code_sid.as_mut_ptr() as *mut c_void;
 
             set_protected_full_access_acl(&world_only, &[world_sid]);
-            set_protected_full_access_acl(&restricted_code, &[world_sid, restricted_code_sid]);
+            set_protected_full_access_acl(
+                &write_restricted_code,
+                &[world_sid, write_restricted_code_sid],
+            );
 
             let capability = LocalSid::from_string("S-1-5-21-1-2-3-4").expect("capability SID");
             let base = OwnedHandle(
@@ -626,9 +630,9 @@ mod tests {
             );
             assert!(!denied_path.exists());
 
-            let allowed_path = restricted_code.join("allowed.txt");
+            let allowed_path = write_restricted_code.join("allowed.txt");
             write_as(token.0, &allowed_path)
-                .expect("Restricted Code ACL should satisfy the restricting SID check");
+                .expect("Write Restricted Code ACL should satisfy the restricting SID check");
             assert_eq!(
                 std::fs::read(&allowed_path).expect("read allowed write"),
                 b"restricted-token-write"

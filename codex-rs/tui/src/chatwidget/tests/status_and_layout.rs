@@ -2438,7 +2438,9 @@ async fn character_avatar_mode_and_pet_selection_are_independent() {
     chat.set_tui_pet_side(TuiPetSide::FarRight);
     let dir = tempfile::tempdir().unwrap();
     let _default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
-    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255]);
+    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255])
+        .canonicalize()
+        .unwrap();
     chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
         "chloe".to_string(),
         validated_test_avatar(dir.path(), "default"),
@@ -2563,7 +2565,9 @@ async fn failed_avatar_mode_swap_retains_pack_but_continues_lifecycle() {
     chat.set_collaboration_mask(locked_mask);
     let dir = tempfile::tempdir().unwrap();
     let default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
-    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255]);
+    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255])
+        .canonicalize()
+        .unwrap();
     chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
         "chloe".to_string(),
         validated_test_avatar(dir.path(), "default"),

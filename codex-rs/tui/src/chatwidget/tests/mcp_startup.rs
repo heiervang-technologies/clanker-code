@@ -227,7 +227,7 @@ async fn app_server_mcp_startup_failure_renders_warning_history() {
     assert_eq!(summary_text, "⚠ MCP startup incomplete (failed: alpha)\n");
     assert!(!chat.bottom_pane.is_task_running());
 
-    let width = snapshot_width_for_test_cwd(/*width*/ 120);
+    let width: u16 = 120;
     let ui_height: u16 = chat.desired_height(width);
     let vt_height: u16 = ui_height.saturating_add(1).max(10);
     let viewport = Rect::new(0, vt_height - ui_height - 1, width, ui_height);

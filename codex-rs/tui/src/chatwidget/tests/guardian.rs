@@ -99,7 +99,7 @@ async fn guardian_denied_exec_renders_warning_and_denied_request() {
         action,
     });
 
-    let width = snapshot_width_for_test_cwd(/*width*/ 140);
+    let width: u16 = 140;
     let ui_height: u16 = chat.desired_height(width);
     let vt_height: u16 = 20;
     let viewport = Rect::new(0, vt_height - ui_height - 1, width, ui_height);
@@ -291,7 +291,7 @@ async fn guardian_timed_out_exec_renders_warning_and_timed_out_request() {
         action,
     });
 
-    let width = snapshot_width_for_test_cwd(/*width*/ 140);
+    let width: u16 = 140;
     let ui_height: u16 = chat.desired_height(width);
     let vt_height: u16 = 20;
     let viewport = Rect::new(0, vt_height - ui_height - 1, width, ui_height);

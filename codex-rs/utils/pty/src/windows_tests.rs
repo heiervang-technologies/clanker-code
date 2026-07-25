@@ -132,6 +132,7 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
     let writer = session.writer_sender();
     writer.send(b"ping.exe -4 -t localhost\n".to_vec()).await?;
     wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
+    wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
 
     writer.send(vec![0x03]).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
