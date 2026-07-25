@@ -106,8 +106,12 @@ pub unsafe fn create_process_as_user(
         Some((stdin_h, stdout_h, stderr_h)) => {
             let mut si: STARTUPINFOEXW = std::mem::zeroed();
             si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
-            // Default launches inherit the caller's station and desktop.
-            // Private launches name the isolated desktop on that same station.
+            // A restricted PowerShell child previously exited with
+            // STATUS_DLL_INIT_FAILED when lpDesktop was null. Default launches
+            // now inherit the caller's actual station and desktop instead of
+            // being redirected to WinSta0\Default; the service-hosted
+            // default-desktop regression guards that behavior.
+            // Private launches name the isolated desktop on the caller's station.
             si.StartupInfo.lpDesktop = desktop.startup_info_desktop();
             si.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
             si.StartupInfo.hStdInput = stdin_h;

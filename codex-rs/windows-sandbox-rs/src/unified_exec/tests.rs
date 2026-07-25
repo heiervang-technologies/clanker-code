@@ -271,6 +271,55 @@ fn legacy_non_tty_powershell_emits_output() {
 }
 
 #[test]
+fn legacy_non_tty_powershell_default_desktop_emits_output() {
+    let Some(pwsh) = pwsh_path() else {
+        return;
+    };
+    let _guard = legacy_process_test_guard();
+    let runtime = current_thread_runtime();
+    runtime.block_on(async move {
+        let cwd = sandbox_cwd();
+        let codex_home = sandbox_home("legacy-non-tty-pwsh-default-desktop");
+        let permission_profile = PermissionProfile::workspace_write();
+        let spawned = spawn_windows_sandbox_session_legacy(
+            &permission_profile,
+            workspace_roots_for(cwd.as_path()).as_slice(),
+            codex_home.path(),
+            vec![
+                pwsh.display().to_string(),
+                "-NoProfile".to_string(),
+                "-Command".to_string(),
+                "Write-Output LEGACY-NONTTY-DEFAULT-DESKTOP".to_string(),
+            ],
+            cwd.as_path(),
+            HashMap::new(),
+            Some(5_000),
+            &[],
+            &[],
+            /*tty*/ false,
+            /*stdin_open*/ false,
+            /*use_private_desktop*/ false,
+        )
+        .await
+        .expect("spawn legacy non-tty PowerShell on the inherited desktop");
+        let (stdout, exit_code) =
+            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(10)).await;
+        let stdout = String::from_utf8_lossy(&stdout);
+        assert_eq!(
+            exit_code,
+            0,
+            "stdout={stdout:?}\n{}",
+            sandbox_log(codex_home.path())
+        );
+        assert!(
+            stdout.contains("LEGACY-NONTTY-DEFAULT-DESKTOP"),
+            "stdout={stdout:?}\n{}",
+            sandbox_log(codex_home.path())
+        );
+    });
+}
+
+#[test]
 fn finish_driver_spawn_keeps_stdin_open_when_requested() {
     let runtime = current_thread_runtime();
     runtime.block_on(async move {
