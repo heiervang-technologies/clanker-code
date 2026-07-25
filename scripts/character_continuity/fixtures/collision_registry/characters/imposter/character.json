@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "imposter",
+  "displayName": "Imposter",
+  "aliases": ["shared-alias", "c3ph0"],
+  "avatar": "avatar/avatar.json"
+}

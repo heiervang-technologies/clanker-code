@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "lifecycle": [
+    { "agentState": "analyzing", "avatarState": "planning", "directorState": "working" },
+    { "agentState": "searching", "avatarState": "running", "directorState": "working" },
+    { "agentState": "responding", "avatarState": "running", "directorState": "working" },
+    { "agentState": "talking", "avatarState": "talking", "directorState": "idle" },
+    { "agentState": "listening", "avatarState": "idle", "directorState": "idle" }
+  ],
+  "petIndependence": {
+    "before": { "clankerId": "fixture", "avatarId": "avatar:fixture", "avatarPlacement": "below-left", "collaborationMode": "locked_in", "activeVariant": "locked-in", "avatarState": "idle", "petId": "pet:one" },
+    "after": { "clankerId": "fixture", "avatarId": "avatar:fixture", "avatarPlacement": "below-left", "collaborationMode": "locked_in", "activeVariant": "locked-in", "avatarState": "idle", "petId": null }
+  }
+}

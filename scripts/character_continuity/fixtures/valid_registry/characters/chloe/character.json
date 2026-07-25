@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "chloe",
+  "displayName": "Chloe",
+  "aliases": ["chlo"],
+  "avatar": "avatar/avatar.json",
+  "room": "custom:chloe",
+  "voiceProfile": "fixture:chloe"
+}

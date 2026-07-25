@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "lifecycle": [
+    { "agentState": "searching", "avatarState": "running", "directorState": "idle" },
+    { "agentState": "idle", "avatarState": "idle", "directorState": "idle" }
+  ],
+  "petIndependence": {
+    "before": { "clankerId": "fixture", "avatarId": "pet:custom:fixture", "avatarPlacement": "below-left", "collaborationMode": "locked_in", "activeVariant": "default", "avatarState": "idle", "petId": "custom:fixture" },
+    "after": { "clankerId": "fixture", "avatarId": null, "avatarPlacement": "below-left", "collaborationMode": "locked_in", "activeVariant": "default", "avatarState": "idle", "petId": null }
+  }
+}

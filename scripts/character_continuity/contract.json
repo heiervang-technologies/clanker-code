@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "registryPath": "$CODEX_HOME/characters/<canonical-id>/character.json",
+  "commands": {
+    "validate": "clanker character validate [MANIFEST] [--all] --json",
+    "resolve": "clanker character resolve NAME_OR_ALIAS --json"
+  },
+  "exitCodes": {
+    "success": 0,
+    "semanticFailure": 1,
+    "usage": 2
+  },
+  "stableErrorCodes": [
+    "invalid_manifest",
+    "invalid_id",
+    "missing_avatar",
+    "canonical_collision",
+    "alias_collision",
+    "not_found"
+  ],
+  "matchKinds": [
+    "exact_canonical",
+    "casefold_canonical",
+    "explicit_alias"
+  ],
+  "conflictKinds": [
+    "canonical_vs_canonical",
+    "alias_vs_canonical",
+    "alias_vs_alias"
+  ],
+  "launchMatrix": [
+    { "surface": "direct", "arguments": [], "identity": "last_active" },
+    { "surface": "direct", "arguments": ["--name", "c3ph0"], "identity": "c3ph0" },
+    { "surface": "unleash", "arguments": [], "identity": "last_active" },
+    { "surface": "unleash", "arguments": ["--name", "c3ph0"], "identity": "c3ph0" }
+  ]
+}
