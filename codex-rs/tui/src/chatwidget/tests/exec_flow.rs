@@ -782,7 +782,7 @@ async fn unified_exec_wait_status_renders_command_in_single_details_row_snapshot
 
     terminal_interaction(&mut chat, "call-wait-ui-stdin", "proc-ui", "");
 
-    let rendered = render_bottom_popup(&chat, /*width*/ 48);
+    let rendered = render_bottom_popup(&chat, snapshot_width_for_test_cwd(/*width*/ 48));
     assert_chatwidget_snapshot!(
         "unified_exec_wait_status_renders_command_in_single_details_row",
         normalize_snapshot_paths(rendered)

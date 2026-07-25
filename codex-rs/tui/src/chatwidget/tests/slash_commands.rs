@@ -1388,7 +1388,7 @@ async fn pending_token_activity_refresh_renders_above_composer_snapshot() {
 
     dispatch_usage_and_expect_refresh(&mut chat, &mut rx);
 
-    let width: u16 = 80;
+    let width = snapshot_width_for_test_cwd(/*width*/ 80);
     let height = chat.desired_height(width);
     let backend = VT100Backend::new(width, height);
     let mut term = crate::custom_terminal::Terminal::with_options(backend).expect("terminal");

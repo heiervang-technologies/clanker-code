@@ -63,6 +63,13 @@ pub(super) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
     }
 }
 
+pub(super) fn snapshot_width_for_test_cwd(width: u16) -> u16 {
+    let platform_width = test_path_display("/tmp/project").chars().count();
+    let normalized_width = "/tmp/project".chars().count();
+    let delta = u16::try_from(platform_width.saturating_sub(normalized_width)).unwrap_or(u16::MAX);
+    width.saturating_add(delta)
+}
+
 pub(super) fn normalized_backend_snapshot<T: std::fmt::Display>(value: &T) -> String {
     let platform_test_cwd = test_path_display("/tmp/project");
     let rendered = format!("{value}");
