@@ -513,6 +513,30 @@ mod tests {
         }
     }
 
+    struct ImpersonationGuard {
+        reverted: bool,
+    }
+
+    impl ImpersonationGuard {
+        unsafe fn revert(mut self) -> io::Result<()> {
+            if RevertToSelf() == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            self.reverted = true;
+            Ok(())
+        }
+    }
+
+    impl Drop for ImpersonationGuard {
+        fn drop(&mut self) {
+            if !self.reverted {
+                unsafe {
+                    RevertToSelf();
+                }
+            }
+        }
+    }
+
     unsafe fn set_protected_full_access_acl(path: &Path, sids: &[*mut c_void]) {
         let entries = sids
             .iter()
@@ -561,8 +585,9 @@ mod tests {
         if ImpersonateLoggedOnUser(token) == 0 {
             return Err(io::Error::last_os_error());
         }
+        let guard = ImpersonationGuard { reverted: false };
         let result = std::fs::write(path, b"restricted-token-write");
-        assert_ne!(RevertToSelf(), 0, "RevertToSelf failed");
+        guard.revert()?;
         result
     }
 
