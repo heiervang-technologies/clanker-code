@@ -484,6 +484,10 @@ mod tests {
         validate_avatar_selector(root, &AvatarSelector(format!("{id}/avatar.json"))).unwrap()
     }
 
+    fn canonical_manifest(root: &std::path::Path, id: &str) -> PathBuf {
+        root.join(id).join("avatar.json").canonicalize().unwrap()
+    }
+
     #[test]
     fn mode_override_falls_back_to_default() {
         let dir = tempfile::tempdir().unwrap();
@@ -588,7 +592,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &default.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "default")
+        );
         assert!(dir.path().join("cache/tui-pets/frame-cache").is_dir());
         assert!(!default.join("cache").exists());
     }
@@ -639,7 +646,10 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &default.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "default")
+        );
     }
 
     #[test]
@@ -672,7 +682,10 @@ mod tests {
 
         assert!(error.to_string().contains("default"));
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &locked.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "locked")
+        );
         assert_eq!(runtime.semantic_animation_name_for_tests(), "talking");
         assert_eq!(runtime.animation_started_at(), before_epoch);
     }
@@ -701,7 +714,10 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &default.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "default")
+        );
         assert_eq!(runtime.semantic_animation_name_for_tests(), "planning");
     }
 
@@ -727,7 +743,10 @@ mod tests {
         let changed = runtime.set_mode(ModeKind::LockedIn).unwrap();
 
         assert!(changed);
-        assert_eq!(runtime.active_manifest(), &locked.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "locked")
+        );
         assert_eq!(runtime.semantic_animation_name_for_tests(), "planning");
     }
 }

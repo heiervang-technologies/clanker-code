@@ -44,6 +44,7 @@ const LUA_TOKEN: u32 = 0x04;
 const WRITE_RESTRICTED: u32 = 0x08;
 const GENERIC_ALL: u32 = 0x1000_0000;
 const WIN_WORLD_SID: i32 = 1;
+const WIN_RESTRICTED_CODE_SID: i32 = 18;
 const SE_GROUP_LOGON_ID: u32 = 0xC0000000;
 
 #[repr(C)]
@@ -106,17 +107,17 @@ unsafe fn set_default_dacl(h_token: HANDLE, sids: &[*mut c_void]) -> Result<()> 
     Ok(())
 }
 
-pub unsafe fn world_sid() -> Result<Vec<u8>> {
+unsafe fn well_known_sid(sid_type: i32) -> Result<Vec<u8>> {
     let mut size: u32 = 0;
     CreateWellKnownSid(
-        WIN_WORLD_SID,
+        sid_type,
         std::ptr::null_mut(),
         std::ptr::null_mut(),
         &mut size,
     );
     let mut buf: Vec<u8> = vec![0u8; size as usize];
     let ok = CreateWellKnownSid(
-        WIN_WORLD_SID,
+        sid_type,
         std::ptr::null_mut(),
         buf.as_mut_ptr() as *mut c_void,
         &mut size,
@@ -125,6 +126,10 @@ pub unsafe fn world_sid() -> Result<Vec<u8>> {
         return Err(anyhow!("CreateWellKnownSid failed: {}", GetLastError()));
     }
     Ok(buf)
+}
+
+pub unsafe fn world_sid() -> Result<Vec<u8>> {
+    well_known_sid(WIN_WORLD_SID)
 }
 
 /// # Safety
@@ -436,13 +441,15 @@ unsafe fn create_token_with_caps_from(
     let psid_logon = logon_sid_bytes.as_mut_ptr() as *mut c_void;
     let mut everyone = world_sid()?;
     let psid_everyone = everyone.as_mut_ptr() as *mut c_void;
+    let mut restricted_code = well_known_sid(WIN_RESTRICTED_CODE_SID)?;
+    let psid_restricted_code = restricted_code.as_mut_ptr() as *mut c_void;
 
     // The logon SID keeps private desktop and session-scoped IPC access
-    // available. Everyone belongs only in the default DACL below; including
-    // it here would let a broadly writable host ACL satisfy the restricting
-    // access check without one of the explicit capability SIDs.
+    // available. Restricted Code permits operating-system resources intended
+    // for sandboxed processes without letting a world-writable host ACL
+    // satisfy the restricting access check.
     let mut entries: Vec<SID_AND_ATTRIBUTES> =
-        vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len() + 1];
+        vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len() + 2];
     for (i, psid) in psid_capabilities.iter().enumerate() {
         entries[i].Sid = *psid;
         entries[i].Attributes = 0;
@@ -455,6 +462,8 @@ unsafe fn create_token_with_caps_from(
     let logon_idx = extras_idx + extra_restricting_sids.len();
     entries[logon_idx].Sid = psid_logon;
     entries[logon_idx].Attributes = 0;
+    entries[logon_idx + 1].Sid = psid_restricted_code;
+    entries[logon_idx + 1].Attributes = 0;
 
     let mut new_token: HANDLE = 0;
     let flags = DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED;

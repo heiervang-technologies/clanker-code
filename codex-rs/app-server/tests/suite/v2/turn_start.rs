@@ -81,6 +81,7 @@ use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_state::CanonicalClankerId;
 use codex_state::MemoryProjectKey;
 use codex_state::StateRuntime;
+use codex_utils_absolute_path::canonicalize_existing_preserving_symlinks;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::responses;
 use core_test_support::skip_if_no_network;
@@ -1430,6 +1431,8 @@ async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> R
     std::fs::create_dir_all(&codex_home)?;
     std::fs::create_dir_all(&initial_cwd)?;
     std::fs::create_dir_all(&turn_cwd)?;
+    let initial_cwd = canonicalize_existing_preserving_symlinks(&initial_cwd)?;
+    let turn_cwd = canonicalize_existing_preserving_symlinks(&turn_cwd)?;
     write_test_character(&codex_home, "chloe", "Chloe")?;
     create_config_toml(
         &codex_home,
@@ -1460,7 +1463,7 @@ async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> R
     let turn_req = mcp
         .send_turn_start_request(TurnStartParams {
             thread_id: thread.id,
-            cwd: Some(turn_cwd.canonicalize()?),
+            cwd: Some(turn_cwd.clone()),
             input: vec![V2UserInput::Text {
                 text: "register effective scope".to_string(),
                 text_elements: Vec::new(),
@@ -1488,11 +1491,11 @@ async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> R
     );
     assert_eq!(
         scope.project_key,
-        MemoryProjectKey::from_canonical_path(&turn_cwd.canonicalize()?)?
+        MemoryProjectKey::from_canonical_path(&turn_cwd)?
     );
     assert_ne!(
         scope.project_key,
-        MemoryProjectKey::from_canonical_path(&initial_cwd.canonicalize()?)?
+        MemoryProjectKey::from_canonical_path(&initial_cwd)?
     );
     Ok(())
 }
