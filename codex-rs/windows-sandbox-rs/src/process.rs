@@ -106,9 +106,8 @@ pub unsafe fn create_process_as_user(
         Some((stdin_h, stdout_h, stderr_h)) => {
             let mut si: STARTUPINFOEXW = std::mem::zeroed();
             si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
-            // Some processes (e.g., PowerShell) can fail with STATUS_DLL_INIT_FAILED
-            // if lpDesktop is not set when launching with a restricted token.
-            // Point explicitly at the interactive desktop or a private desktop.
+            // Default launches inherit the caller's station and desktop.
+            // Private launches name the isolated desktop on that same station.
             si.StartupInfo.lpDesktop = desktop.startup_info_desktop();
             si.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
             si.StartupInfo.hStdInput = stdin_h;

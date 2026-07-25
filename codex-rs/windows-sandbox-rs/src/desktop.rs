@@ -44,13 +44,9 @@ use windows_sys::Win32::System::StationsAndDesktops::DESKTOP_WRITEOBJECTS;
 use windows_sys::Win32::System::StationsAndDesktops::GetProcessWindowStation;
 use windows_sys::Win32::System::StationsAndDesktops::GetUserObjectInformationW;
 use windows_sys::Win32::System::StationsAndDesktops::UOI_NAME;
-use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_ACCESSCLIPBOARD;
-use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_ACCESSGLOBALATOMS;
 use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_ENUMDESKTOPS;
 use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_ENUMERATE;
 use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_READATTRIBUTES;
-use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_READSCREEN;
-use windows_sys::Win32::UI::WindowsAndMessaging::WINSTA_WRITEATTRIBUTES;
 
 const DESKTOP_ALL_ACCESS: u32 = DESKTOP_READOBJECTS
     | DESKTOP_CREATEWINDOW
@@ -65,13 +61,9 @@ const DESKTOP_ALL_ACCESS: u32 = DESKTOP_READOBJECTS
     | DESKTOP_READ_CONTROL
     | DESKTOP_WRITE_DAC
     | DESKTOP_WRITE_OWNER;
-const WINDOW_STATION_ACCESS: u32 = WINSTA_ACCESSCLIPBOARD as u32
-    | WINSTA_ACCESSGLOBALATOMS as u32
-    | WINSTA_ENUMDESKTOPS as u32
+const NONINTERACTIVE_WINDOW_STATION_READ_ACCESS: u32 = WINSTA_ENUMDESKTOPS as u32
     | WINSTA_ENUMERATE as u32
     | WINSTA_READATTRIBUTES as u32
-    | WINSTA_READSCREEN as u32
-    | WINSTA_WRITEATTRIBUTES as u32
     | READ_CONTROL;
 
 pub struct LaunchDesktop {
@@ -146,7 +138,9 @@ impl PrivateDesktop {
         }
 
         unsafe {
-            if let Err(err) = grant_private_desktop_access(station_handle, handle, logs_base_dir) {
+            if let Err(err) =
+                grant_private_desktop_access(station_handle, &station_name, handle, logs_base_dir)
+            {
                 let _ = CloseDesktop(handle);
                 return Err(err);
             }
@@ -209,6 +203,7 @@ fn current_window_station() -> Result<(isize, String)> {
 
 unsafe fn grant_private_desktop_access(
     station_handle: isize,
+    station_name: &str,
     desktop_handle: isize,
     logs_base_dir: Option<&Path>,
 ) -> Result<()> {
@@ -218,13 +213,22 @@ unsafe fn grant_private_desktop_access(
     let mut logon_sid = logon_sid?;
     let logon_sid = logon_sid.as_mut_ptr() as *mut c_void;
 
-    grant_window_object_access(
-        station_handle,
-        WINDOW_STATION_ACCESS,
-        logon_sid,
-        "window station",
-        logs_base_dir,
-    )?;
+    if let Some(access_mask) = required_window_station_access(station_name) {
+        grant_window_object_access(
+            station_handle,
+            access_mask,
+            logon_sid,
+            "window station",
+            logs_base_dir,
+        )?;
+    } else {
+        // Winlogon already grants the interactive logon SID. Preserve that
+        // DACL rather than adding screen or clipboard access to the sandbox.
+        logging::debug_log(
+            "preserving the existing interactive window station DACL",
+            logs_base_dir,
+        );
+    }
     grant_window_object_access(
         desktop_handle,
         DESKTOP_ALL_ACCESS,
@@ -232,6 +236,14 @@ unsafe fn grant_private_desktop_access(
         "private desktop",
         logs_base_dir,
     )
+}
+
+fn required_window_station_access(station_name: &str) -> Option<u32> {
+    if station_name.eq_ignore_ascii_case("WinSta0") {
+        None
+    } else {
+        Some(NONINTERACTIVE_WINDOW_STATION_READ_ACCESS)
+    }
 }
 
 unsafe fn grant_window_object_access(
@@ -367,5 +379,28 @@ mod tests {
 
         assert!(startup_name.starts_with(&format!("{station_name}\\")));
         assert!(!launch.startup_info_desktop().is_null());
+    }
+
+    #[test]
+    fn interactive_window_station_keeps_its_existing_dacl() {
+        assert_eq!(required_window_station_access("WinSta0"), None);
+        assert_eq!(required_window_station_access("wInStA0"), None);
+    }
+
+    #[test]
+    fn service_window_station_gets_only_noninteractive_read_access() {
+        let expected = READ_CONTROL
+            | WINSTA_ENUMDESKTOPS as u32
+            | WINSTA_ENUMERATE as u32
+            | WINSTA_READATTRIBUTES as u32;
+
+        assert_eq!(
+            NONINTERACTIVE_WINDOW_STATION_READ_ACCESS, expected,
+            "screen, clipboard, atom, and write access must stay excluded"
+        );
+        assert_eq!(
+            required_window_station_access("Service-0x0-3e7$"),
+            Some(expected)
+        );
     }
 }
