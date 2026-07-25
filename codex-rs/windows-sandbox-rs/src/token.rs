@@ -44,6 +44,7 @@ const LUA_TOKEN: u32 = 0x04;
 const WRITE_RESTRICTED: u32 = 0x08;
 const GENERIC_ALL: u32 = 0x1000_0000;
 const WIN_WORLD_SID: i32 = 1;
+#[allow(dead_code)]
 const WIN_WRITE_RESTRICTED_CODE_SID: i32 = 70;
 const SE_GROUP_LOGON_ID: u32 = 0xC0000000;
 
@@ -441,15 +442,10 @@ unsafe fn create_token_with_caps_from(
     let psid_logon = logon_sid_bytes.as_mut_ptr() as *mut c_void;
     let mut everyone = world_sid()?;
     let psid_everyone = everyone.as_mut_ptr() as *mut c_void;
-    let mut write_restricted_code = well_known_sid(WIN_WRITE_RESTRICTED_CODE_SID)?;
-    let psid_write_restricted_code = write_restricted_code.as_mut_ptr() as *mut c_void;
 
-    // The logon SID keeps private desktop and session-scoped IPC access
-    // available. Write Restricted Code permits operating-system resources
-    // intended for write-restricted processes without letting a world-writable
-    // host ACL satisfy the restricting access check.
+    // The logon SID keeps private desktop and session-scoped IPC access available.
     let mut entries: Vec<SID_AND_ATTRIBUTES> =
-        vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len() + 2];
+        vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len() + 1];
     for (i, psid) in psid_capabilities.iter().enumerate() {
         entries[i].Sid = *psid;
         entries[i].Attributes = 0;
@@ -462,8 +458,6 @@ unsafe fn create_token_with_caps_from(
     let logon_idx = extras_idx + extra_restricting_sids.len();
     entries[logon_idx].Sid = psid_logon;
     entries[logon_idx].Attributes = 0;
-    entries[logon_idx + 1].Sid = psid_write_restricted_code;
-    entries[logon_idx + 1].Attributes = 0;
 
     let mut new_token: HANDLE = 0;
     let flags = DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED;
