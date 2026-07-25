@@ -493,25 +493,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_avatar(&dir.path().join("default"), [0, 255, 0, 255]);
         write_avatar(&dir.path().join("locked-in"), [255, 0, 0, 255]);
+        let root = dir.path().canonicalize().unwrap();
         let binding = AvatarBinding::new(
             "chloe".to_string(),
-            validated_pack(dir.path(), "default"),
-            HashMap::from([(ModeKind::LockedIn, validated_pack(dir.path(), "locked-in"))]),
+            validated_pack(&root, "default"),
+            HashMap::from([(ModeKind::LockedIn, validated_pack(&root, "locked-in"))]),
             AvatarPlacement::FarRight,
-            dir.path().to_path_buf(),
+            root.clone(),
         );
 
         assert_eq!(
             binding
                 .manifest_for_mode(ModeKind::LockedIn)
-                .strip_prefix(dir.path())
+                .strip_prefix(&root)
                 .unwrap(),
             std::path::Path::new("locked-in/avatar.json")
         );
         assert_eq!(
             binding
                 .manifest_for_mode(ModeKind::Larp)
-                .strip_prefix(dir.path())
+                .strip_prefix(&root)
                 .unwrap(),
             std::path::Path::new("default/avatar.json")
         );

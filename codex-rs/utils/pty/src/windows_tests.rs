@@ -117,6 +117,10 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
     let Some(program) = find_powershell() else {
         return Ok(());
     };
+    let Some(python) = find_python() else {
+        eprintln!("python not found; skipping ConPTY Ctrl-C test");
+        return Ok(());
+    };
     let args = vec!["-NoLogo".to_string(), "-NoProfile".to_string()];
     let env: HashMap<String, String> = std::env::vars().collect();
     let spawned = spawn_pty_process(
@@ -130,9 +134,13 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
     .await?;
     let (session, mut output_rx, exit_rx) = combine_spawned_output(spawned);
     let writer = session.writer_sender();
-    writer.send(b"ping.exe -4 -t localhost\n".to_vec()).await?;
-    wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
-    wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
+    let code = format!(
+        "import ctypes,time; ctypes.windll.kernel32.SetConsoleCtrlHandler(None,False); print('{READY_MARKER}',flush=True); time.sleep(60)"
+    );
+    writer
+        .send(format!("& '{}' -u -c \"{code}\"\n", python.replace('\'', "''")).into_bytes())
+        .await?;
+    wait_for_output_contains(&mut output_rx, READY_MARKER, /*timeout_ms*/ 10_000).await?;
 
     writer.send(vec![0x03]).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
