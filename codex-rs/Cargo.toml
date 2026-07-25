@@ -517,9 +517,13 @@ ignored = [
 ]
 
 [profile.dev]
-# Keep line tables/backtraces while avoiding expensive full variable debug info
-# across local dev builds.
-debug = "limited"
+# This workspace produces hundreds of binaries and test artifacts. Debug info
+# and incremental compilation state multiply quickly across those targets, so
+# keep the default local profile compact. Use `profiling` when symbols are
+# required.
+debug = "none"
+incremental = false
+strip = "debuginfo"
 
 [profile.dev-small]
 inherits = "dev"
@@ -529,11 +533,9 @@ strip = "symbols"
 
 [profile.release]
 lto = "thin"
-debug = "line-tables-only"
+debug = "none"
 split-debuginfo = "off"
-# Keep release binaries symbolicateable until packaging has archived the
-# sidecar symbols and stripped the binaries.
-strip = false
+strip = "symbols"
 
 # Balance parallel release code generation against binary size.
 codegen-units = 4
@@ -546,9 +548,16 @@ strip = false
 
 [profile.ci-test]
 # Reduce binary size to reduce disk pressure.
-debug = "limited"
+debug = "none"
 inherits = "test"
 opt-level = 0
+
+[profile.test]
+# Integration-test binaries otherwise retain full debug information by
+# default, which dominates target directory growth in this workspace.
+debug = "none"
+incremental = false
+strip = "debuginfo"
 
 [patch.crates-io]
 # Uncomment to debug local changes.
