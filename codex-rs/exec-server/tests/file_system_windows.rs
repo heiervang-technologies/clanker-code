@@ -79,6 +79,26 @@ async fn file_system_remote_fs_helper_respects_windows_sandbox_write_policy() ->
             Some(&sandbox),
         )
         .await;
+    let mut private_desktop_sandbox = sandbox.clone();
+    private_desktop_sandbox.windows_sandbox_private_desktop = true;
+    let private_desktop_result = file_system
+        .read_file(
+            &PathUri::from_host_native_path(&readable_file)?,
+            Some(&private_desktop_sandbox),
+        )
+        .await;
+    assert!(
+        std::env::var_os("CODEX_ACCEPT_FS_HELPER_DIAGNOSTIC").is_some(),
+        "diagnostic only: inherited={:?}; private={:?}",
+        read_result
+            .as_ref()
+            .map(Vec::len)
+            .map_err(ToString::to_string),
+        private_desktop_result
+            .as_ref()
+            .map(Vec::len)
+            .map_err(ToString::to_string)
+    );
     // Some local Windows hosts cannot create restricted tokens. Reaching that
     // error still proves the remote fs helper went through the Windows sandbox
     // launcher; before the wrapper fix this read would have run unsandboxed.
