@@ -1190,8 +1190,9 @@ WHERE threads.id = ? AND threads.memory_mode = 'enabled' AND threads.history_mod
         let thread_id_value = thread_id.to_string();
         let mut tx = self.pool.begin().await?;
         let mut affected_scopes = snapshot_selection_scopes_for_thread(&mut tx, thread_id).await?;
-        affected_scopes
-            .extend(affected_output_selection_scopes(&mut tx, Some(thread_id), None).await?);
+        affected_scopes.extend(
+            affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None).await?,
+        );
         let rows_affected = sqlx::query(
             r#"
 UPDATE threads
@@ -1740,8 +1741,12 @@ WHERE kind = ? AND job_key = ?
         .bind(ownership_token)
         .fetch_one(&mut *tx)
         .await?;
-        let affected_scopes =
-            affected_output_selection_scopes(&mut tx, Some(scope.thread_id), None).await?;
+        let affected_scopes = affected_output_selection_scopes(
+            &mut tx,
+            Some(scope.thread_id),
+            /*clanker_id*/ None,
+        )
+        .await?;
         let deleted_rows = sqlx::query("DELETE FROM stage1_outputs WHERE thread_id = ?")
             .bind(thread_id.as_str())
             .execute(&mut *tx)
@@ -2257,7 +2262,7 @@ WHERE kind = ? AND job_key = ?
             ownership_token,
             failure_reason,
             retry_delay_seconds,
-            false,
+            /*include_unowned*/ false,
         )
         .await
     }
@@ -2327,7 +2332,7 @@ WHERE kind = ? AND job_key = ?
             ownership_token,
             failure_reason,
             retry_delay_seconds,
-            true,
+            /*include_unowned*/ true,
         )
         .await
     }
@@ -2794,7 +2799,7 @@ async fn affected_output_selection_scopes(
                     project_key,
                     visibility,
                 )?;
-                scopes.extend(registered_selection_scopes(tx, None).await?);
+                scopes.extend(registered_selection_scopes(tx, /*project_key*/ None).await?);
             }
             MemoryVisibility::AnonymousLegacy => {
                 scopes.insert(MemorySelectionScope::Anonymous);

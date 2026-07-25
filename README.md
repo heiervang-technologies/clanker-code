@@ -28,14 +28,14 @@ This is the **Heiervang Technologies** fork of [Codex CLI](https://github.com/op
 
 ### What's different from upstream
 
-| Change | Description | Contributed back? |
-|--------|-------------|:-----------------:|
-| HT fork docs | This section, CONTRIBUTING.md with fork management guide | No |
+| Change       | Description                                              | Contributed back? |
+| ------------ | -------------------------------------------------------- | :---------------: |
+| HT fork docs | This section, CONTRIBUTING.md with fork management guide |        No         |
 
 ### Branch strategy
 
-- **`main`** — Clean mirror of upstream. Never modified directly.
-- **`ht`** — Default branch. Contains all HT-specific additions rebased on top of `main`.
+- **`main`** - Clean mirror of upstream. Never modified directly.
+- **`clanker`** - Default branch. Contains all HT-specific additions rebased on top of `main`.
 
 For questions, feature requests, or bug reports related to this fork, please use the [HT Discussions page](https://github.com/orgs/heiervang-technologies/discussions). For upstream issues, use the [upstream repository](https://github.com/openai/codex/issues).
 

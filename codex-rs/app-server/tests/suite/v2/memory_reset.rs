@@ -87,7 +87,7 @@ async fn thread_memory_reset_clears_only_receipt_scope() -> Result<()> {
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path())?;
     let state_db = init_state_db(codex_home.path()).await?;
-    let thread_id = seed_stage1_output(&state_db, codex_home.path()).await?;
+    let thread_id = seed_anonymous_stage1_output(&state_db, codex_home.path()).await?;
     let anonymous_file = codex_home.path().join("memories/MEMORY.md");
     let named_file = codex_home
         .path()
@@ -133,7 +133,7 @@ async fn character_memory_reset_rejects_anonymous_thread_scope() -> Result<()> {
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path())?;
     let state_db = init_state_db(codex_home.path()).await?;
-    let thread_id = seed_stage1_output(&state_db, codex_home.path()).await?;
+    let thread_id = seed_anonymous_stage1_output(&state_db, codex_home.path()).await?;
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
@@ -305,7 +305,7 @@ async fn scoped_reset_commits_db_before_reporting_filesystem_failure() -> Result
     let codex_home = TempDir::new()?;
     create_config_toml(codex_home.path())?;
     let state_db = init_state_db(codex_home.path()).await?;
-    let thread_id = seed_stage1_output(&state_db, codex_home.path()).await?;
+    let thread_id = seed_anonymous_stage1_output(&state_db, codex_home.path()).await?;
     let outside = codex_home.path().join("outside");
     tokio::fs::create_dir_all(&outside).await?;
     let outside_file = outside.join("keep.txt");
@@ -324,12 +324,17 @@ async fn scoped_reset_commits_db_before_reporting_filesystem_failure() -> Result
             Some(json!({"scope": "thread", "threadId": thread_id.to_string()})),
         )
         .await?;
-    let response = timeout(
+    let error = timeout(
         DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+        mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
     )
     .await??;
-    assert!(to_response::<MemoryResetResponse>(response).is_err());
+    assert!(
+        error
+            .error
+            .message
+            .contains("memory rows committed but filesystem cleanup")
+    );
     assert!(
         state_db
             .memories()
@@ -390,6 +395,20 @@ async fn seed_stage1_output(state_db: &Arc<StateRuntime>, codex_home: &Path) -> 
         .await?;
 
     Ok(thread_id)
+}
+
+async fn seed_anonymous_stage1_output(
+    state_db: &Arc<StateRuntime>,
+    codex_home: &Path,
+) -> Result<ThreadId> {
+    seed_scoped_stage1_output(
+        state_db,
+        codex_home,
+        None,
+        MemoryProjectKey::from_git_origin("git@github.com:example/anonymous.git")?,
+        "anonymous",
+    )
+    .await
 }
 
 async fn seed_scoped_stage1_output(

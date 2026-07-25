@@ -148,12 +148,21 @@ mod tests {
             .await
             .unwrap();
         let thread_id = ThreadId::new();
-        seed_thread(&runtime, thread_id, "/persisted/project", None).await;
+        let canonical_home = home.path().canonicalize().unwrap();
+        let persisted_project = canonical_home.join("persisted-project");
+        let live_project = canonical_home.join("different-live-project");
+        seed_thread(
+            &runtime,
+            thread_id,
+            persisted_project.to_str().unwrap(),
+            None,
+        )
+        .await;
         let anonymous = current_thread_scope_with_identity(
             runtime.as_ref(),
             thread_id,
             home.path(),
-            Path::new("/persisted/project"),
+            &persisted_project,
             None,
             None,
         )
@@ -164,7 +173,7 @@ mod tests {
             runtime.as_ref(),
             thread_id,
             home.path(),
-            Path::new("/different/live/project"),
+            &live_project,
             None,
             Some("chloe"),
         )
@@ -190,12 +199,21 @@ mod tests {
             .await
             .unwrap();
         let thread_id = ThreadId::new();
-        seed_thread(&runtime, thread_id, "/persisted/project", None).await;
+        let canonical_home = home.path().canonicalize().unwrap();
+        let persisted_project = canonical_home.join("persisted-project");
+        let different_project = canonical_home.join("different-project");
+        seed_thread(
+            &runtime,
+            thread_id,
+            persisted_project.to_str().unwrap(),
+            None,
+        )
+        .await;
         let stored = current_thread_scope_with_identity(
             runtime.as_ref(),
             thread_id,
             home.path(),
-            Path::new("/persisted/project"),
+            &persisted_project,
             None,
             None,
         )
@@ -211,7 +229,7 @@ mod tests {
                 runtime.as_ref(),
                 thread_id,
                 home.path(),
-                Path::new("/different/project"),
+                &different_project,
                 Some(ThreadId::new()),
                 launcher,
             )
@@ -234,7 +252,7 @@ mod tests {
                 runtime.as_ref(),
                 thread_id,
                 home.path(),
-                Path::new("/different/project"),
+                &different_project,
                 Some(ThreadId::new()),
                 Some(OsString::from_vec(vec![0xff])),
             )
@@ -256,13 +274,24 @@ mod tests {
             .await
             .unwrap();
             let thread_id = ThreadId::new();
-            seed_thread(&runtime, thread_id, "/persisted/project", None).await;
+            let persisted_project = home
+                .path()
+                .canonicalize()
+                .unwrap()
+                .join(format!("persisted-project-{offset}"));
+            seed_thread(
+                &runtime,
+                thread_id,
+                persisted_project.to_str().unwrap(),
+                None,
+            )
+            .await;
             assert!(
                 current_thread_scope_with_identity(
                     runtime.as_ref(),
                     thread_id,
                     home.path(),
-                    Path::new("/persisted/project"),
+                    &persisted_project,
                     None,
                     Some(rejected),
                 )
@@ -323,7 +352,12 @@ mod tests {
             .await
             .unwrap();
         let thread_id = ThreadId::new();
-        seed_thread(&runtime, thread_id, "/stale/thread-start/project", None).await;
+        let stale_cwd = home
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("stale-thread-start-project");
+        seed_thread(&runtime, thread_id, stale_cwd.to_str().unwrap(), None).await;
 
         let scope = current_thread_scope_with_identity(
             runtime.as_ref(),
@@ -342,8 +376,7 @@ mod tests {
         );
         assert_ne!(
             scope.project_key,
-            MemoryProjectKey::from_canonical_path(Path::new("/stale/thread-start/project"))
-                .unwrap()
+            MemoryProjectKey::from_canonical_path(&stale_cwd).unwrap()
         );
     }
 

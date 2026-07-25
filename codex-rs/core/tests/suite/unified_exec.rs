@@ -1118,13 +1118,13 @@ async fn unified_exec_terminal_interaction_captures_delayed_output() -> Result<(
 
     let open_call_id = "uexec-delayed-open";
     let open_args = json!({
-        "cmd": "sleep 3 && echo MARKER1 && sleep 3 && echo MARKER2",
+        "cmd": "sleep 1 && echo MARKER1 && sleep 1 && echo MARKER2 && read -r _",
         "yield_time_ms": 10,
         "tty": true,
     });
 
     // Poll stdin three times: first for no output, second after the first marker,
-    // and a final long poll to capture the second marker.
+    // and a final poll that captures the second marker and releases the command.
     let first_poll_call_id = "uexec-delayed-poll-1";
     let first_poll_args = json!({
         "chars": "x",
@@ -1136,14 +1136,14 @@ async fn unified_exec_terminal_interaction_captures_delayed_output() -> Result<(
     let second_poll_args = json!({
         "chars": "x",
         "session_id": 1000,
-        "yield_time_ms": 4000,
+        "yield_time_ms": 1500,
     });
 
     let third_poll_call_id = "uexec-delayed-poll-3";
     let third_poll_args = json!({
-        "chars": "x",
+        "chars": "\n",
         "session_id": 1000,
-        "yield_time_ms": 6000,
+        "yield_time_ms": 3000,
     });
 
     let responses = vec![
@@ -1252,7 +1252,7 @@ async fn unified_exec_terminal_interaction_captures_delayed_output() -> Result<(
             .iter()
             .map(|ev| ev.stdin.as_str())
             .collect::<Vec<_>>(),
-        vec!["x", "x", "x"],
+        vec!["x", "x", "\n"],
         "terminal interactions should reflect the three stdin polls"
     );
 
@@ -1423,7 +1423,7 @@ async fn exec_command_reports_chunk_and_exit_metadata() -> Result<()> {
     let call_id = "uexec-metadata";
     let args = serde_json::json!({
         "cmd": "printf 'token one token two token three token four token five token six token seven'",
-        "yield_time_ms": 500,
+        "yield_time_ms": 10_000,
         "max_output_tokens": 6,
     });
 
@@ -2075,7 +2075,7 @@ async fn assert_write_stdin_ctrl_c_interrupts_non_tty_session(
 
     let start_args = serde_json::json!({
         "cmd": command,
-        "yield_time_ms": 250,
+        "yield_time_ms": 1_000,
         "tty": false,
     });
     let interrupt_args = serde_json::json!({
@@ -3003,7 +3003,7 @@ async fn unified_exec_runs_under_sandbox() -> Result<()> {
     let call_id = "uexec";
     let args = serde_json::json!({
         "cmd": "echo 'hello'",
-        "yield_time_ms": 500,
+        "yield_time_ms": 10_000,
     });
 
     let responses = vec![

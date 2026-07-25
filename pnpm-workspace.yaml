@@ -7,7 +7,20 @@ ignoredBuiltDependencies:
   - esbuild
 
 minimumReleaseAge: 10080
-minimumReleaseAgeExclude: []
+minimumReleaseAgeExclude:
+  - '@babel/core'
+  - '@hono/node-server'
+  - ajv
+  - body-parser
+  - brace-expansion
+  - diff
+  - fast-uri
+  - hono
+  - ip-address
+  - js-yaml
+  - postcss
+  - qs
+  - yaml
 
 blockExoticSubdeps: true
 strictDepBuilds: true

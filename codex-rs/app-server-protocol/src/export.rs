@@ -1348,18 +1348,23 @@ where
         enforce_numbered_definition_collision_overrides(file_stem, &mut schema_value);
         annotate_schema(&mut schema_value, Some(file_stem));
     }
-    // If the name looks like a namespaced path (e.g., "v2::Type"), mirror
-    // the TypeScript layout and write to out_dir/v2/Type.json. Otherwise
-    // write alongside the legacy files.
-    let out_path = if let Some(ns) = raw_namespace {
-        let dir = out_dir.join(ns);
-        ensure_dir(&dir)?;
-        dir.join(format!("{logical_name}.json"))
-    } else {
-        out_dir.join(format!("{file_stem}.json"))
-    };
-
-    if include_in_json_codegen && !IGNORED_DEFINITIONS.contains(&logical_name) {
+    // Generic wrappers remain available to the bundle builder but are not
+    // standalone schema artifacts. Their Rust names contain characters that
+    // are not valid filenames on every supported platform.
+    if include_in_json_codegen
+        && !IGNORED_DEFINITIONS.contains(&logical_name)
+        && standalone_schema_file_stem(logical_name).is_some()
+    {
+        // If the name looks like a namespaced path (e.g., "v2::Type"), mirror
+        // the TypeScript layout and write to out_dir/v2/Type.json. Otherwise
+        // write alongside the legacy files.
+        let out_path = if let Some(ns) = raw_namespace {
+            let dir = out_dir.join(ns);
+            ensure_dir(&dir)?;
+            dir.join(format!("{logical_name}.json"))
+        } else {
+            out_dir.join(format!("{file_stem}.json"))
+        };
         write_pretty_json(out_path, &schema_value)
             .with_context(|| format!("Failed to write JSON schema for {file_stem}"))?;
     }
@@ -1574,6 +1579,14 @@ fn write_pretty_json(path: PathBuf, value: &impl Serialize) -> Result<()> {
 fn split_namespace(name: &str) -> (Option<&str>, &str) {
     name.split_once("::")
         .map_or((None, name), |(ns, rest)| (Some(ns), rest))
+}
+
+fn standalone_schema_file_stem(name: &str) -> Option<&str> {
+    (!name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')))
+    .then_some(name)
 }
 
 /// Recursively rewrite $ref values that point at "#/definitions/..." so that
@@ -2865,6 +2878,18 @@ permissionProfile?: string | null};
         assert_eq!(bundle_str.contains("mock/experimentalMethod"), false);
         let _cleanup = fs::remove_dir_all(&output_dir);
         Ok(())
+    }
+
+    #[test]
+    fn generic_schema_names_are_bundle_only() {
+        assert_eq!(
+            standalone_schema_file_stem("Option<MemoryResetParams>"),
+            None
+        );
+        assert_eq!(
+            standalone_schema_file_stem("MemoryResetParams"),
+            Some("MemoryResetParams")
+        );
     }
 
     #[test]

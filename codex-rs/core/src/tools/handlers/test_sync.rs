@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -40,6 +41,14 @@ struct BarrierArgs {
 }
 
 #[derive(Debug, Deserialize)]
+struct FileRendezvousArgs {
+    signal_path: PathBuf,
+    wait_for_path: PathBuf,
+    #[serde(default = "default_timeout_ms")]
+    timeout_ms: u64,
+}
+
+#[derive(Debug, Deserialize)]
 struct TestSyncArgs {
     #[serde(default)]
     sleep_before_ms: Option<u64>,
@@ -47,6 +56,8 @@ struct TestSyncArgs {
     sleep_after_ms: Option<u64>,
     #[serde(default)]
     barrier: Option<BarrierArgs>,
+    #[serde(default)]
+    file_rendezvous: Option<FileRendezvousArgs>,
 }
 
 fn default_timeout_ms() -> u64 {
@@ -103,6 +114,10 @@ impl TestSyncHandler {
             wait_on_barrier(barrier).await?;
         }
 
+        if let Some(rendezvous) = args.file_rendezvous {
+            wait_on_file_rendezvous(rendezvous).await?;
+        }
+
         if let Some(delay) = args.sleep_after_ms
             && delay > 0
         {
@@ -117,6 +132,47 @@ impl TestSyncHandler {
 }
 
 impl CoreToolRuntime for TestSyncHandler {}
+
+async fn wait_on_file_rendezvous(args: FileRendezvousArgs) -> Result<(), FunctionCallError> {
+    if args.timeout_ms == 0 {
+        return Err(FunctionCallError::RespondToModel(
+            "file rendezvous timeout must be greater than zero".to_string(),
+        ));
+    }
+
+    tokio::fs::write(&args.signal_path, b"ready")
+        .await
+        .map_err(|err| {
+            FunctionCallError::RespondToModel(format!(
+                "failed to write file rendezvous signal {}: {err}",
+                args.signal_path.display()
+            ))
+        })?;
+
+    tokio::time::timeout(Duration::from_millis(args.timeout_ms), async {
+        loop {
+            match tokio::fs::metadata(&args.wait_for_path).await {
+                Ok(_) => return Ok(()),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    sleep(Duration::from_millis(10)).await;
+                }
+                Err(err) => {
+                    return Err(FunctionCallError::RespondToModel(format!(
+                        "failed to inspect file rendezvous peer {}: {err}",
+                        args.wait_for_path.display()
+                    )));
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| {
+        FunctionCallError::RespondToModel(format!(
+            "timed out waiting for file rendezvous peer {}",
+            args.wait_for_path.display()
+        ))
+    })?
+}
 
 async fn wait_on_barrier(args: BarrierArgs) -> Result<(), FunctionCallError> {
     if args.participants == 0 {

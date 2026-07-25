@@ -8,10 +8,10 @@ For questions about this fork, use the [HT Discussions page](https://github.com/
 
 Each fork has two key branches:
 
-| Branch | Purpose | Default? |
-|--------|---------|----------|
-| **`ht`** | HT-specific changes on top of upstream | **Yes** (default branch) |
-| **`main`** | Clean mirror of upstream `main` | No |
+| Branch     | Purpose                                | Default?                 |
+| ---------- | -------------------------------------- | ------------------------ |
+| **`ht`**   | HT-specific changes on top of upstream | **Yes** (default branch) |
+| **`main`** | Clean mirror of upstream `main`        | No                       |
 
 ### `main` — Upstream Mirror
 

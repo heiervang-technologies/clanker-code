@@ -78,6 +78,7 @@ use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
+use codex_state::CanonicalClankerId;
 use codex_state::MemoryProjectKey;
 use codex_state::StateRuntime;
 use codex_utils_absolute_path::test_support::PathExt;
@@ -1482,7 +1483,7 @@ async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> R
         .await?
         .expect("named scope should be registered before turn submission");
     assert_eq!(
-        scope.clanker_id.as_ref().map(|id| id.as_str()),
+        scope.clanker_id.as_ref().map(CanonicalClankerId::as_str),
         Some("chloe")
     );
     assert_eq!(
