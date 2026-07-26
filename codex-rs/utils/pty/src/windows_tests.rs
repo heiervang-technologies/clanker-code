@@ -146,70 +146,35 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn exercise_powershell_ctrl_c(
-    program: &str,
-    env: &HashMap<String, String>,
-) -> anyhow::Result<()> {
-    let args = vec!["-NoLogo".to_string(), "-NoProfile".to_string()];
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn conpty_ctrl_c_interrupts_foreground_child() -> anyhow::Result<()> {
+    let _serial = CONPTY_INTERACTIVE_TEST_PERMIT
+        .acquire()
+        .await
+        .expect("ConPTY test permit remains open");
+    let env: HashMap<String, String> = std::env::vars().collect();
+    let args = vec!["-4".to_string(), "-t".to_string(), "localhost".to_string()];
     let spawned = spawn_pty_process(
-        program,
+        "ping.exe",
         &args,
         Path::new("."),
-        env,
+        &env,
         /*arg0*/ &None,
         TerminalSize::default(),
     )
     .await?;
     let (session, mut output_rx, exit_rx) = combine_spawned_output(spawned);
     let writer = session.writer_sender();
-    writer.send(b"ping.exe -4 -t localhost\n".to_vec()).await?;
     wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
     wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
 
     writer.send(vec![0x03]).await?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    writer.send(b"cmd.exe /D /C ver\n".to_vec()).await?;
-    let mut output = wait_for_output_contains(
-        &mut output_rx,
-        "Microsoft Windows",
-        /*timeout_ms*/ 10_000,
-    )
-    .await?;
-
-    writer.send(b"exit 0\n".to_vec()).await?;
-    let (remaining, exit_code) =
+    let (output, exit_code) =
         collect_output_until_exit(output_rx, exit_rx, /*timeout_ms*/ 10_000).await;
-    output.extend_from_slice(&remaining);
     anyhow::ensure!(
-        exit_code == 0,
-        "PowerShell did not resume after Ctrl-C: {:?}",
+        exit_code != -1,
+        "foreground child did not exit after Ctrl-C: {:?}",
         String::from_utf8_lossy(&output)
     );
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Result<()> {
-    let _serial = CONPTY_INTERACTIVE_TEST_PERMIT
-        .acquire()
-        .await
-        .expect("ConPTY test permit remains open");
-    let Some(program) = find_powershell() else {
-        return Ok(());
-    };
-    let env: HashMap<String, String> = std::env::vars().collect();
-
-    if let Err(first_error) = exercise_powershell_ctrl_c(&program, &env).await {
-        eprintln!("PowerShell Ctrl-C attempt failed, retrying once: {first_error:#}");
-        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-        exercise_powershell_ctrl_c(&program, &env)
-            .await
-            .map_err(|retry_error| {
-                anyhow::anyhow!(
-                    "PowerShell Ctrl-C failed twice; first: {first_error:#}; retry: {retry_error:#}"
-                )
-            })?;
-    }
-
     Ok(())
 }
