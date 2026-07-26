@@ -336,8 +336,6 @@ pub use unified_exec::spawn_windows_sandbox_session_elevated_for_permission_prof
 #[cfg(target_os = "windows")]
 pub use unified_exec::spawn_windows_sandbox_session_for_level;
 #[cfg(target_os = "windows")]
-pub use unified_exec::spawn_windows_sandbox_session_legacy;
-#[cfg(target_os = "windows")]
 pub use wfp::install_wfp_filters_for_account;
 #[cfg(target_os = "windows")]
 pub use wfp_setup::install_wfp_filters;

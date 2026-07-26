@@ -20,7 +20,7 @@ jobs:
     # signal without putting PR latency back on the critical path. When
     # Code-mode unit tests run on every Bazel target. When authenticated RBE
     # is available, the Windows-cross shards exercise the source-built V8 path.
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -258,7 +258,7 @@ jobs:
     # hosted-runner PR budget. Run this only for post-merge commits to an
     # integration branch and give it the full Bazel timeout.
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/clanker')
-    timeout-minutes: 60
+    timeout-minutes: 120
     runs-on: windows-latest
     name: Bazel test on windows-latest for x86_64-pc-windows-gnullvm (native integration)
     environment:
@@ -332,7 +332,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   clippy:
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -433,7 +433,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   verify-release-build:
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:

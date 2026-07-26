@@ -43,12 +43,14 @@ pub struct WindowsSandboxSessionRequest<'a> {
     pub use_private_desktop: bool,
 }
 
+fn uses_elevated_backend(level: WindowsSandboxLevel, proxy_enforced: bool) -> bool {
+    proxy_enforced || !matches!(level, WindowsSandboxLevel::Disabled)
+}
+
 pub async fn spawn_windows_sandbox_session_for_level(
     request: WindowsSandboxSessionRequest<'_>,
 ) -> Result<SpawnedProcess> {
-    if request.proxy_enforced
-        || matches!(request.windows_sandbox_level, WindowsSandboxLevel::Elevated)
-    {
+    if uses_elevated_backend(request.windows_sandbox_level, request.proxy_enforced) {
         backends::elevated::spawn_windows_sandbox_session_elevated_for_permission_profile(
             request.permission_profile,
             request.workspace_roots,
@@ -89,7 +91,7 @@ pub async fn spawn_windows_sandbox_session_for_level(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn spawn_windows_sandbox_session_legacy(
+pub(crate) async fn spawn_windows_sandbox_session_legacy(
     permission_profile: &PermissionProfile,
     workspace_roots: &[AbsolutePathBuf],
     codex_home: &Path,

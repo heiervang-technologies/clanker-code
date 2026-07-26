@@ -116,16 +116,19 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
 
 #[tokio::test]
 #[serial(codex_home)]
-async fn windows_restricted_token_rejects_exact_and_glob_deny_read_policy() -> anyhow::Result<()> {
+async fn windows_restricted_token_routes_deny_read_policy_to_elevated_backend() -> anyhow::Result<()>
+{
     let codex_home =
         codex_home_for_windows_sandbox_test("windows-restricted-token-deny-read-codex-home")?;
     let _codex_home_guard = EnvVarGuard::set("CODEX_HOME", codex_home.path().as_os_str());
+    stage_windows_sandbox_helpers()?;
     let workspace = TempDir::new()?;
     let cwd = dunce::canonicalize(workspace.path())?.abs();
     let secret = cwd.join("secret.env");
     let future_secret = cwd.join("future.env");
     let public = cwd.join("public.txt");
     std::fs::write(&secret, "glob secret\n")?;
+    std::fs::write(&future_secret, "exact secret\n")?;
     std::fs::write(&public, "public ok\n")?;
 
     let file_system_sandbox_policy = FileSystemSandboxPolicy::restricted(vec![
@@ -149,7 +152,7 @@ async fn windows_restricted_token_rejects_exact_and_glob_deny_read_policy() -> a
         },
         FileSystemSandboxEntry {
             path: FileSystemPath::Path {
-                path: future_secret,
+                path: future_secret.clone(),
             },
             access: FileSystemAccessMode::Deny,
         },
@@ -159,13 +162,17 @@ async fn windows_restricted_token_rejects_exact_and_glob_deny_read_policy() -> a
         NetworkSandboxPolicy::Restricted,
     );
 
-    let err = process_exec_tool_call(
+    let ExecToolCallOutput {
+        exit_code,
+        stdout,
+        ..
+    } = process_exec_tool_call(
         ExecParams {
             command: vec![
                 "cmd.exe".to_string(),
                 "/D".to_string(),
                 "/C".to_string(),
-                "type secret.env >NUL 2>NUL & echo exact secret 1>future.env 2>NUL & type future.env 2>NUL & type public.txt & exit /B 0"
+                "(type secret.env 1>NUL 2>NUL && echo GLOB-READ || echo GLOB-DENIED) & (type future.env 1>NUL 2>NUL && echo EXACT-READ || echo EXACT-DENIED) & type public.txt & exit /B 0"
                     .to_string(),
             ],
             cwd: cwd.clone(),
@@ -176,7 +183,7 @@ async fn windows_restricted_token_rejects_exact_and_glob_deny_read_policy() -> a
             network_environment_id: None,
             sandbox_permissions: SandboxPermissions::UseDefault,
             windows_sandbox_level: WindowsSandboxLevel::RestrictedToken,
-            windows_sandbox_private_desktop: false,
+            windows_sandbox_private_desktop: true,
             justification: None,
             arg0: None,
         },
@@ -187,12 +194,24 @@ async fn windows_restricted_token_rejects_exact_and_glob_deny_read_policy() -> a
         /*use_legacy_landlock*/ false,
         /*stdout_stream*/ None,
     )
-    .await
-    .expect_err("restricted-token sandbox should reject deny-read restrictions");
+    .await?;
 
-    assert_eq!(
-        err.to_string(),
-        "unsupported operation: windows unelevated restricted-token sandbox cannot enforce deny-read restrictions directly; refusing to run unsandboxed"
+    assert_eq!(exit_code, 0, "sandboxed command should complete");
+    assert!(
+        stdout.text.contains("GLOB-DENIED"),
+        "configured RestrictedToken mode should route to deny-read enforcement: {stdout:?}"
+    );
+    assert!(
+        stdout.text.contains("EXACT-DENIED"),
+        "configured RestrictedToken mode should enforce exact deny-read paths: {stdout:?}"
+    );
+    assert!(
+        stdout.text.contains("public ok"),
+        "unrestricted reads should remain available: {stdout:?}"
+    );
+    assert!(
+        future_secret.exists(),
+        "deny-read enforcement must not mutate the protected file"
     );
     Ok(())
 }

@@ -19,6 +19,7 @@ use windows_sys::Win32::Security::Authorization::TRUSTEE_W;
 use windows_sys::Win32::Security::CopySid;
 use windows_sys::Win32::Security::CreateRestrictedToken;
 use windows_sys::Win32::Security::CreateWellKnownSid;
+use windows_sys::Win32::Security::EqualSid;
 use windows_sys::Win32::Security::GetLengthSid;
 use windows_sys::Win32::Security::GetTokenInformation;
 use windows_sys::Win32::Security::LookupPrivilegeValueW;
@@ -36,6 +37,7 @@ use windows_sys::Win32::Security::TOKEN_QUERY;
 use windows_sys::Win32::Security::TOKEN_USER;
 use windows_sys::Win32::Security::TokenDefaultDacl;
 use windows_sys::Win32::Security::TokenGroups;
+use windows_sys::Win32::Security::TokenRestrictedSids;
 use windows_sys::Win32::Security::TokenUser;
 use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
@@ -290,6 +292,47 @@ pub unsafe fn get_logon_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
     Err(anyhow!("Logon SID not present on token"))
 }
 
+unsafe fn token_group_contains(
+    token: HANDLE,
+    information_class: i32,
+    expected_sid: *mut c_void,
+) -> Result<bool> {
+    let mut needed = 0;
+    GetTokenInformation(
+        token,
+        information_class,
+        std::ptr::null_mut(),
+        0,
+        &mut needed,
+    );
+    if needed == 0 {
+        return Err(anyhow!(
+            "GetTokenInformation({information_class}) size query failed: {}",
+            GetLastError()
+        ));
+    }
+    let mut buffer = vec![0u8; needed as usize];
+    if GetTokenInformation(
+        token,
+        information_class,
+        buffer.as_mut_ptr() as *mut c_void,
+        needed,
+        &mut needed,
+    ) == 0
+    {
+        return Err(anyhow!(
+            "GetTokenInformation({information_class}) failed: {}",
+            GetLastError()
+        ));
+    }
+    let group_count = std::ptr::read_unaligned(buffer.as_ptr() as *const u32) as usize;
+    let after_count = buffer.as_ptr().add(std::mem::size_of::<u32>()) as usize;
+    let align = std::mem::align_of::<SID_AND_ATTRIBUTES>();
+    let groups_offset = (after_count + align - 1) & !(align - 1);
+    let groups = groups_offset as *const SID_AND_ATTRIBUTES;
+    Ok((0..group_count).any(|index| EqualSid((*groups.add(index)).Sid, expected_sid) != 0))
+}
+
 pub(crate) unsafe fn get_user_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
     let mut needed: u32 = 0;
     GetTokenInformation(h_token, TokenUser, std::ptr::null_mut(), 0, &mut needed);
@@ -511,6 +554,14 @@ unsafe fn create_token_with_caps_from(
     }
 
     let configure_result = (|| -> Result<()> {
+        for sid in psid_capabilities
+            .iter()
+            .chain(extra_restricting_sids.iter())
+        {
+            if !token_group_contains(new_token, TokenRestrictedSids, *sid)? {
+                anyhow::bail!("CreateRestrictedToken omitted a required restricting SID");
+            }
+        }
         let mut user_sid_bytes = get_user_sid_bytes(base_token)?;
         let psid_user = user_sid_bytes.as_mut_ptr() as *mut c_void;
         let mut dacl_sids = Vec::with_capacity(1 + psid_capabilities.len());
@@ -704,6 +755,16 @@ mod tests {
                     launch.as_ptr(),
                 )
                 .expect("restricted token"),
+            );
+            assert!(
+                token_group_contains(token.0, TokenRestrictedSids, capability.as_ptr())
+                    .expect("query capability restricting SID"),
+                "filesystem capability must remain a restricting SID"
+            );
+            assert!(
+                token_group_contains(token.0, TokenRestrictedSids, launch.as_ptr())
+                    .expect("query launch restricting SID"),
+                "launch capability must remain a restricting SID"
             );
             assert!(
                 token_default_dacl_allows(token.0, capability.as_ptr()),

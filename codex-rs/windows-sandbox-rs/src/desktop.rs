@@ -6,6 +6,7 @@ use crate::runner_pipe::create_named_pipe_for_sid;
 use crate::runner_pipe::pipe_pair;
 use crate::token::LocalSid;
 use crate::token::get_current_token_for_restriction;
+use crate::token::get_logon_sid_bytes;
 use crate::token::get_user_sid_bytes;
 use crate::winutil::format_last_error;
 use crate::winutil::quote_windows_arg;
@@ -95,6 +96,7 @@ pub const DESKTOP_BROKER_ARG: &str = "--codex-windows-desktop-broker";
 const PIPE_IN_ARG: &str = "--pipe-in=";
 const PIPE_OUT_ARG: &str = "--pipe-out=";
 const LAUNCH_SID_ARG: &str = "--launch-sid=";
+const CHILD_LOGON_SID_ARG: &str = "--child-logon-sid=";
 const BROKER_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const BROKER_EXIT_TIMEOUT_MS: u32 = 5_000;
 const WAIT_OBJECT_0: u32 = 0;
@@ -184,10 +186,15 @@ impl Drop for OwnedHandle {
 struct OwnedSecurityDescriptor(PSECURITY_DESCRIPTOR);
 
 impl OwnedSecurityDescriptor {
-    fn for_desktop_broker(broker_user_sid: &str, launch_sid: &LocalSid) -> Result<Self> {
-        let sddl = to_wide(format!(
-            "D:P(A;;GA;;;{broker_user_sid})(A;;GA;;;{})",
-            launch_sid.as_str()
+    fn for_desktop_broker(
+        broker_logon_sid: &str,
+        child_logon_sid: &LocalSid,
+        launch_sid: &LocalSid,
+    ) -> Result<Self> {
+        let sddl = to_wide(desktop_broker_sddl(
+            broker_logon_sid,
+            child_logon_sid.as_str(),
+            launch_sid.as_str(),
         ));
         let mut descriptor = ptr::null_mut();
         let converted = unsafe {
@@ -216,6 +223,10 @@ impl OwnedSecurityDescriptor {
     }
 }
 
+fn desktop_broker_sddl(broker_logon_sid: &str, child_logon_sid: &str, launch_sid: &str) -> String {
+    format!("D:P(A;;GA;;;{broker_logon_sid})(A;;GA;;;{child_logon_sid})(A;;GA;;;{launch_sid})")
+}
+
 impl Drop for OwnedSecurityDescriptor {
     fn drop(&mut self) {
         if !self.0.is_null() {
@@ -242,6 +253,9 @@ impl DesktopBroker {
         let current_user_sid = unsafe { get_user_sid_bytes(current_token.raw())? };
         let current_user_sid =
             string_from_sid_bytes(&current_user_sid).map_err(anyhow::Error::msg)?;
+        let child_logon_sid = unsafe { get_logon_sid_bytes(current_token.raw())? };
+        let child_logon_sid =
+            string_from_sid_bytes(&child_logon_sid).map_err(anyhow::Error::msg)?;
         let (pipe_in_name, pipe_out_name) = pipe_pair();
         let pipe_in = OwnedHandle::new(create_named_pipe_for_sid(
             &pipe_in_name,
@@ -258,12 +272,13 @@ impl DesktopBroker {
             .to_str()
             .context("desktop broker executable path is not UTF-8")?;
         let command = format!(
-            "{} {} {} {} {}",
+            "{} {} {} {} {} {}",
             quote_windows_arg(broker_executable),
             DESKTOP_BROKER_ARG,
             quote_windows_arg(&format!("{PIPE_IN_ARG}{pipe_in_name}")),
             quote_windows_arg(&format!("{PIPE_OUT_ARG}{pipe_out_name}")),
             quote_windows_arg(&format!("{LAUNCH_SID_ARG}{}", launch_sid.as_str())),
+            quote_windows_arg(&format!("{CHILD_LOGON_SID_ARG}{child_logon_sid}")),
         );
         let mut command = to_wide(command);
         let executable = to_wide(broker_executable);
@@ -488,13 +503,16 @@ struct BrokerDesktop {
 }
 
 impl BrokerDesktop {
-    fn create(launch_sid: &LocalSid) -> Result<Self> {
+    fn create(child_logon_sid: &LocalSid, launch_sid: &LocalSid) -> Result<Self> {
         let current_token = OwnedHandle::new(unsafe { get_current_token_for_restriction()? });
-        let broker_user_sid = unsafe { get_user_sid_bytes(current_token.raw())? };
-        let broker_user_sid =
-            string_from_sid_bytes(&broker_user_sid).map_err(anyhow::Error::msg)?;
-        let security_descriptor =
-            OwnedSecurityDescriptor::for_desktop_broker(&broker_user_sid, launch_sid)?;
+        let broker_logon_sid = unsafe { get_logon_sid_bytes(current_token.raw())? };
+        let broker_logon_sid =
+            string_from_sid_bytes(&broker_logon_sid).map_err(anyhow::Error::msg)?;
+        let security_descriptor = OwnedSecurityDescriptor::for_desktop_broker(
+            &broker_logon_sid,
+            child_logon_sid,
+            launch_sid,
+        )?;
         let security_attributes = security_descriptor.attributes();
 
         let original_station = unsafe { GetProcessWindowStation() };
@@ -664,6 +682,7 @@ pub fn run_desktop_broker() -> Result<()> {
     let mut pipe_in = None;
     let mut pipe_out = None;
     let mut launch_sid = None;
+    let mut child_logon_sid = None;
     for arg in std::env::args().skip(1) {
         if let Some(value) = arg.strip_prefix(PIPE_IN_ARG) {
             pipe_in = Some(value.to_string());
@@ -671,6 +690,8 @@ pub fn run_desktop_broker() -> Result<()> {
             pipe_out = Some(value.to_string());
         } else if let Some(value) = arg.strip_prefix(LAUNCH_SID_ARG) {
             launch_sid = Some(value.to_string());
+        } else if let Some(value) = arg.strip_prefix(CHILD_LOGON_SID_ARG) {
+            child_logon_sid = Some(value.to_string());
         }
     }
     let mut hold_pipe = open_broker_pipe(
@@ -684,7 +705,10 @@ pub fn run_desktop_broker() -> Result<()> {
     let result = (|| -> Result<BrokerDesktop> {
         let launch_sid =
             LocalSid::from_string(&launch_sid.context("desktop broker launch SID missing")?)?;
-        BrokerDesktop::create(&launch_sid)
+        let child_logon_sid = LocalSid::from_string(
+            &child_logon_sid.context("desktop broker child logon SID missing")?,
+        )?;
+        BrokerDesktop::create(&child_logon_sid, &launch_sid)
     })();
     let desktop = match result {
         Ok(desktop) => desktop,
@@ -737,6 +761,10 @@ mod tests {
     fn isolated_objects_grant_full_process_start_access() {
         assert_eq!(WINDOW_STATION_ALL_ACCESS, 0x000F_037F);
         assert_eq!(CWF_CREATE_ONLY, 1);
+        assert_eq!(
+            desktop_broker_sddl("S-1-5-5-1-1", "S-1-5-5-2-2", "S-1-5-21-1-2-3-4"),
+            "D:P(A;;GA;;;S-1-5-5-1-1)(A;;GA;;;S-1-5-5-2-2)(A;;GA;;;S-1-5-21-1-2-3-4)"
+        );
     }
 
     #[test]
