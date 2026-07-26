@@ -36,7 +36,8 @@ pub fn cap_sid_file(codex_home: &Path) -> PathBuf {
     codex_home.join("cap_sid")
 }
 
-fn make_random_cap_sid_string() -> String {
+#[doc(hidden)]
+pub fn make_random_cap_sid_string() -> String {
     let mut rng = SmallRng::from_entropy();
     let a = rng.next_u32();
     let b = rng.next_u32();

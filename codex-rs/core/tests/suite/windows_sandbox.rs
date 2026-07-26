@@ -266,7 +266,7 @@ async fn windows_elevated_enforces_deny_read_and_protects_setup_marker() -> anyh
             network_environment_id: None,
             sandbox_permissions: SandboxPermissions::UseDefault,
             windows_sandbox_level: WindowsSandboxLevel::Elevated,
-            windows_sandbox_private_desktop: false,
+            windows_sandbox_private_desktop: true,
             justification: None,
             arg0: None,
         },

@@ -5,6 +5,7 @@ use crate::acl::ensure_allow_write_aces;
 use crate::allow::AllowDenyPaths;
 use crate::allow::compute_allow_paths_for_permissions;
 use crate::cap::load_or_create_cap_sids;
+use crate::cap::make_random_cap_sid_string;
 use crate::cap::workspace_write_cap_sid_for_root;
 use crate::cap::workspace_write_root_contains_path;
 use crate::cap::workspace_write_root_overlaps_path;
@@ -14,6 +15,8 @@ use crate::env::apply_no_network_to_env;
 use crate::env::ensure_non_interactive_pager;
 use crate::env::inherit_path_env;
 use crate::env::normalize_null_device_env;
+use crate::helper_materialization::HelperExecutable;
+use crate::helper_materialization::resolve_helper_for_launch;
 use crate::identity::SandboxCreds;
 use crate::identity::require_logon_sandbox_creds;
 use crate::logging::log_start;
@@ -23,8 +26,8 @@ use crate::sandbox_utils::ensure_codex_home_exists;
 use crate::sandbox_utils::inject_git_safe_directory;
 use crate::setup::effective_write_roots_for_permissions;
 use crate::token::LocalSid;
-use crate::token::create_readonly_token_with_cap;
-use crate::token::create_workspace_write_token_with_caps_from;
+use crate::token::create_readonly_token_with_cap_and_launch;
+use crate::token::create_workspace_write_token_with_caps_and_launch_from;
 use crate::token::get_current_token_for_restriction;
 use crate::token::get_logon_sid_bytes;
 use crate::workspace_acl::is_command_cwd_root;
@@ -62,7 +65,9 @@ pub(crate) struct SpawnPrepOptions {
 }
 
 pub(crate) struct LegacySessionSecurity {
+    pub(crate) desktop_broker_executable: PathBuf,
     pub(crate) h_token: HANDLE,
+    pub(crate) launch_sid: LocalSid,
     pub(crate) readonly_sid: Option<LocalSid>,
     pub(crate) readonly_sid_str: Option<String>,
     pub(crate) write_root_sids: Vec<RootCapabilitySid>,
@@ -151,6 +156,13 @@ pub(crate) fn prepare_legacy_session_security(
     capability_roots: impl IntoIterator<Item = PathBuf>,
 ) -> Result<LegacySessionSecurity> {
     let caps = load_or_create_cap_sids(codex_home)?;
+    let logs_base_dir = crate::sandbox_dir(codex_home);
+    let desktop_broker_executable = resolve_helper_for_launch(
+        HelperExecutable::CommandRunner,
+        codex_home,
+        Some(&logs_base_dir),
+    );
+    let launch_sid = LocalSid::from_string(&make_random_cap_sid_string())?;
     let (h_token, readonly_sid, readonly_sid_str, write_root_sids) = unsafe {
         if uses_write_capabilities {
             let write_root_sids = root_capability_sids(codex_home, cwd, capability_roots)?;
@@ -162,19 +174,28 @@ pub(crate) fn prepare_legacy_session_security(
                 .iter()
                 .map(|root| root.sid.as_ptr())
                 .collect();
-            let h_token = create_workspace_write_token_with_caps_from(base, cap_ptrs.as_slice());
+            let h_token = create_workspace_write_token_with_caps_and_launch_from(
+                base,
+                cap_ptrs.as_slice(),
+                launch_sid.as_ptr(),
+            );
             CloseHandle(base);
             let h_token = h_token?;
             (h_token, None, None, write_root_sids)
         } else {
-            let psid = LocalSid::from_string(&caps.readonly)?;
-            let (h_token, _psid) = create_readonly_token_with_cap(psid.as_ptr())?;
-            (h_token, Some(psid), Some(caps.readonly), Vec::new())
+            let readonly_sid = LocalSid::from_string(&caps.readonly)?;
+            let h_token = create_readonly_token_with_cap_and_launch(
+                readonly_sid.as_ptr(),
+                launch_sid.as_ptr(),
+            )?;
+            (h_token, Some(readonly_sid), Some(caps.readonly), Vec::new())
         }
     };
 
     Ok(LegacySessionSecurity {
+        desktop_broker_executable,
         h_token,
+        launch_sid,
         readonly_sid,
         readonly_sid_str,
         write_root_sids,

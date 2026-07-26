@@ -148,17 +148,25 @@ pub unsafe fn convert_string_sid_to_sid(s: &str) -> Option<*mut c_void> {
 /// Owns a SID allocated by `ConvertStringSidToSidW` and releases it with `LocalFree`.
 pub struct LocalSid {
     psid: *mut c_void,
+    sid_string: String,
 }
 
 impl LocalSid {
     pub fn from_string(sid: &str) -> Result<Self> {
         let psid = unsafe { convert_string_sid_to_sid(sid) }
             .ok_or_else(|| anyhow!("invalid SID string: {sid}"))?;
-        Ok(Self { psid })
+        Ok(Self {
+            psid,
+            sid_string: sid.to_string(),
+        })
     }
 
     pub fn as_ptr(&self) -> *mut c_void {
         self.psid
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.sid_string
     }
 }
 
@@ -282,7 +290,7 @@ pub unsafe fn get_logon_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
     Err(anyhow!("Logon SID not present on token"))
 }
 
-unsafe fn get_user_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
+pub(crate) unsafe fn get_user_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
     let mut needed: u32 = 0;
     GetTokenInformation(h_token, TokenUser, std::ptr::null_mut(), 0, &mut needed);
     if needed == 0 {
@@ -353,19 +361,21 @@ unsafe fn enable_single_privilege(h_token: HANDLE, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Creates a read-only token with a separate non-filesystem launch SID.
+///
 /// # Safety
-/// Caller must close the returned token handle.
-pub unsafe fn create_readonly_token_with_cap(
+/// Caller must close the returned token handle; both SID pointers must remain
+/// valid for the duration of this call.
+pub(crate) unsafe fn create_readonly_token_with_cap_and_launch(
     psid_capability: *mut c_void,
-) -> Result<(HANDLE, *mut c_void)> {
+    psid_launch: *mut c_void,
+) -> Result<HANDLE> {
     let base = get_current_token_for_restriction()?;
-    let res = create_readonly_token_with_cap_from(base, psid_capability);
+    let result = create_token_with_caps_from(base, &[psid_capability], &[psid_launch]);
     CloseHandle(base);
-    res
+    result
 }
 
-/// # Safety
-/// Caller must close the returned token handle; base_token must be a valid primary token.
 /// # Safety
 /// Caller must close the returned token handle; base_token must be a valid primary token.
 pub unsafe fn create_readonly_token_with_cap_from(
@@ -385,6 +395,23 @@ pub unsafe fn create_workspace_write_token_with_caps_from(
     psid_capabilities: &[*mut c_void],
 ) -> Result<HANDLE> {
     create_token_with_caps_from(base_token, psid_capabilities, &[])
+}
+
+/// Creates a workspace-write token with a non-filesystem launch SID.
+///
+/// The launch SID is granted access only to process-launch objects such as the
+/// private desktop. Root capability SIDs remain the sole filesystem write
+/// authority.
+///
+/// # Safety
+/// Caller must close the returned token handle; all pointers and `base_token`
+/// must remain valid for the duration of this call.
+pub unsafe fn create_workspace_write_token_with_caps_and_launch_from(
+    base_token: HANDLE,
+    psid_capabilities: &[*mut c_void],
+    psid_launch: *mut c_void,
+) -> Result<HANDLE> {
+    create_token_with_caps_from(base_token, psid_capabilities, &[psid_launch])
 }
 
 /// Create a restricted token that includes all provided capability SIDs plus the token user SID.
@@ -430,6 +457,19 @@ pub unsafe fn create_readonly_token_with_caps_and_user_from(
     create_token_with_caps_from(base_token, psid_capabilities, &[psid_user])
 }
 
+/// Creates a read-only token with a per-launch restricting SID.
+///
+/// # Safety
+/// Caller must close the returned token handle; all pointers and `base_token`
+/// must remain valid for the duration of this call.
+pub unsafe fn create_readonly_token_with_caps_and_launch_from(
+    base_token: HANDLE,
+    psid_capabilities: &[*mut c_void],
+    psid_launch: *mut c_void,
+) -> Result<HANDLE> {
+    create_token_with_caps_from(base_token, psid_capabilities, &[psid_launch])
+}
+
 unsafe fn create_token_with_caps_from(
     base_token: HANDLE,
     psid_capabilities: &[*mut c_void],
@@ -438,17 +478,12 @@ unsafe fn create_token_with_caps_from(
     if psid_capabilities.is_empty() {
         return Err(anyhow!("no capability SIDs provided"));
     }
-    let mut logon_sid_bytes = get_logon_sid_bytes(base_token)?;
-    let psid_logon = logon_sid_bytes.as_mut_ptr() as *mut c_void;
-    let mut everyone = world_sid()?;
-    let psid_everyone = everyone.as_mut_ptr() as *mut c_void;
-
-    // The logon SID keeps private desktop and session-scoped IPC access
-    // available. Do not add broad compatibility SIDs here: restricting SIDs
-    // are alternatives, so one present on an ordinary host ACL would bypass
-    // the capability-root write boundary.
+    // Restricting SIDs are alternatives during the second access check. Keep
+    // the legacy token limited to explicit capabilities: ordinary user-owned
+    // objects commonly grant the logon SID, Everyone, or Write Restricted
+    // Code, and any of those would bypass the capability-root boundary.
     let mut entries: Vec<SID_AND_ATTRIBUTES> =
-        vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len() + 1];
+        vec![std::mem::zeroed(); psid_capabilities.len() + extra_restricting_sids.len()];
     for (i, psid) in psid_capabilities.iter().enumerate() {
         entries[i].Sid = *psid;
         entries[i].Attributes = 0;
@@ -458,10 +493,6 @@ unsafe fn create_token_with_caps_from(
         entries[extras_idx + i].Sid = *psid;
         entries[extras_idx + i].Attributes = 0;
     }
-    let logon_idx = extras_idx + extra_restricting_sids.len();
-    entries[logon_idx].Sid = psid_logon;
-    entries[logon_idx].Attributes = 0;
-
     let mut new_token: HANDLE = 0;
     let flags = DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED;
     let ok = CreateRestrictedToken(
@@ -479,19 +510,30 @@ unsafe fn create_token_with_caps_from(
         return Err(anyhow!("CreateRestrictedToken failed: {}", GetLastError()));
     }
 
-    let mut dacl_sids: Vec<*mut c_void> = Vec::with_capacity(psid_capabilities.len() + 2);
-    dacl_sids.push(psid_logon);
-    dacl_sids.push(psid_everyone);
-    dacl_sids.extend_from_slice(psid_capabilities);
-    set_default_dacl(new_token, &dacl_sids)?;
-
-    enable_single_privilege(new_token, "SeChangeNotifyPrivilege")?;
+    let configure_result = (|| -> Result<()> {
+        let mut user_sid_bytes = get_user_sid_bytes(base_token)?;
+        let psid_user = user_sid_bytes.as_mut_ptr() as *mut c_void;
+        let mut dacl_sids = Vec::with_capacity(1 + psid_capabilities.len());
+        // New kernel objects need both halves of the restricted-token access
+        // check: the ordinary token user and a filesystem capability. Launch
+        // capabilities must never become filesystem authority through the
+        // token's default DACL.
+        dacl_sids.push(psid_user);
+        dacl_sids.extend_from_slice(psid_capabilities);
+        set_default_dacl(new_token, &dacl_sids)?;
+        enable_single_privilege(new_token, "SeChangeNotifyPrivilege")
+    })();
+    if let Err(err) = configure_result {
+        CloseHandle(new_token);
+        return Err(err);
+    }
     Ok(new_token)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acl::dacl_mask_allows;
     use std::io;
     use std::path::Path;
     use windows_sys::Win32::Security::Authorization::SetNamedSecurityInfoW;
@@ -499,6 +541,7 @@ mod tests {
     use windows_sys::Win32::Security::ImpersonateLoggedOnUser;
     use windows_sys::Win32::Security::PROTECTED_DACL_SECURITY_INFORMATION;
     use windows_sys::Win32::Security::RevertToSelf;
+    use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
 
     struct OwnedHandle(HANDLE);
 
@@ -588,38 +631,91 @@ mod tests {
         result
     }
 
+    unsafe fn token_default_dacl_allows(token: HANDLE, sid: *mut c_void) -> bool {
+        let mut needed = 0;
+        GetTokenInformation(
+            token,
+            TokenDefaultDacl,
+            std::ptr::null_mut(),
+            0,
+            &mut needed,
+        );
+        assert!(needed > 0, "query token default DACL size");
+        let mut buffer = vec![0u8; needed as usize];
+        assert_ne!(
+            GetTokenInformation(
+                token,
+                TokenDefaultDacl,
+                buffer.as_mut_ptr() as *mut c_void,
+                needed,
+                &mut needed,
+            ),
+            0,
+            "query token default DACL"
+        );
+        let info = &*(buffer.as_ptr() as *const TokenDefaultDaclInfo);
+        dacl_mask_allows(info.default_dacl, &[sid], FILE_ALL_ACCESS, true)
+    }
+
     #[test]
     fn write_restricted_token_only_allows_capability_roots() {
         let temp = tempfile::tempdir().expect("tempdir");
         let world_only = temp.path().join("world-only");
+        let user_only = temp.path().join("user-only");
+        let logon_only = temp.path().join("logon-only");
         let write_restricted_code = temp.path().join("write-restricted-code");
         let capability_root = temp.path().join("capability-root");
         std::fs::create_dir_all(&world_only).expect("create world-only directory");
+        std::fs::create_dir_all(&user_only).expect("create user-only directory");
+        std::fs::create_dir_all(&logon_only).expect("create logon-only directory");
         std::fs::create_dir_all(&write_restricted_code)
             .expect("create write-restricted-code directory");
         std::fs::create_dir_all(&capability_root).expect("create capability directory");
 
         unsafe {
+            let base = OwnedHandle(
+                get_current_token_for_restriction().expect("current process restriction token"),
+            );
             let mut world_sid = world_sid().expect("world SID");
             let world_sid = world_sid.as_mut_ptr() as *mut c_void;
+            let mut user_sid = get_user_sid_bytes(base.0).expect("token user SID");
+            let user_sid = user_sid.as_mut_ptr() as *mut c_void;
+            let mut logon_sid = get_logon_sid_bytes(base.0).expect("token logon SID");
+            let logon_sid = logon_sid.as_mut_ptr() as *mut c_void;
             let mut write_restricted_code_sid =
                 well_known_sid(WIN_WRITE_RESTRICTED_CODE_SID).expect("write-restricted-code SID");
             let write_restricted_code_sid = write_restricted_code_sid.as_mut_ptr() as *mut c_void;
             let capability = LocalSid::from_string("S-1-5-21-1-2-3-4").expect("capability SID");
+            let launch = LocalSid::from_string("S-1-5-21-1-2-3-5").expect("launch SID");
 
             set_protected_full_access_acl(&world_only, &[world_sid]);
+            set_protected_full_access_acl(&user_only, &[user_sid]);
+            set_protected_full_access_acl(&logon_only, &[logon_sid]);
             set_protected_full_access_acl(
                 &write_restricted_code,
                 &[world_sid, write_restricted_code_sid],
             );
             set_protected_full_access_acl(&capability_root, &[world_sid, capability.as_ptr()]);
 
-            let base = OwnedHandle(
-                get_current_token_for_restriction().expect("current process restriction token"),
-            );
             let token = OwnedHandle(
-                create_workspace_write_token_with_caps_from(base.0, &[capability.as_ptr()])
-                    .expect("restricted token"),
+                create_workspace_write_token_with_caps_and_launch_from(
+                    base.0,
+                    &[capability.as_ptr()],
+                    launch.as_ptr(),
+                )
+                .expect("restricted token"),
+            );
+            assert!(
+                token_default_dacl_allows(token.0, capability.as_ptr()),
+                "filesystem capability must remain on the token default DACL"
+            );
+            assert!(
+                token_default_dacl_allows(token.0, user_sid),
+                "token user must remain on the token default DACL"
+            );
+            assert!(
+                !token_default_dacl_allows(token.0, launch.as_ptr()),
+                "launch SID must not appear on the token default DACL"
             );
 
             let denied_path = world_only.join("denied.txt");
@@ -629,6 +725,22 @@ mod tests {
                 "Everyone-only ACL must not satisfy the restricting SID check"
             );
             assert!(!denied_path.exists());
+
+            let user_path = user_only.join("denied.txt");
+            let user_denied = write_as(token.0, &user_path);
+            assert!(
+                user_denied.is_err(),
+                "token user SID must not bypass capability-root isolation"
+            );
+            assert!(!user_path.exists());
+
+            let logon_path = logon_only.join("denied.txt");
+            let logon_denied = write_as(token.0, &logon_path);
+            assert!(
+                logon_denied.is_err(),
+                "logon SID must not bypass capability-root isolation"
+            );
+            assert!(!logon_path.exists());
 
             let compatibility_path = write_restricted_code.join("denied.txt");
             let compatibility_denied = write_as(token.0, &compatibility_path);

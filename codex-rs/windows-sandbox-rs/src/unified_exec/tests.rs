@@ -79,6 +79,17 @@ fn sandbox_log(codex_home: &Path) -> String {
         .unwrap_or_else(|err| format!("failed to read {}: {err}", log_path.display()))
 }
 
+fn broker_desktop_name(codex_home: &Path) -> String {
+    let log = sandbox_log(codex_home);
+    log.lines()
+        .find_map(|line| {
+            line.split_once("desktop broker ready: ")
+                .map(|(_, name)| name)
+        })
+        .unwrap_or_else(|| panic!("desktop broker name missing from log:\n{log}"))
+        .to_string()
+}
+
 fn workspace_roots_for(root: &Path) -> Vec<AbsolutePathBuf> {
     vec![AbsolutePathBuf::from_absolute_path(root).expect("absolute workspace root")]
 }
@@ -189,6 +200,93 @@ fn legacy_non_tty_cmd_emits_output() {
 }
 
 #[test]
+fn concurrent_legacy_launches_use_distinct_window_stations() {
+    let _guard = legacy_process_test_guard();
+    let runtime = current_thread_runtime();
+    runtime.block_on(async move {
+        let cwd = sandbox_cwd();
+        let first_home = sandbox_home("legacy-concurrent-first");
+        let second_home = sandbox_home("legacy-concurrent-second");
+        let permission_profile = PermissionProfile::workspace_write();
+        let roots = workspace_roots_for(cwd.as_path());
+        let command = || {
+            vec![
+                "C:\\Windows\\System32\\cmd.exe".to_string(),
+                "/d".to_string(),
+                "/q".to_string(),
+            ]
+        };
+
+        let first = spawn_windows_sandbox_session_legacy(
+            &permission_profile,
+            roots.as_slice(),
+            first_home.path(),
+            command(),
+            cwd.as_path(),
+            HashMap::new(),
+            Some(15_000),
+            &[],
+            &[],
+            /*tty*/ false,
+            /*stdin_open*/ true,
+            /*use_private_desktop*/ true,
+        )
+        .await
+        .expect("spawn first concurrent legacy session");
+        let second = spawn_windows_sandbox_session_legacy(
+            &permission_profile,
+            roots.as_slice(),
+            second_home.path(),
+            command(),
+            cwd.as_path(),
+            HashMap::new(),
+            Some(15_000),
+            &[],
+            &[],
+            /*tty*/ false,
+            /*stdin_open*/ true,
+            /*use_private_desktop*/ true,
+        )
+        .await
+        .expect("spawn second concurrent legacy session");
+
+        let first_name = broker_desktop_name(first_home.path());
+        let second_name = broker_desktop_name(second_home.path());
+        let first_station = first_name
+            .split_once('\\')
+            .expect("qualified first desktop")
+            .0;
+        let second_station = second_name
+            .split_once('\\')
+            .expect("qualified second desktop")
+            .0;
+        assert_ne!(
+            first_station, second_station,
+            "concurrent brokers must receive distinct authentication-LUID stations"
+        );
+
+        first
+            .session
+            .writer_sender()
+            .send(b"echo FIRST & exit\r\n".to_vec())
+            .await
+            .expect("stop first concurrent session");
+        second
+            .session
+            .writer_sender()
+            .send(b"echo SECOND & exit\r\n".to_vec())
+            .await
+            .expect("stop second concurrent session");
+        let (first_result, second_result) = tokio::join!(
+            collect_stdout_and_exit(first, first_home.path(), Duration::from_secs(20)),
+            collect_stdout_and_exit(second, second_home.path(), Duration::from_secs(20)),
+        );
+        assert_eq!(first_result.1, 0, "first stdout={:?}", first_result.0);
+        assert_eq!(second_result.1, 0, "second stdout={:?}", second_result.0);
+    });
+}
+
+#[test]
 fn legacy_non_tty_cmd_rejects_deny_read_overrides() {
     let _guard = legacy_process_test_guard();
     let runtime = current_thread_runtime();
@@ -271,25 +369,22 @@ fn legacy_non_tty_powershell_emits_output() {
 }
 
 #[test]
-fn legacy_non_tty_powershell_default_desktop_emits_output() {
-    let Some(pwsh) = pwsh_path() else {
-        return;
-    };
+fn legacy_shared_desktop_is_rejected() {
     let _guard = legacy_process_test_guard();
     let runtime = current_thread_runtime();
     runtime.block_on(async move {
         let cwd = sandbox_cwd();
-        let codex_home = sandbox_home("legacy-non-tty-pwsh-default-desktop");
+        let codex_home = sandbox_home("legacy-shared-desktop-rejected");
         let permission_profile = PermissionProfile::workspace_write();
-        let spawned = spawn_windows_sandbox_session_legacy(
+        let error = spawn_windows_sandbox_session_legacy(
             &permission_profile,
             workspace_roots_for(cwd.as_path()).as_slice(),
             codex_home.path(),
             vec![
-                pwsh.display().to_string(),
-                "-NoProfile".to_string(),
-                "-Command".to_string(),
-                "Write-Output LEGACY-NONTTY-DEFAULT-DESKTOP".to_string(),
+                "C:\\Windows\\System32\\cmd.exe".to_string(),
+                "/d".to_string(),
+                "/c".to_string(),
+                "exit 0".to_string(),
             ],
             cwd.as_path(),
             HashMap::new(),
@@ -301,20 +396,12 @@ fn legacy_non_tty_powershell_default_desktop_emits_output() {
             /*use_private_desktop*/ false,
         )
         .await
-        .expect("spawn legacy non-tty PowerShell on the inherited desktop");
-        let (stdout, exit_code) =
-            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(10)).await;
-        let stdout = String::from_utf8_lossy(&stdout);
-        assert_eq!(
-            exit_code,
-            0,
-            "stdout={stdout:?}\n{}",
-            sandbox_log(codex_home.path())
-        );
+        .expect_err("shared desktop must be rejected for restricted launches");
         assert!(
-            stdout.contains("LEGACY-NONTTY-DEFAULT-DESKTOP"),
-            "stdout={stdout:?}\n{}",
-            sandbox_log(codex_home.path())
+            error
+                .to_string()
+                .contains("restricted Windows launches require a private desktop"),
+            "unexpected error: {error:#}"
         );
     });
 }
@@ -751,60 +838,6 @@ fn legacy_tty_cmd_emits_output_and_accepts_input() {
         .await
         .expect("spawn legacy tty cmd session");
         println!("tty cmd spawn returned");
-
-        let writer = spawned.session.writer_sender();
-        writer
-            .send(b"echo second\n".to_vec())
-            .await
-            .expect("send second command");
-        writer
-            .send(b"exit\n".to_vec())
-            .await
-            .expect("send exit command");
-        spawned.session.close_stdin();
-
-        let (stdout, exit_code) =
-            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(15)).await;
-        let stdout = String::from_utf8_lossy(&stdout);
-        assert_eq!(exit_code, 0, "stdout={stdout:?}");
-        assert!(stdout.contains("ready"), "stdout={stdout:?}");
-        assert!(stdout.contains("second"), "stdout={stdout:?}");
-    });
-}
-
-#[test]
-#[ignore = "TODO: legacy ConPTY cmd.exe exits with STATUS_DLL_INIT_FAILED in CI"]
-fn legacy_tty_cmd_default_desktop_emits_output_and_accepts_input() {
-    let runtime = current_thread_runtime();
-    runtime.block_on(async move {
-        let cwd = sandbox_cwd();
-        let codex_home = sandbox_home("legacy-tty-cmd-default-desktop");
-        println!(
-            "tty cmd default desktop codex_home={}",
-            codex_home.path().display()
-        );
-        let permission_profile = PermissionProfile::workspace_write();
-        let spawned = spawn_windows_sandbox_session_legacy(
-            &permission_profile,
-            workspace_roots_for(cwd.as_path()).as_slice(),
-            codex_home.path(),
-            vec![
-                "C:\\Windows\\System32\\cmd.exe".to_string(),
-                "/K".to_string(),
-                "echo ready".to_string(),
-            ],
-            cwd.as_path(),
-            HashMap::new(),
-            Some(10_000),
-            &[],
-            &[],
-            /*tty*/ true,
-            /*stdin_open*/ true,
-            /*use_private_desktop*/ false,
-        )
-        .await
-        .expect("spawn legacy tty cmd session");
-        println!("tty cmd default desktop spawn returned");
 
         let writer = spawned.session.writer_sender();
         writer

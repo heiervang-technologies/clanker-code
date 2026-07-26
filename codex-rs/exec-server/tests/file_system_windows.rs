@@ -9,8 +9,10 @@ mod shared;
 mod support;
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::Context;
 use anyhow::Result;
 use codex_exec_server::FileSystemSandboxContext;
 use codex_protocol::config_types::WindowsSandboxLevel;
@@ -20,6 +22,38 @@ use test_case::test_case;
 
 use crate::support::FileSystemImplementation;
 use crate::support::create_file_system_context;
+
+fn stage_windows_sandbox_helper() -> Result<PathBuf> {
+    let test_exe = std::env::current_exe().context("resolve current Windows test executable")?;
+    let resources_dir = test_exe
+        .parent()
+        .context("Windows test executable should have a parent directory")?
+        .join("codex-resources");
+    match std::fs::create_dir_all(&resources_dir) {
+        Ok(()) => {}
+        Err(err)
+            if err.kind() == std::io::ErrorKind::PermissionDenied && resources_dir.is_dir() => {}
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("create resources dir {}", resources_dir.display()));
+        }
+    }
+
+    let helper = codex_utils_cargo_bin::cargo_bin("codex-command-runner")?;
+    let destination = resources_dir.join("codex-command-runner.exe");
+    if let Err(err) = std::fs::copy(&helper, &destination) {
+        if err.kind() != std::io::ErrorKind::PermissionDenied || !destination.exists() {
+            return Err(err).with_context(|| {
+                format!(
+                    "stage Windows sandbox helper {} at {}",
+                    helper.display(),
+                    destination.display()
+                )
+            });
+        }
+    }
+    Ok(destination)
+}
 
 fn create_directory_junction(target: &Path, alias: &Path) -> Result<()> {
     let output = Command::new("cmd")
@@ -62,6 +96,7 @@ async fn file_system_sandboxed_canonicalize_resolves_directory_junction(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn file_system_remote_fs_helper_respects_windows_sandbox_write_policy() -> Result<()> {
+    let _staged_helper = stage_windows_sandbox_helper()?;
     let context = create_file_system_context(FileSystemImplementation::Remote).await?;
     let file_system = context.file_system;
     let tmp = tempfile::TempDir::new()?;

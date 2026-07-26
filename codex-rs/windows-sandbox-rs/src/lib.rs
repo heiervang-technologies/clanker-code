@@ -8,6 +8,13 @@ mod ssh_config_dependencies;
 use std::fmt;
 use std::sync::Arc;
 
+/// Internal filesystem-helper argument shared by both Windows launch paths.
+///
+/// Kept in sync with `codex_exec_server::CODEX_FS_HELPER_ARG1` without adding a
+/// dependency cycle.
+#[doc(hidden)]
+pub const FS_HELPER_ARG: &str = "--codex-run-as-fs-helper";
+
 /// Cancellation hook used by Windows sandbox capture backends.
 #[derive(Clone)]
 pub struct WindowsSandboxCancellationToken {
@@ -152,6 +159,9 @@ pub use audit::apply_world_writable_scan_and_denies_for_permissions;
 #[cfg(target_os = "windows")]
 pub use cap::load_or_create_cap_sids;
 #[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub use cap::make_random_cap_sid_string;
+#[cfg(target_os = "windows")]
 pub use cap::workspace_cap_sid_for_cwd;
 #[cfg(target_os = "windows")]
 pub use cap::workspace_write_cap_sid_for_root;
@@ -171,7 +181,13 @@ pub use deny_read_resolver::resolve_windows_deny_read_paths;
 #[cfg(target_os = "windows")]
 pub use deny_read_state::sync_persistent_deny_read_acls;
 #[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub use desktop::DESKTOP_BROKER_ARG;
+#[cfg(target_os = "windows")]
 pub use desktop::LaunchDesktop;
+#[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub use desktop::run_desktop_broker;
 #[cfg(target_os = "windows")]
 pub use dpapi::protect as dpapi_protect;
 #[cfg(target_os = "windows")]
@@ -298,9 +314,15 @@ pub use token::convert_string_sid_to_sid;
 #[cfg(target_os = "windows")]
 pub use token::create_readonly_token_with_cap_from;
 #[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub use token::create_readonly_token_with_caps_and_launch_from;
+#[cfg(target_os = "windows")]
 pub use token::create_readonly_token_with_caps_and_user_from;
 #[cfg(target_os = "windows")]
 pub use token::create_readonly_token_with_caps_from;
+#[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub use token::create_workspace_write_token_with_caps_and_launch_from;
 #[cfg(target_os = "windows")]
 pub use token::create_workspace_write_token_with_caps_and_user_from;
 #[cfg(target_os = "windows")]
@@ -351,6 +373,7 @@ pub use stub::run_windows_sandbox_legacy_preflight;
 
 #[cfg(target_os = "windows")]
 mod windows_impl {
+    use super::FS_HELPER_ARG;
     use super::WindowsSandboxCancellationToken;
     use super::logging::log_failure;
     use super::logging::log_success;
@@ -567,12 +590,18 @@ mod windows_impl {
         let spawn_res = unsafe {
             create_process_as_user(
                 security.h_token,
+                &security.launch_sid,
+                &security.desktop_broker_executable,
                 &command,
                 cwd,
                 &env_map,
                 logs_base_dir,
                 Some((in_r, out_w, err_w)),
-                ConsoleMode::Inherit,
+                if command.get(1).is_some_and(|arg| arg == FS_HELPER_ARG) {
+                    ConsoleMode::NoWindow
+                } else {
+                    ConsoleMode::Inherit
+                },
                 use_private_desktop,
             )
         };

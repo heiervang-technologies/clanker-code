@@ -196,7 +196,7 @@ fn try_take_completed_connect_result(
     Ok(Some(result))
 }
 
-fn connect_pipe_with_timeout(
+pub(crate) fn connect_pipe_with_timeout(
     h_pipe: HANDLE,
     expected_runner_pid: u32,
     pipe_label: &str,
