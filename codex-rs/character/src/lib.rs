@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 mod avatar;
 mod manifest;
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Modified by Heiervang Technologies.
 """Build the Chloe R2 ANSI avatar candidates from their hand-rolled sources.
 
 The source silhouettes stay fixed. Animation is limited to facial reflections,

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Render persisted thread turns into history-cell building blocks.
 
 use std::sync::Arc;

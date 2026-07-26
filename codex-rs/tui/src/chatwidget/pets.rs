@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Chat widget helpers for ambient terminal pets and the pets picker.
 
 use super::*;

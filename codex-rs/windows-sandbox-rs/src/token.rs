@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::winutil::to_wide;
 use anyhow::Result;
 use anyhow::anyhow;

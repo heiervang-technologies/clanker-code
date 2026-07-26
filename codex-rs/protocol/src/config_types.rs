@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_utils_absolute_path::AbsolutePathBuf;
 use schemars::JsonSchema;
 use schemars::r#gen::SchemaGenerator;

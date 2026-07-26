@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::model::ThreadMetadata;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Collects markdown stream source at newline boundaries.
 //!
 //! `MarkdownStreamCollector` buffers incoming token deltas and exposes a commit boundary at each

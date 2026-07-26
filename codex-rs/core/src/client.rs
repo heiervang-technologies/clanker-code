@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Session- and turn-scoped helpers for talking to model provider APIs.
 //!
 //! `ModelClient` is intended to live for the lifetime of a Codex session and holds the stable

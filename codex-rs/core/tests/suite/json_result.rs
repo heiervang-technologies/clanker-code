@@ -1,4 +1,5 @@
 #![cfg(not(target_os = "windows"))]
+// Modified by Heiervang Technologies.
 
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::protocol::AskForApproval;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use image::Rgba;
 use image::RgbaImage;
 use insta::assert_snapshot;

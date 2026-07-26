@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::*;
 use crate::ServerNotification;
 use codex_protocol::approvals::ElicitationRequest as CoreElicitationRequest;

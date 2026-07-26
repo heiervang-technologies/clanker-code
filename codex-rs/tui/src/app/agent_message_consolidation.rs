@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Transcript consolidation for finalized streaming agent messages.
 //!
 //! During streaming, the chat widget emits transient `AgentMessageCell`s so it

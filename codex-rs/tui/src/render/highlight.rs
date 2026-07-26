@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Syntax highlighting engine for the TUI.
 //!
 //! Wraps [syntect] with the [two_face] grammar and theme bundles to provide

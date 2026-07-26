@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_code_mode::ImageDetail as CodeModeImageDetail;
 use codex_protocol::models::DEFAULT_IMAGE_DETAIL;
 use codex_protocol::models::FunctionCallOutputContentItem;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Thread settings sync between TUI-local state and app-server thread state.
 
 use super::App;

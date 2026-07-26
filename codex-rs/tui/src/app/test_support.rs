@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Shared App fixtures for app submodule unit tests.
 //!
 //! This module keeps heavyweight `App` construction and config-inspection helpers available to

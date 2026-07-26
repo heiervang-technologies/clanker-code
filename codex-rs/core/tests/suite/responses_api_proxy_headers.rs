@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Verifies that parent and spawned subagent Responses API requests carry the expected window,
 //! parent-thread, and subagent identity headers.
 

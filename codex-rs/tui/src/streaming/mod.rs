@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Streaming primitives used by the TUI transcript pipeline.
 //!
 //! `StreamState` owns newline-gated markdown collection and a FIFO queue of committed render lines.

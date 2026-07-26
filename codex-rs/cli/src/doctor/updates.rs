@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Diagnoses whether Codex update paths target the running installation.
 //!
 //! Update diagnostics combine cached version metadata, install-channel hints,

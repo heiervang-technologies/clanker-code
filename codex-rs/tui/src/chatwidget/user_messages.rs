@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! User-message models and helpers for the chat widget.
 //!
 //! The app-server preserves user input as structured chunks, while chat history

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Transient side-conversation threads.
 //!
 //! A side conversation is an ephemeral fork used for a quick /side question while keeping the

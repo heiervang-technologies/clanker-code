@@ -1,4 +1,5 @@
 #![cfg(target_os = "windows")]
+// Modified by Heiervang Technologies.
 
 use super::spawn_windows_sandbox_session_legacy;
 use crate::WindowsSandboxCancellationToken;

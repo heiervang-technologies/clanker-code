@@ -1,4 +1,5 @@
 #![allow(clippy::unwrap_used)]
+// Modified by Heiervang Technologies.
 
 use anyhow::Result;
 use base64::Engine;

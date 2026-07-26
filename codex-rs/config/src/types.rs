@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Types used to define loaded and effective Codex configuration values.
 
 // Note this file should generally be restricted to simple struct/enum

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::ContextualUserFragment;
 use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::protocol::MULTI_AGENT_MODE_CLOSE_TAG;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_config::HooksFile;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathConvention;

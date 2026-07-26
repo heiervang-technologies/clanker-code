@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Builds the `/pets` picker dialog for the TUI.
 //!
 //! The picker deliberately merges three sources into one list:

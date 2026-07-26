@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Windows command runner used by the **elevated** sandbox path.
 //!
 //! The CLI launches this binary under the sandbox user when Windows sandbox level is

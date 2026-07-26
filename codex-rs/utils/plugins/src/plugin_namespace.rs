@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Resolve plugin namespace from skill file paths by walking ancestors for `plugin.json`.
 
 use codex_exec_server::ExecutorFileSystem;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 pub(crate) mod common;
 pub mod compact;
 pub mod permission_request;

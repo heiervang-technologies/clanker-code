@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Data model for grouped exec-call history cells in the TUI transcript.
 //!
 //! An `ExecCell` can represent either a single command or an "exploring" group of related read/

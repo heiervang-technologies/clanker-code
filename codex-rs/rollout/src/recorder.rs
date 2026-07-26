@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Persist Codex session rollouts (.jsonl) so sessions can be replayed or inspected later.
 
 use std::collections::HashSet;

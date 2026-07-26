@@ -1,4 +1,5 @@
 #![allow(clippy::unwrap_used)]
+// Modified by Heiervang Technologies.
 #![cfg(target_os = "macos")]
 
 use anyhow::Result;

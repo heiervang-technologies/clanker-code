@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Multi-agent picker navigation and labeling state for the TUI app.
 //!
 //! This module exists to keep the pure parts of multi-agent navigation out of [`crate::app::App`].

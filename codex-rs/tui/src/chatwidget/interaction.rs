@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Key routing and composer-adjacent UI interaction for `ChatWidget`.
 
 use super::*;

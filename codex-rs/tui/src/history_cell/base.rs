@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Shared history-cell building blocks reused across transcript concerns.
 
 use super::*;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Context fragments injected into model input.
 
 mod approved_command_prefix_saved;

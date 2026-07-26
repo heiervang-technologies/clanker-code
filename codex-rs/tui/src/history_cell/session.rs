@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Session headers, onboarding guidance, and transcript cards.
 
 use super::*;

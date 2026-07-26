@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::ThreadHistoryMode;
 use serde::Deserialize;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Polls the cross-process `say` playback signal for the current agent.
 
 use std::path::PathBuf;

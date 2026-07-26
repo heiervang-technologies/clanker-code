@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Chat widget hooks for side-conversation mode.
 //!
 //! App-level side-thread lifecycle lives in `app::side`; this module owns the

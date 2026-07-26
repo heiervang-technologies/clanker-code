@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_protocol::config_types::CollaborationModeOverride;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::openai_models::ModelPreset;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! AppEvent dispatch for the TUI app.
 //!
 //! This module contains the exhaustive `AppEvent` dispatcher and exit-mode handling. Large domain

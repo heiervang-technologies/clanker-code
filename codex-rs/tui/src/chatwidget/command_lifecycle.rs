@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Command execution lifecycle handlers for `ChatWidget`.
 //!
 //! This module owns command start/output/completion rendering, including active

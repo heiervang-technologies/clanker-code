@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Registry of model providers supported by Codex.
 //!
 //! Providers can be defined in two places:

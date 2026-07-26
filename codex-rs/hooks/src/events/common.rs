@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
 use codex_protocol::protocol::HookOutputEntry;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! History cell for hook execution.
 //!
 //! Hooks are intentionally quieter than normal tool calls. A hook that starts and finishes

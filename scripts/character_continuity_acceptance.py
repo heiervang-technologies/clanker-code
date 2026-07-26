@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Modified by Heiervang Technologies.
 """Black-box acceptance harness for the Character Continuity executable contract."""
 
 from __future__ import annotations

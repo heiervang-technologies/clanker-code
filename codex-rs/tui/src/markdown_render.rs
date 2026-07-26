@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Low-level markdown event renderer for the TUI transcript.
 //!
 //! This module consumes `pulldown-cmark` events and emits styled `ratatui`

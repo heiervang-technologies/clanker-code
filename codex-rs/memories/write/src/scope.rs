@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_character::CharacterCatalog;
 use codex_state::CanonicalClankerId;
 use codex_state::MemoryCitationPath;

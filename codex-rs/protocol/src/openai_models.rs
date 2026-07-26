@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Shared model metadata types exchanged between Codex services and clients.
 //!
 //! These types are serialized across core, TUI, app-server, and SDK boundaries, so field defaults

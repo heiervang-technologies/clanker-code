@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::path::PathBuf;

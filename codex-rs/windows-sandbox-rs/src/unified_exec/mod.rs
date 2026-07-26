@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Unified exec session spawner for Windows sandboxing.
 //!
 //! This module is the thin orchestration layer for Windows unified-exec sessions.

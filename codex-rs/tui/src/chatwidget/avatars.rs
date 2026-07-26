@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! First-class character avatar wiring for the chat surface.
 
 use super::*;

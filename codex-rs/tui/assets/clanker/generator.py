@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Modified by Heiervang Technologies.
 """Default Clanker Code avatar: the rusty clanker.
 
 A weathered rust-orange robot — patched chassis, loose bolt, squeaky antenna.

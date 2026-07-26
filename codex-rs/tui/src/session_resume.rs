@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Resolve saved-session state needed before resuming or forking a thread.
 //!
 //! The app-server API owns normal thread lifecycle data. This module coordinates

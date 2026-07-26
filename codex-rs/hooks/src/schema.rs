@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use schemars::JsonSchema;
 use schemars::r#gen::SchemaGenerator;
 use schemars::r#gen::SchemaSettings;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Renders doctor reports for terminal users.
 //!
 //! The renderer is intentionally separate from check construction so the JSON

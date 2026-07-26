@@ -26,6 +26,9 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 This is the **Heiervang Technologies** fork of [Codex CLI](https://github.com/openai/codex). The `main` branch is kept as a clean fast-forward mirror of upstream. All HT-specific changes live on the `ht` branch.
 
+This distribution is a modified fork of openai/codex by Heiervang Technologies.
+Files throughout codex-rs/ and codex-cli/ have been changed from the upstream originals. See CHANGELOG.md for the history of modifications.
+
 ### What's different from upstream
 
 | Change       | Description                                              | Contributed back? |

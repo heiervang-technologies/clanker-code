@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Named pipe helpers for the elevated Windows sandbox runner.
 //!
 //! This module generates paired pipe names, creates server‑side pipes with

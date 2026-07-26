@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Hook events are append-only across requirements layers. The managed hook
 //! directory is different: only one directory is usable on a given platform, so
 //! conflicting values for the active platform fail closed. The inactive platform

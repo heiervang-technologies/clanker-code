@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! The chat composer is the bottom-pane text input state machine.
 //!
 //! It is responsible for:

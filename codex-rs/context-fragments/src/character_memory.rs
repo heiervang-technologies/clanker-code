@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::ContextualUserFragment;
 
 const END_MARKER: &str = "</character_memory_context>";

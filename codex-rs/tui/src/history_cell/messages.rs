@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! User, assistant, reasoning, and streaming message history cells.
 
 use super::*;

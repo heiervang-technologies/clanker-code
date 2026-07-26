@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::*;
 use crate::bottom_pane::slash_commands::ServiceTierCommand;
 use pretty_assertions::assert_eq;

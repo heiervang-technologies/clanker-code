@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Terminal history, desktop handoff, and clear-screen UI helpers for the TUI app.
 //!
 //! This module owns rendering the fresh session header, clearing inline or alternate-screen UI

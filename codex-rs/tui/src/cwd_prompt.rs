@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use std::path::Path;
 
 use crate::key_hint;

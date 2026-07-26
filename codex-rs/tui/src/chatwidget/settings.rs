@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Runtime settings state and model/collaboration coordination for `ChatWidget`.
 
 use super::*;

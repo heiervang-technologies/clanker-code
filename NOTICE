@@ -4,3 +4,6 @@ Copyright 2025 OpenAI
 This project includes code derived from [Ratatui](https://github.com/ratatui/ratatui), licensed under the MIT license.
 Copyright (c) 2016-2022 Florian Dehau
 Copyright (c) 2023-2025 The Ratatui Developers
+
+This distribution is a modified fork of openai/codex by Heiervang Technologies.
+Files throughout codex-rs/ and codex-cli/ have been changed from the upstream originals. See CHANGELOG.md for the history of modifications.

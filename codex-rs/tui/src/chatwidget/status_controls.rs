@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Status output and setup controls for `ChatWidget`.
 //!
 //! Rendering details live in `status_surfaces`; this module owns the mutable

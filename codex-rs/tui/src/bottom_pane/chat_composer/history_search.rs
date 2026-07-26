@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Composer-side Ctrl+R reverse history search state and rendering helpers.
 //!
 //! The persistent and local history stores live in `chat_composer_history`, but the composer owns

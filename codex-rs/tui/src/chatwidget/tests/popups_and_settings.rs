@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::*;
 use crate::app_event::ConnectorsSnapshot;
 use crate::chatwidget::connectors::ConnectorsCacheState;

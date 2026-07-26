@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Persistence layer for the global, append-only *message history* file.
 //!
 //! The history is stored at `~/.codex/history.jsonl` with **one JSON object per

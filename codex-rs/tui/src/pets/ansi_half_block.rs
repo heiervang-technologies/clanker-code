@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Pane-safe 24x24 avatar rendering using ANSI half-block cells.
 
 use std::path::Path;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Streaming transcript updates for `ChatWidget`.
 //!
 //! This module owns assistant, plan, and reasoning deltas, including stream-tail

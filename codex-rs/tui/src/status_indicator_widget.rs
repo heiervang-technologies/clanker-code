@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! A live task status row rendered above the composer while the agent is busy.
 //!
 //! The row owns spinner timing, the optional interrupt hint, and short inline

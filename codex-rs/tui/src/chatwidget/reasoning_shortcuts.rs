@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Keyboard shortcuts for stepping the active model's reasoning effort.
 //!
 //! The main chat surface treats `Alt+,` and `Alt+.` as small adjustments to the

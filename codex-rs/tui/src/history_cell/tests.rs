@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Coverage for history-cell rendering, wrapping, and transcript behavior.
 
 use super::*;

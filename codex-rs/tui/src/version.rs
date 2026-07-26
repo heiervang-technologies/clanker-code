@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 /// The current Clanker Code version and its upstream Codex provenance.
 pub const CODEX_CLI_VERSION: &str = codex_config::CLANKER_VERSION;
 

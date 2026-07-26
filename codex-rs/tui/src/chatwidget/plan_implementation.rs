@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_protocol::config_types::CollaborationModeMask;
 
 use crate::app_event::AppEvent;

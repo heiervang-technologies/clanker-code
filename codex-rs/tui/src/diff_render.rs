@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Renders unified diffs with line numbers, gutter signs, and optional syntax
 //! highlighting.
 //!

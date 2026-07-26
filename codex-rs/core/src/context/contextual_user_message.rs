@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_protocol::items::HookPromptItem;
 use codex_protocol::items::parse_hook_prompt_fragment;
 use codex_protocol::models::ContentItem;

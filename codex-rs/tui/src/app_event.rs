@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Application-level events used to coordinate UI actions.
 //!
 //! `AppEvent` is the internal message bus between UI components and the top-level `App` loop.

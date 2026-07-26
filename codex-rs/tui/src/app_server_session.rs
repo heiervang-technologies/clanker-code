@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! App-server session facade used by the TUI event loop.
 //!
 //! This module owns the typed JSON-RPC calls needed by the TUI and keeps

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Agent turn lifecycle and runtime bookkeeping for `ChatWidget`.
 //!
 //! This module owns task start/completion state, runtime metrics, plan updates,

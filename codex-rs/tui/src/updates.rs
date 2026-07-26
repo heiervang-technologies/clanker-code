@@ -1,4 +1,5 @@
 #![cfg(not(debug_assertions))]
+// Modified by Heiervang Technologies.
 
 use crate::legacy_core::config::Config;
 use crate::npm_registry;

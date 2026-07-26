@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_core_skills::model::SkillDependencies;
 use codex_utils_path_uri::PathUri;
 

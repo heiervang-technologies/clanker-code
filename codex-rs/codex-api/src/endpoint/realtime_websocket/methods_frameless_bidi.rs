@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::endpoint::realtime_websocket::protocol::FramelessContentType;
 use crate::endpoint::realtime_websocket::protocol::FramelessInputTextContent;
 use crate::endpoint::realtime_websocket::protocol::RealtimeOutboundMessage;

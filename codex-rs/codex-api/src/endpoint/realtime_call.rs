@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::auth::SharedAuthProvider;
 use crate::endpoint::realtime_websocket::RealtimeEventParser;
 use crate::endpoint::realtime_websocket::RealtimeSessionConfig;

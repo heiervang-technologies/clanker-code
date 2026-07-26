@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Two-region streaming controllers for agent messages and proposed plans.
 //!
 //! Each stream partitions rendered markdown into a *stable region* (committed

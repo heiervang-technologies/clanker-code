@@ -1,4 +1,5 @@
 #![cfg(windows)]
+// Modified by Heiervang Technologies.
 #![allow(clippy::expect_used)]
 
 mod common;

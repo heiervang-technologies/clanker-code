@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Verifies that the agent retries when the SSE stream terminates before
 //! delivering a `response.completed` event.
 

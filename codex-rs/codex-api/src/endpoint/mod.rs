@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 pub(crate) mod compact;
 pub(crate) mod images;
 pub(crate) mod memories;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! The bottom-pane footer renders transient hints and context indicators.
 //!
 //! The footer is pure rendering: it formats `FooterProps` into `Line`s without mutating any state.

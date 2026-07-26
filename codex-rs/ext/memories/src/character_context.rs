@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_character::CharacterCatalog;
 use codex_context_fragments::CharacterMemoryContext;
 use codex_context_fragments::ContextualUserFragment;

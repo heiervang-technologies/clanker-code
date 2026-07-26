@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 // GENERATED CODE! DO NOT MODIFY BY HAND!
 
 export type { Account } from "./Account";

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! The bottom pane is the interactive footer of the chat UI.
 //!
 //! The pane owns the [`ChatComposer`] (editable prompt input) and a stack of transient

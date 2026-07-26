@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::head_tail_buffer::HeadTailBuffer;
 use super::*;
 use crate::codex_thread::BackgroundTerminalInfo;

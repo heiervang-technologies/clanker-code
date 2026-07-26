@@ -1,4 +1,5 @@
 #![cfg(not(target_os = "windows"))]
+// Modified by Heiervang Technologies.
 #![allow(clippy::unwrap_used)]
 
 use std::fs;

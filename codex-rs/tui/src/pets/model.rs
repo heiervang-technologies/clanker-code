@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Pet manifest loading and normalization.
 //!
 //! This module converts several user-facing selectors into one normalized

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Doctor check that compares rollout files against the SQLite thread inventory.
 
 use super::CheckStatus;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Render composition for the main chat widget surface.
 
 use super::*;

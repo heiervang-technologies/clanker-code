@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use anyhow::Result;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;

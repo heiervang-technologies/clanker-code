@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Semantic terminal hyperlinks carried separately from visible TUI text.
 //!
 //! Layout code measures and wraps ordinary ratatui lines. Hyperlink annotations are applied only

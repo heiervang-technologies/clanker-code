@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::*;
 use crate::app::safety_buffering::SafetyBufferedRetry;
 use crate::app::session_lifecycle::ThreadAttachPresentation;

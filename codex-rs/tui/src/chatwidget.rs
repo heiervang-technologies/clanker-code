@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! The main Codex TUI chat surface.
 //!
 //! `ChatWidget` consumes protocol events, builds and updates history cells, and drives rendering

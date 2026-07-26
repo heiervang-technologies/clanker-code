@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Markdown-to-ratatui rendering entry points.
 //!
 //! This module provides the public API surface that the rest of the TUI uses

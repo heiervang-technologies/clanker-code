@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Word-wrapping with URL-aware heuristics.
 //!
 //! The TUI renders text that frequently contains URLs — command output,

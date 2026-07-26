@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Overlay UIs rendered in an alternate screen.
 //!
 //! This module implements the pager-style overlays used by the TUI, including the transcript

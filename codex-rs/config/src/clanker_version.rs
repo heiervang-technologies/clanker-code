@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 // clanker-delta: version-source
 
 /// Product name used by Clanker Code command-line and TUI surfaces.

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_config::McpServerConfig;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
 

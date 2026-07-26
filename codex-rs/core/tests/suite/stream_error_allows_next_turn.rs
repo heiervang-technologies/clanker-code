@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_protocol::protocol::EventMsg;

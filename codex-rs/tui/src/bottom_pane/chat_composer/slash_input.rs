@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Slash-command input parsing, cursor detection, and completion helpers.
 
 use std::ops::Range;

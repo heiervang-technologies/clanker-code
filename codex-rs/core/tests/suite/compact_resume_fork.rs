@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Integration tests that cover compacting, resuming, and forking conversations.
 //!
 //! Each test sets up a mocked SSE conversation and drives the conversation through

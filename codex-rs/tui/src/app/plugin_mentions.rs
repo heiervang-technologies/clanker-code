@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Plugin mention capability enrichment for the TUI.
 //!
 //! Mention inventory comes from app-server `plugin/list`, matching the GUI

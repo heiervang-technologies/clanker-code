@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use codex_collaboration_mode_templates::BASED as COLLABORATION_MODE_BASED;
 use codex_collaboration_mode_templates::CRINGE as COLLABORATION_MODE_CRINGE;
 use codex_collaboration_mode_templates::LARP as COLLABORATION_MODE_LARP;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Plugin path resolution, plaintext mention sigils, and MCP connector helpers shared across Codex
 //! crates.
 

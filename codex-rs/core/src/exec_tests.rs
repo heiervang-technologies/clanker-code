@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::*;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::models::PermissionProfile;

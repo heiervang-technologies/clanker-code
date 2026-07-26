@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::path_normalization::canonical_path_key;
 use crate::path_normalization::canonicalize_path;
 use anyhow::Context;

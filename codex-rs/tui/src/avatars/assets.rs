@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Bundled offline avatar packs.
 
 use std::fs;

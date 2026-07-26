@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Construction and initial wiring for `ChatWidget`.
 
 use super::*;

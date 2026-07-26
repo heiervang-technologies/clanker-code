@@ -1,4 +1,5 @@
 #![cfg(not(target_os = "windows"))]
+// Modified by Heiervang Technologies.
 
 use anyhow::Context;
 use base64::Engine;

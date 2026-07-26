@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Patch summaries and image-tool transcript helpers.
 
 use super::*;

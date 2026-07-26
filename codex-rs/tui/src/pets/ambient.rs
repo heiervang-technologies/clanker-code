@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Ambient terminal rendering for the Codex companion.
 //!
 //! Ambient pets reuse the same extracted image frames as the full-screen viewer

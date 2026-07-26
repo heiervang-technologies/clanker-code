@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::TruncationPolicy;
 use crate::approx_token_count;
 use crate::approx_tokens_from_byte_count_i64;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Safety-buffered turn retries that preserve the source thread.
 
 use super::session_lifecycle::ThreadAttachPresentation;

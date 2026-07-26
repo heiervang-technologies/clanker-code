@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use crate::path_utils::resolve_symlink_write_paths;
 use crate::path_utils::write_atomically;
 use anyhow::Context;

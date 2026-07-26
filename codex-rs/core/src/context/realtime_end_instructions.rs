@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::ContextualUserFragment;
 use codex_prompts::END_INSTRUCTIONS;
 use codex_protocol::protocol::REALTIME_CONVERSATION_CLOSE_TAG;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Session, resume, fork, and subagent selection lifecycle for the TUI app.
 //!
 //! This module owns the high-level transitions between app-server threads: starting fresh sessions,

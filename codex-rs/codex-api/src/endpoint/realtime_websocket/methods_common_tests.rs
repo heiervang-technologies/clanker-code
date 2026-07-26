@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::conversation_function_call_output_message;
 use super::conversation_handoff_append_message;
 use super::standalone_handoff_message;

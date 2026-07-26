@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! MCP tool-call, inventory, and output history cells.
 
 use super::*;

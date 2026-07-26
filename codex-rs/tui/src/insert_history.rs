@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Inserts finalized history rows into terminal scrollback.
 //!
 //! Codex uses the terminal scrollback itself for finalized chat history, so inserting a history

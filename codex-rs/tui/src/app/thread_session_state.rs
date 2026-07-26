@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::App;
 use crate::session_resume::read_session_model;
 use crate::session_state::ThreadSessionState;

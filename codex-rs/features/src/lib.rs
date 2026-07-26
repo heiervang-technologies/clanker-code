@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Centralized feature flags and metadata.
 //!
 //! This crate defines the feature registry plus the logic used to resolve an

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Validates that the collaboration mode list endpoint returns the expected default presets.
 //!
 //! The test drives the app server through the MCP harness and asserts that the list response

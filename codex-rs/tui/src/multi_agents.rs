@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Helpers for rendering and navigating multi-agent state in the TUI.
 //!
 //! This module owns the shared presentation contracts for multi-agent history rows, `/agent` picker

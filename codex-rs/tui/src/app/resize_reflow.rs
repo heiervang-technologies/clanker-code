@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Connects terminal resize events to source-backed transcript scrollback rebuilds.
 //!
 //! The app stores conversation history as `HistoryCell`s, but it also writes finalized history into

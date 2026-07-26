@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::ContextualUserFragment;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::protocol::COLLABORATION_MODE_CLOSE_TAG;

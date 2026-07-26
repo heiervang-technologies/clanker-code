@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! ConPTY helpers for spawning sandboxed processes with a PTY on Windows.
 //!
 //! This module encapsulates ConPTY creation and process spawn with the required

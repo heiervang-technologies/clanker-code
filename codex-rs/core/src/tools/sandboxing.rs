@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Shared approvals and sandboxing traits used by tool runtimes.
 //!
 //! Consolidates the approval flow primitives (`ApprovalDecision`, `ApprovalStore`,

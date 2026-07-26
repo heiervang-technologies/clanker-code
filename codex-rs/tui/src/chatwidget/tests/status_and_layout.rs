@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use super::*;
 use crate::bottom_pane::goal_status_indicator_line;
 use crate::chatwidget::rate_limits::NUDGE_MODEL_SLUG;

@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Mandatory character avatar selection and rendering state.
 //!
 //! Character identity owns the required default avatar, optional per-mode

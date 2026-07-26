@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Input queue restore and thread-input snapshot behavior for `ChatWidget`.
 
 use std::collections::HashSet;

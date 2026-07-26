@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use strum::IntoEnumIterator;
 use strum_macros::AsRefStr;
 use strum_macros::EnumIter;

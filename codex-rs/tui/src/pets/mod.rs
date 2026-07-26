@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Ambient terminal pets configured from the /pets slash command.
 //!
 //! The TUI treats built-in and custom pets differently on purpose:

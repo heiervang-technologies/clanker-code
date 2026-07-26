@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Schema-heavy configuration TOML types used by Codex.
 
 use std::collections::BTreeMap;

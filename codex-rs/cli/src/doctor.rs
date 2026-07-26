@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Implements the `codex doctor` diagnostic report.
 //!
 //! Doctor is intentionally read-mostly: checks inspect the current installation,

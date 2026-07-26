@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Built-in pet asset acquisition and cache ownership.
 //!
 //! Unlike custom pets, built-in pets are not checked into the TUI package as

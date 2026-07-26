@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 //! Public facade for thread management APIs built on `codex-core`.
 
 #![deny(private_bounds, private_interfaces, unreachable_pub)]

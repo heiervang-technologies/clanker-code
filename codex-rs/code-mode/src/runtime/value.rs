@@ -1,3 +1,4 @@
+// Modified by Heiervang Technologies.
 use serde_json::Value as JsonValue;
 
 use codex_code_mode_protocol::DEFAULT_IMAGE_DETAIL;

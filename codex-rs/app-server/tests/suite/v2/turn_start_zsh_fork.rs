@@ -1,4 +1,5 @@
 #![cfg(not(windows))]
+// Modified by Heiervang Technologies.
 //
 // Running these tests with the patched zsh fork:
 //

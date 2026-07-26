@@ -1,4 +1,5 @@
 #![allow(clippy::unwrap_used)]
+// Modified by Heiervang Technologies.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
