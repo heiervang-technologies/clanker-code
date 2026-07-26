@@ -50,19 +50,37 @@ pub async fn get_git_repo_root_with_fs(
     cwd: &AbsolutePathBuf,
 ) -> Option<AbsolutePathBuf> {
     let cwd_uri = PathUri::from_abs_path(cwd);
-    let base = match fs.get_metadata(&cwd_uri, /*sandbox*/ None).await {
+    let mut base = match fs.get_metadata(&cwd_uri, /*sandbox*/ None).await {
         Ok(metadata) if metadata.is_directory => cwd.clone(),
         _ => cwd.parent()?,
     };
-    find_nearest_native_ancestor_with_markers(
-        fs,
-        &base,
-        vec![".git".to_string()],
-        FindUpErrorPolicy::Ignore,
-        /*sandbox*/ None,
-    )
-    .await
-    .ok()?
+
+    loop {
+        let dot_git = base.join(".git");
+        let dot_git_uri = PathUri::from_abs_path(&dot_git);
+        if let Ok(metadata) = fs.get_metadata(&dot_git_uri, None).await {
+            if metadata.is_directory {
+                let head = dot_git.join("HEAD");
+                let head_uri = PathUri::from_abs_path(&head);
+                let objects = dot_git.join("objects");
+                let objects_uri = PathUri::from_abs_path(&objects);
+                if fs.get_metadata(&head_uri, None).await.is_ok()
+                    || fs.get_metadata(&objects_uri, None).await.is_ok()
+                {
+                    return Some(base);
+                }
+            } else {
+                return Some(base);
+            }
+        }
+
+        if let Some(parent) = base.parent() {
+            base = parent;
+        } else {
+            break;
+        }
+    }
+    None
 }
 
 /// Timeout for git commands to prevent freezing on large repositories
@@ -848,7 +866,13 @@ fn find_ancestor_git_entry(base_dir: &Path) -> Option<(PathBuf, PathBuf)> {
     loop {
         let dot_git = dir.join(".git");
         if dot_git.exists() {
-            return Some((dir, dot_git));
+            if dot_git.is_dir() {
+                if dot_git.join("HEAD").exists() || dot_git.join("objects").exists() {
+                    return Some((dir, dot_git));
+                }
+            } else {
+                return Some((dir, dot_git));
+            }
         }
 
         // Pop one component (go up one directory). `pop` returns false when

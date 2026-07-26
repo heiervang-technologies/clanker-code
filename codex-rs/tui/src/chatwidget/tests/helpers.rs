@@ -1284,7 +1284,7 @@ pub(super) fn strip_osc8_for_snapshot(text: &str) -> String {
 }
 
 pub(super) fn plugins_test_absolute_path(path: &str) -> AbsolutePathBuf {
-    std::env::temp_dir()
+    std::env::temp_dir().join("codex_mock_cwd")
         .join("codex-plugin-menu-tests")
         .join(path)
         .abs()

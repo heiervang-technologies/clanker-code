@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn maps_install_context_to_update_action() {
         let native_release_dir =
-            AbsolutePathBuf::from_absolute_path(std::env::temp_dir().join("native-release"))
+            AbsolutePathBuf::from_absolute_path(std::env::temp_dir().join("codex_mock_cwd").join("native-release"))
                 .expect("temp dir path should be absolute");
 
         assert_eq!(

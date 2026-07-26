@@ -855,3 +855,21 @@ fn test_git_info_serialization_with_nones() {
     assert!(!parsed.as_object().unwrap().contains_key("branch"));
     assert!(!parsed.as_object().unwrap().contains_key("repository_url"));
 }
+
+#[tokio::test]
+#[skip_if_sandbox]
+async fn get_git_repo_root_with_fs_ignores_empty_git_dir() {
+    let temp_root = TempDir::new().unwrap();
+    
+    // Create an empty .git directory (e.g. from a bubblewrap mount)
+    let dot_git = temp_root.path().join(".git");
+    fs::create_dir(&dot_git).unwrap();
+    
+    let nested = temp_root.path().join("nested");
+    fs::create_dir(&nested).unwrap();
+
+    assert_eq!(
+        get_git_repo_root_with_fs(LOCAL_FS.as_ref(), &nested.abs()).await,
+        None
+    );
+}
