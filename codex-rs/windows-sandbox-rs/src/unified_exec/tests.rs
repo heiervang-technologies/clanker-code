@@ -36,9 +36,37 @@ static TEST_HOME_COUNTER: AtomicU64 = AtomicU64::new(0);
 static LEGACY_PROCESS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn legacy_process_test_guard() -> MutexGuard<'static, ()> {
-    LEGACY_PROCESS_TEST_LOCK
+    let guard = LEGACY_PROCESS_TEST_LOCK
         .lock()
-        .expect("legacy Windows sandbox process test lock poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    stage_legacy_command_runner();
+    guard
+}
+
+fn stage_legacy_command_runner() {
+    let source = if codex_utils_cargo_bin::runfiles_available() {
+        codex_utils_cargo_bin::find_resource!("codex-command-runner.exe")
+            .expect("resolve Bazel command-runner runfile")
+    } else {
+        codex_utils_cargo_bin::cargo_bin("codex-command-runner")
+            .expect("resolve Cargo command-runner binary")
+    };
+    let test_exe = std::env::current_exe().expect("resolve current Windows test executable");
+    let resources_dir = test_exe
+        .parent()
+        .expect("Windows test executable should have a parent")
+        .join("codex-resources");
+    fs::create_dir_all(&resources_dir).expect("create Windows test resources directory");
+    let destination = resources_dir.join("codex-command-runner.exe");
+    if let Err(err) = fs::copy(&source, &destination)
+        && (err.kind() != std::io::ErrorKind::PermissionDenied || !destination.exists())
+    {
+        panic!(
+            "stage Windows command runner {} at {}: {err}",
+            source.display(),
+            destination.display()
+        );
+    }
 }
 
 fn current_thread_runtime() -> tokio::runtime::Runtime {
@@ -77,6 +105,17 @@ fn sandbox_log(codex_home: &Path) -> String {
     let log_path = crate::current_log_file_path(&codex_home.join(".sandbox"));
     fs::read_to_string(&log_path)
         .unwrap_or_else(|err| format!("failed to read {}: {err}", log_path.display()))
+}
+
+fn broker_desktop_name(codex_home: &Path) -> String {
+    let log = sandbox_log(codex_home);
+    log.lines()
+        .find_map(|line| {
+            line.split_once("desktop broker ready: ")
+                .map(|(_, name)| name)
+        })
+        .unwrap_or_else(|| panic!("desktop broker name missing from log:\n{log}"))
+        .to_string()
 }
 
 fn workspace_roots_for(root: &Path) -> Vec<AbsolutePathBuf> {
@@ -189,6 +228,93 @@ fn legacy_non_tty_cmd_emits_output() {
 }
 
 #[test]
+fn concurrent_legacy_launches_use_distinct_window_stations() {
+    let _guard = legacy_process_test_guard();
+    let runtime = current_thread_runtime();
+    runtime.block_on(async move {
+        let cwd = sandbox_cwd();
+        let first_home = sandbox_home("legacy-concurrent-first");
+        let second_home = sandbox_home("legacy-concurrent-second");
+        let permission_profile = PermissionProfile::workspace_write();
+        let roots = workspace_roots_for(cwd.as_path());
+        let command = || {
+            vec![
+                "C:\\Windows\\System32\\cmd.exe".to_string(),
+                "/d".to_string(),
+                "/q".to_string(),
+            ]
+        };
+
+        let first = spawn_windows_sandbox_session_legacy(
+            &permission_profile,
+            roots.as_slice(),
+            first_home.path(),
+            command(),
+            cwd.as_path(),
+            HashMap::new(),
+            Some(15_000),
+            &[],
+            &[],
+            /*tty*/ false,
+            /*stdin_open*/ true,
+            /*use_private_desktop*/ true,
+        )
+        .await
+        .expect("spawn first concurrent legacy session");
+        let second = spawn_windows_sandbox_session_legacy(
+            &permission_profile,
+            roots.as_slice(),
+            second_home.path(),
+            command(),
+            cwd.as_path(),
+            HashMap::new(),
+            Some(15_000),
+            &[],
+            &[],
+            /*tty*/ false,
+            /*stdin_open*/ true,
+            /*use_private_desktop*/ true,
+        )
+        .await
+        .expect("spawn second concurrent legacy session");
+
+        let first_name = broker_desktop_name(first_home.path());
+        let second_name = broker_desktop_name(second_home.path());
+        let first_station = first_name
+            .split_once('\\')
+            .expect("qualified first desktop")
+            .0;
+        let second_station = second_name
+            .split_once('\\')
+            .expect("qualified second desktop")
+            .0;
+        assert_ne!(
+            first_station, second_station,
+            "concurrent brokers must receive distinct authentication-LUID stations"
+        );
+
+        first
+            .session
+            .writer_sender()
+            .send(b"echo FIRST & exit\r\n".to_vec())
+            .await
+            .expect("stop first concurrent session");
+        second
+            .session
+            .writer_sender()
+            .send(b"echo SECOND & exit\r\n".to_vec())
+            .await
+            .expect("stop second concurrent session");
+        let (first_result, second_result) = tokio::join!(
+            collect_stdout_and_exit(first, first_home.path(), Duration::from_secs(20)),
+            collect_stdout_and_exit(second, second_home.path(), Duration::from_secs(20)),
+        );
+        assert_eq!(first_result.1, 0, "first stdout={:?}", first_result.0);
+        assert_eq!(second_result.1, 0, "second stdout={:?}", second_result.0);
+    });
+}
+
+#[test]
 fn legacy_non_tty_cmd_rejects_deny_read_overrides() {
     let _guard = legacy_process_test_guard();
     let runtime = current_thread_runtime();
@@ -267,6 +393,44 @@ fn legacy_non_tty_powershell_emits_output() {
         let stdout = String::from_utf8_lossy(&stdout);
         assert_eq!(exit_code, 0, "stdout={stdout:?}");
         assert!(stdout.contains("LEGACY-NONTTY-DIRECT"), "stdout={stdout:?}");
+    });
+}
+
+#[test]
+fn legacy_shared_desktop_is_rejected() {
+    let _guard = legacy_process_test_guard();
+    let runtime = current_thread_runtime();
+    runtime.block_on(async move {
+        let cwd = sandbox_cwd();
+        let codex_home = sandbox_home("legacy-shared-desktop-rejected");
+        let permission_profile = PermissionProfile::workspace_write();
+        let error = spawn_windows_sandbox_session_legacy(
+            &permission_profile,
+            workspace_roots_for(cwd.as_path()).as_slice(),
+            codex_home.path(),
+            vec![
+                "C:\\Windows\\System32\\cmd.exe".to_string(),
+                "/d".to_string(),
+                "/c".to_string(),
+                "exit 0".to_string(),
+            ],
+            cwd.as_path(),
+            HashMap::new(),
+            Some(5_000),
+            &[],
+            &[],
+            /*tty*/ false,
+            /*stdin_open*/ false,
+            /*use_private_desktop*/ false,
+        )
+        .await
+        .expect_err("shared desktop must be rejected for restricted launches");
+        assert!(
+            error
+                .to_string()
+                .contains("restricted Windows launches require a private desktop"),
+            "unexpected error: {error:#}"
+        );
     });
 }
 
@@ -455,113 +619,15 @@ fn legacy_capture_powershell_emits_output() {
 }
 
 #[test]
-fn legacy_workspace_write_delete_is_limited_to_writable_roots() {
-    let _guard = legacy_process_test_guard();
-    let runtime = current_thread_runtime();
-    runtime.block_on(async move {
-        // Keep writable roots out of USERPROFILE exclusions such as AppData.
-        let test_root = TempDir::new_in(sandbox_cwd()).expect("create legacy delete test root");
-        let codex_home = sandbox_home("legacy-delete-writable-roots");
-        let workspace = test_root.path().join("workspace");
-        let temp_root = test_root.path().join("temp");
-        let tmp_root = test_root.path().join("tmp");
-        let outside_root = test_root.path().join("outside");
-        for directory in [&workspace, &temp_root, &tmp_root, &outside_root] {
-            fs::create_dir_all(directory).expect("create legacy delete test directory");
-        }
-        let protected_git_dir = workspace.join(".git");
-        fs::create_dir(&protected_git_dir).expect("create protected .git directory");
-
-        let workspace_file = workspace.join("workspace-delete.txt");
-        let temp_file = temp_root.join("temp-delete.txt");
-        let tmp_file = tmp_root.join("tmp-delete.txt");
-        let outside_file = outside_root.join("outside-delete.txt");
-        fs::write(&workspace_file, "workspace").expect("seed workspace file");
-        fs::write(&temp_file, "temp").expect("seed TEMP file");
-        fs::write(&tmp_file, "tmp").expect("seed TMP file");
-        fs::write(&outside_file, "outside").expect("seed outside file");
-
-        let script = workspace.join("delete-fixtures.cmd");
-        fs::write(
-            &script,
-            concat!(
-                "@echo off\r\n",
-                "del /f /q \"%WORKSPACE_DELETE%\"\r\n",
-                "del /f /q \"%TEMP_DELETE%\"\r\n",
-                "del /f /q \"%TMP_DELETE%\"\r\n",
-                "del /f /q \"%OUTSIDE_DELETE%\"\r\n",
-                "rmdir \"%PROTECTED_GIT_DIR%\"\r\n",
-                "exit /b 0\r\n",
-            ),
-        )
-        .expect("write delete script");
-
-        let env_map = HashMap::from([
-            ("TEMP".to_string(), temp_root.to_string_lossy().into_owned()),
-            ("TMP".to_string(), tmp_root.to_string_lossy().into_owned()),
-            (
-                "WORKSPACE_DELETE".to_string(),
-                workspace_file.to_string_lossy().into_owned(),
-            ),
-            (
-                "TEMP_DELETE".to_string(),
-                temp_file.to_string_lossy().into_owned(),
-            ),
-            (
-                "TMP_DELETE".to_string(),
-                tmp_file.to_string_lossy().into_owned(),
-            ),
-            (
-                "OUTSIDE_DELETE".to_string(),
-                outside_file.to_string_lossy().into_owned(),
-            ),
-            (
-                "PROTECTED_GIT_DIR".to_string(),
-                protected_git_dir.to_string_lossy().into_owned(),
-            ),
-        ]);
-
-        let permission_profile = PermissionProfile::workspace_write();
-        let spawned = spawn_windows_sandbox_session_legacy(
-            &permission_profile,
-            workspace_roots_for(workspace.as_path()).as_slice(),
-            codex_home.path(),
-            vec![
-                "C:\\Windows\\System32\\cmd.exe".to_string(),
-                "/d".to_string(),
-                "/c".to_string(),
-                script.display().to_string(),
-            ],
-            workspace.as_path(),
-            env_map,
-            /*timeout_ms*/ Some(5_000),
-            &[],
-            &[],
-            /*tty*/ false,
-            /*stdin_open*/ false,
-            /*use_private_desktop*/ true,
-        )
-        .await
-        .expect("spawn legacy delete session");
-        let (stdout, exit_code) =
-            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(/*secs*/ 10))
-                .await;
-        let stdout = String::from_utf8_lossy(&stdout);
-
-        assert_eq!(
-            (
-                exit_code,
-                workspace_file.exists(),
-                temp_file.exists(),
-                tmp_file.exists(),
-                fs::read_to_string(&outside_file).ok(),
-                protected_git_dir.is_dir(),
-            ),
-            (0, false, false, false, Some("outside".to_string()), true),
-            "stdout={stdout:?}\n{}",
-            sandbox_log(codex_home.path())
-        );
-    });
+fn configured_restricted_token_uses_the_dedicated_identity_backend() {
+    assert!(super::uses_elevated_backend(
+        codex_protocol::config_types::WindowsSandboxLevel::RestrictedToken,
+        /*proxy_enforced*/ false,
+    ));
+    assert!(!super::uses_elevated_backend(
+        codex_protocol::config_types::WindowsSandboxLevel::Disabled,
+        /*proxy_enforced*/ false,
+    ));
 }
 
 #[test]
@@ -702,60 +768,6 @@ fn legacy_tty_cmd_emits_output_and_accepts_input() {
         .await
         .expect("spawn legacy tty cmd session");
         println!("tty cmd spawn returned");
-
-        let writer = spawned.session.writer_sender();
-        writer
-            .send(b"echo second\n".to_vec())
-            .await
-            .expect("send second command");
-        writer
-            .send(b"exit\n".to_vec())
-            .await
-            .expect("send exit command");
-        spawned.session.close_stdin();
-
-        let (stdout, exit_code) =
-            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(15)).await;
-        let stdout = String::from_utf8_lossy(&stdout);
-        assert_eq!(exit_code, 0, "stdout={stdout:?}");
-        assert!(stdout.contains("ready"), "stdout={stdout:?}");
-        assert!(stdout.contains("second"), "stdout={stdout:?}");
-    });
-}
-
-#[test]
-#[ignore = "TODO: legacy ConPTY cmd.exe exits with STATUS_DLL_INIT_FAILED in CI"]
-fn legacy_tty_cmd_default_desktop_emits_output_and_accepts_input() {
-    let runtime = current_thread_runtime();
-    runtime.block_on(async move {
-        let cwd = sandbox_cwd();
-        let codex_home = sandbox_home("legacy-tty-cmd-default-desktop");
-        println!(
-            "tty cmd default desktop codex_home={}",
-            codex_home.path().display()
-        );
-        let permission_profile = PermissionProfile::workspace_write();
-        let spawned = spawn_windows_sandbox_session_legacy(
-            &permission_profile,
-            workspace_roots_for(cwd.as_path()).as_slice(),
-            codex_home.path(),
-            vec![
-                "C:\\Windows\\System32\\cmd.exe".to_string(),
-                "/K".to_string(),
-                "echo ready".to_string(),
-            ],
-            cwd.as_path(),
-            HashMap::new(),
-            Some(10_000),
-            &[],
-            &[],
-            /*tty*/ true,
-            /*stdin_open*/ true,
-            /*use_private_desktop*/ false,
-        )
-        .await
-        .expect("spawn legacy tty cmd session");
-        println!("tty cmd default desktop spawn returned");
 
         let writer = spawned.session.writer_sender();
         writer

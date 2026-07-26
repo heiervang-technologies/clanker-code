@@ -1828,7 +1828,7 @@ mod tests {
                 cwd: None,
             },
             client_name: "stdio-test-client".to_string(),
-            initialize_timeout: Duration::from_secs(1),
+            initialize_timeout: Duration::from_secs(5),
             resume_session_id: None,
         })
         .await

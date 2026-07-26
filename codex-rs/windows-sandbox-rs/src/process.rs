@@ -1,6 +1,7 @@
 use crate::desktop::LaunchDesktop;
 use crate::logging;
 use crate::proc_thread_attr::ProcThreadAttributeList;
+use crate::token::LocalSid;
 use crate::winutil::argv_to_command_line;
 use crate::winutil::format_last_error;
 use crate::winutil::to_wide;
@@ -87,6 +88,8 @@ unsafe fn ensure_inheritable_stdio(si: &mut STARTUPINFOW) -> Result<()> {
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn create_process_as_user(
     h_token: HANDLE,
+    launch_sid: &LocalSid,
+    desktop_broker_executable: &Path,
     argv: &[String],
     cwd: &Path,
     env_map: &HashMap<String, String>,
@@ -98,7 +101,12 @@ pub unsafe fn create_process_as_user(
     let cmdline_str = argv_to_command_line(argv);
     let mut cmdline: Vec<u16> = to_wide(&cmdline_str);
     let env_block = make_env_block(env_map);
-    let desktop = LaunchDesktop::prepare(use_private_desktop, logs_base_dir)?;
+    let desktop = LaunchDesktop::prepare(
+        launch_sid,
+        desktop_broker_executable,
+        use_private_desktop,
+        logs_base_dir,
+    )?;
     let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
     let cwd_wide = to_wide(cwd);
     let env_block_len = env_block.len();
@@ -106,9 +114,13 @@ pub unsafe fn create_process_as_user(
         Some((stdin_h, stdout_h, stderr_h)) => {
             let mut si: STARTUPINFOEXW = std::mem::zeroed();
             si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
-            // Some processes (e.g., PowerShell) can fail with STATUS_DLL_INIT_FAILED
-            // if lpDesktop is not set when launching with a restricted token.
-            // Point explicitly at the interactive desktop or a private desktop.
+            // A restricted PowerShell child previously exited with
+            // STATUS_DLL_INIT_FAILED when lpDesktop was null. Default launches
+            // now inherit the caller's actual station and desktop instead of
+            // being redirected to WinSta0\Default; the service-hosted
+            // default-desktop regression guards that behavior.
+            // Private launches name a broker-owned desktop on a launch-specific
+            // noninteractive window station.
             si.StartupInfo.lpDesktop = desktop.startup_info_desktop();
             si.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
             si.StartupInfo.hStdInput = stdin_h;
@@ -242,6 +254,8 @@ pub struct PipeSpawnHandles {
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_process_with_pipes(
     h_token: HANDLE,
+    launch_sid: &LocalSid,
+    desktop_broker_executable: &Path,
     argv: &[String],
     cwd: &Path,
     env_map: &HashMap<String, String>,
@@ -286,6 +300,8 @@ pub fn spawn_process_with_pipes(
     let spawn_result = unsafe {
         create_process_as_user(
             h_token,
+            launch_sid,
+            desktop_broker_executable,
             argv,
             cwd,
             env_map,

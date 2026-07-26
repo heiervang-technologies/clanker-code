@@ -112,7 +112,9 @@ fn run_validate(args: CharacterValidateArgs, codex_home: &Path) -> anyhow::Resul
         return Ok(output.ok);
     }
 
-    let path = args.manifest.expect("manifest checked above");
+    let Some(path) = args.manifest else {
+        anyhow::bail!("manifest path is required unless --all is used");
+    };
     let report = validate_manifest_path(&path);
     let output = ValidationOutput {
         schema_version: CHARACTER_SCHEMA_VERSION,
@@ -132,22 +134,22 @@ fn run_resolve(args: CharacterResolveArgs, codex_home: &Path) -> anyhow::Result<
         json: _json,
         materialize_builtin,
     } = args;
-    if materialize_builtin {
-        if let Err(error) = codex_tui::ensure_bundled_character_for_name(codex_home, &input) {
-            let issue = ValidationIssue {
-                code: ValidationIssueCode::InvalidManifest,
-                message: format!("failed to materialize requested built-in: {error}"),
-                path: None,
-                conflict_kind: None,
-            };
-            let output = FailureOutput {
-                schema_version: CHARACTER_SCHEMA_VERSION,
-                ok: false,
-                errors: std::slice::from_ref(&issue),
-            };
-            println!("{}", serde_json::to_string(&output)?);
-            return Ok(false);
-        }
+    if materialize_builtin
+        && let Err(error) = codex_tui::ensure_bundled_character_for_name(codex_home, &input)
+    {
+        let issue = ValidationIssue {
+            code: ValidationIssueCode::InvalidManifest,
+            message: format!("failed to materialize requested built-in: {error}"),
+            path: None,
+            conflict_kind: None,
+        };
+        let output = FailureOutput {
+            schema_version: CHARACTER_SCHEMA_VERSION,
+            ok: false,
+            errors: std::slice::from_ref(&issue),
+        };
+        println!("{}", serde_json::to_string(&output)?);
+        return Ok(false);
     }
     let catalog = CharacterCatalog::load(codex_home);
     match catalog.resolve(&input) {

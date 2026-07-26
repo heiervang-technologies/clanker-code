@@ -14,12 +14,10 @@ use crate::compatibility_sandbox_policy_for_permission_profile;
 /// Resolved filesystem overrides for the Windows sandbox backends.
 ///
 /// The elevated Windows backend consumes extra deny-read paths plus explicit
-/// read and write roots during setup/refresh. The unelevated restricted-token
-/// backend only consumes extra deny-write carveouts on top of the legacy
-/// `WorkspaceWrite` allow set. Read-root overrides are layered on top of the
-/// baseline helper roots that the elevated setup path needs to launch the
-/// sandboxed command; split policies that opt into platform defaults carry
-/// that explicitly with the override.
+/// read and write roots during setup/refresh. Read-root overrides are layered
+/// on top of the baseline helper roots that the elevated setup path needs to
+/// launch the sandboxed command; split policies that opt into platform defaults
+/// carry that explicitly with the override.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsSandboxFilesystemOverrides {
     pub read_roots_override: Option<Vec<PathBuf>>,
@@ -33,10 +31,10 @@ pub fn windows_sandbox_uses_elevated_backend(
     sandbox_level: WindowsSandboxLevel,
     proxy_enforced: bool,
 ) -> bool {
-    // Windows firewall enforcement is tied to the logon-user sandbox identities, so
-    // proxy-enforced sessions must use that backend even when the configured mode is
-    // the default restricted-token sandbox.
-    proxy_enforced || matches!(sandbox_level, WindowsSandboxLevel::Elevated)
+    // WRITE_RESTRICTED does not apply restricting SIDs to DELETE or
+    // FILE_DELETE_CHILD. Filesystem policies therefore require the dedicated
+    // logon identity even when legacy configuration selects RestrictedToken.
+    proxy_enforced || !matches!(sandbox_level, WindowsSandboxLevel::Disabled)
 }
 
 pub fn permission_profile_supports_windows_restricted_token_sandbox(

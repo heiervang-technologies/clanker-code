@@ -45,6 +45,38 @@ fn test_sync_tool_matches_expected_spec() {
                         ),
                     ),
                     (
+                        "file_rendezvous".to_string(),
+                        JsonSchema::object(
+                            BTreeMap::from([
+                                (
+                                    "signal_path".to_string(),
+                                    JsonSchema::string(Some(
+                                        "Path to create when this tool call reaches the rendezvous"
+                                            .to_string(),
+                                    )),
+                                ),
+                                (
+                                    "timeout_ms".to_string(),
+                                    JsonSchema::number(Some(
+                                        "Maximum file rendezvous wait in milliseconds. Defaults to 1000."
+                                            .to_string(),
+                                    )),
+                                ),
+                                (
+                                    "wait_for_path".to_string(),
+                                    JsonSchema::string(Some(
+                                        "Peer signal path to wait for before returning".to_string(),
+                                    )),
+                                ),
+                            ]),
+                            Some(vec![
+                                "signal_path".to_string(),
+                                "wait_for_path".to_string(),
+                            ]),
+                            Some(false.into()),
+                        ),
+                    ),
+                    (
                         "sleep_after_ms".to_string(),
                         JsonSchema::number(Some(
                             "Delay after completing the barrier. Defaults to no delay."

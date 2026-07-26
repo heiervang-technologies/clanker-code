@@ -1,4 +1,5 @@
 use super::windows_common::finish_driver_spawn;
+use crate::FS_HELPER_ARG;
 use crate::conpty::ConptyInstance;
 use crate::conpty::spawn_conpty_process_as_user;
 use crate::desktop::LaunchDesktop;
@@ -16,6 +17,7 @@ use crate::spawn_prep::apply_legacy_session_acl_rules;
 use crate::spawn_prep::legacy_session_capability_roots;
 use crate::spawn_prep::prepare_legacy_session_security;
 use crate::spawn_prep::prepare_legacy_spawn_context;
+use crate::token::LocalSid;
 use anyhow::Result;
 use codex_protocol::models::PermissionProfile;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -59,6 +61,8 @@ struct LegacyProcessHandles {
 #[allow(clippy::too_many_arguments)]
 fn spawn_legacy_process(
     h_token: HANDLE,
+    launch_sid: &LocalSid,
+    desktop_broker_executable: &Path,
     command: &[String],
     cwd: &Path,
     env_map: &HashMap<String, String>,
@@ -73,6 +77,8 @@ fn spawn_legacy_process(
     let (pi, output_join, writer_handle, hpc, conpty_owner, desktop) = if tty {
         let (pi, mut conpty) = spawn_conpty_process_as_user(
             h_token,
+            launch_sid,
+            desktop_broker_executable,
             command,
             cwd,
             env_map,
@@ -90,6 +96,8 @@ fn spawn_legacy_process(
     } else {
         let pipe_handles = spawn_process_with_pipes(
             h_token,
+            launch_sid,
+            desktop_broker_executable,
             command,
             cwd,
             env_map,
@@ -99,7 +107,11 @@ fn spawn_legacy_process(
                 StdinMode::Closed
             },
             StderrMode::Separate,
-            ConsoleMode::Inherit,
+            if command.get(1).is_some_and(|arg| arg == FS_HELPER_ARG) {
+                ConsoleMode::NoWindow
+            } else {
+                ConsoleMode::Inherit
+            },
             use_private_desktop,
             logs_base_dir,
         )?;
@@ -356,6 +368,8 @@ pub(crate) async fn spawn_windows_sandbox_session_legacy(
         desktop,
     } = match spawn_legacy_process(
         security.h_token,
+        &security.launch_sid,
+        &security.desktop_broker_executable,
         &command,
         cwd,
         &env_map,

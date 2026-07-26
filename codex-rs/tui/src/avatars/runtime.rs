@@ -484,30 +484,35 @@ mod tests {
         validate_avatar_selector(root, &AvatarSelector(format!("{id}/avatar.json"))).unwrap()
     }
 
+    fn canonical_manifest(root: &std::path::Path, id: &str) -> PathBuf {
+        root.join(id).join("avatar.json").canonicalize().unwrap()
+    }
+
     #[test]
     fn mode_override_falls_back_to_default() {
         let dir = tempfile::tempdir().unwrap();
         write_avatar(&dir.path().join("default"), [0, 255, 0, 255]);
         write_avatar(&dir.path().join("locked-in"), [255, 0, 0, 255]);
+        let root = dir.path().canonicalize().unwrap();
         let binding = AvatarBinding::new(
             "chloe".to_string(),
-            validated_pack(dir.path(), "default"),
-            HashMap::from([(ModeKind::LockedIn, validated_pack(dir.path(), "locked-in"))]),
+            validated_pack(&root, "default"),
+            HashMap::from([(ModeKind::LockedIn, validated_pack(&root, "locked-in"))]),
             AvatarPlacement::FarRight,
-            dir.path().to_path_buf(),
+            root.clone(),
         );
 
         assert_eq!(
             binding
                 .manifest_for_mode(ModeKind::LockedIn)
-                .strip_prefix(dir.path())
+                .strip_prefix(&root)
                 .unwrap(),
             std::path::Path::new("locked-in/avatar.json")
         );
         assert_eq!(
             binding
                 .manifest_for_mode(ModeKind::Larp)
-                .strip_prefix(dir.path())
+                .strip_prefix(&root)
                 .unwrap(),
             std::path::Path::new("default/avatar.json")
         );
@@ -588,7 +593,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &default.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "default")
+        );
         assert!(dir.path().join("cache/tui-pets/frame-cache").is_dir());
         assert!(!default.join("cache").exists());
     }
@@ -639,7 +647,10 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &default.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "default")
+        );
     }
 
     #[test]
@@ -672,7 +683,10 @@ mod tests {
 
         assert!(error.to_string().contains("default"));
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &locked.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "locked")
+        );
         assert_eq!(runtime.semantic_animation_name_for_tests(), "talking");
         assert_eq!(runtime.animation_started_at(), before_epoch);
     }
@@ -701,7 +715,10 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(runtime.active_mode(), ModeKind::LockedIn);
-        assert_eq!(runtime.active_manifest(), &default.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "default")
+        );
         assert_eq!(runtime.semantic_animation_name_for_tests(), "planning");
     }
 
@@ -727,7 +744,10 @@ mod tests {
         let changed = runtime.set_mode(ModeKind::LockedIn).unwrap();
 
         assert!(changed);
-        assert_eq!(runtime.active_manifest(), &locked.join("avatar.json"));
+        assert_eq!(
+            runtime.active_manifest(),
+            &canonical_manifest(dir.path(), "locked")
+        );
         assert_eq!(runtime.semantic_animation_name_for_tests(), "planning");
     }
 }

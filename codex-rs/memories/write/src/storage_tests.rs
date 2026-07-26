@@ -227,7 +227,14 @@ async fn named_artifact_and_context_source_share_raw_memory_fallback() {
         "chloe",
     )
     .unwrap();
-    let project_key = MemoryProjectKey::from_canonical_path("/workspace/project").unwrap();
+    let project_key = MemoryProjectKey::from_canonical_path(
+        character_home
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("workspace-project"),
+    )
+    .unwrap();
     let thread_id = fixed_thread_id();
     let citation = MemoryCitationPath::new(format!("rollout_summaries/{thread_id}.md")).unwrap();
     let mut output = stage1_output_with_slug(thread_id, None);

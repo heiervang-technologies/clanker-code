@@ -34,7 +34,7 @@ use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
 use core_test_support::test_codex::local_selections;
 use core_test_support::test_codex::test_codex;
-use core_test_support::wait_for_event;
+use core_test_support::wait_for_event_with_timeout;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -44,6 +44,14 @@ use wiremock::MockServer;
 
 const AFTER_SECOND_RESUME: &str = "AFTER_SECOND_RESUME";
 const AFTER_ROLLBACK: &str = "AFTER_ROLLBACK";
+const FLOW_EVENT_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(30);
+
+async fn wait_for_flow_event<F>(conversation: &CodexThread, predicate: F) -> EventMsg
+where
+    F: FnMut(&EventMsg) -> bool,
+{
+    wait_for_event_with_timeout(conversation, predicate, FLOW_EVENT_TIMEOUT).await
+}
 
 fn network_disabled() -> bool {
     std::env::var(CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok()
@@ -456,7 +464,7 @@ async fn snapshot_rollback_past_compaction_replays_append_only_history() -> Resu
         .await
         .expect("submit thread rollback");
     let rollback_event =
-        wait_for_event(&base, |ev| matches!(ev, EventMsg::ThreadRolledBack(_))).await;
+        wait_for_flow_event(&base, |ev| matches!(ev, EventMsg::ThreadRolledBack(_))).await;
     let EventMsg::ThreadRolledBack(rollback_event) = rollback_event else {
         panic!("expected thread rolled back event");
     };
@@ -569,7 +577,7 @@ async fn snapshot_rollback_followup_turn_trims_context_updates() -> Result<()> {
     conversation
         .submit(Op::ThreadRollback { num_turns: 1 })
         .await?;
-    let rollback_event = wait_for_event(&conversation, |ev| {
+    let rollback_event = wait_for_flow_event(&conversation, |ev| {
         matches!(ev, EventMsg::ThreadRolledBack(_))
     })
     .await;
@@ -784,7 +792,7 @@ async fn user_turn(conversation: &Arc<CodexThread>, text: &str) {
         })
         .await
         .expect("submit user turn");
-    wait_for_event(conversation, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    wait_for_flow_event(conversation, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 }
 
 async fn compact_conversation(conversation: &Arc<CodexThread>) {
@@ -792,7 +800,7 @@ async fn compact_conversation(conversation: &Arc<CodexThread>) {
         .submit(Op::Compact)
         .await
         .expect("compact conversation");
-    let warning_event = wait_for_event(conversation, |ev| {
+    let warning_event = wait_for_flow_event(conversation, |ev| {
         matches!(
             ev,
             EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
@@ -803,7 +811,7 @@ async fn compact_conversation(conversation: &Arc<CodexThread>) {
         panic!("expected warning event after compact");
     };
     assert_eq!(message, COMPACT_WARNING_MESSAGE);
-    wait_for_event(conversation, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+    wait_for_flow_event(conversation, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 }
 
 fn fetch_conversation_path(conversation: &Arc<CodexThread>) -> std::path::PathBuf {

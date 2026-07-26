@@ -49,8 +49,8 @@ fn accepts_terminal_default_and_returns_normalized_defaults() {
     let selector = write_pack(
         temp.path(),
         json!({"spritesheetPath": "spritesheet.png"}),
-        1536,
-        1872,
+        /*width*/ 1536,
+        /*height*/ 1872,
         "png",
     );
 
@@ -96,7 +96,13 @@ fn accepts_terminal_default_and_returns_normalized_defaults() {
 #[test]
 fn accepts_ansi_multi_frame_grid_and_normalizes_override() {
     let temp = TempDir::new().expect("temp dir");
-    let selector = write_pack(temp.path(), ansi_manifest("png", 2), 48, 24, "png");
+    let selector = write_pack(
+        temp.path(),
+        ansi_manifest("png", /*columns*/ 2),
+        /*width*/ 48,
+        /*height*/ 24,
+        "png",
+    );
 
     let pack = validate_avatar_selector(temp.path(), &selector).expect("valid ANSI pack");
 
@@ -117,8 +123,8 @@ fn rejects_swapped_terminal_and_ansi_geometry_assumptions() {
             "spritesheetPath": "spritesheet.png",
             "frame": {"width": 24, "height": 24, "columns": 1, "rows": 1}
         }),
-        24,
-        24,
+        /*width*/ 24,
+        /*height*/ 24,
         "png",
     );
     let ansi = TempDir::new().expect("temp dir");
@@ -129,8 +135,8 @@ fn rejects_swapped_terminal_and_ansi_geometry_assumptions() {
             "spritesheetPath": "spritesheet.png",
             "frame": {"width": 24, "height": 48, "columns": 1, "rows": 1}
         }),
-        24,
-        48,
+        /*width*/ 24,
+        /*height*/ 48,
         "png",
     );
 
@@ -157,8 +163,8 @@ fn terminal_explicit_grid_still_validates_retained_defaults() {
             "spritesheetPath": "spritesheet.png",
             "frame": {"width": 1536, "height": 1872, "columns": 1, "rows": 1}
         }),
-        1536,
-        1872,
+        /*width*/ 1536,
+        /*height*/ 1872,
         "png",
     );
 
@@ -181,8 +187,8 @@ fn terminal_override_can_fall_back_to_retained_sad_track() {
                 "wave": {"frames": [0], "fps": 10, "loop": false, "fallback": "sad"}
             }
         }),
-        1536,
-        1872,
+        /*width*/ 1536,
+        /*height*/ 1872,
         "png",
     );
 
@@ -203,9 +209,15 @@ fn rejects_bad_override_fps_index_and_fallback() {
         ),
     ] {
         let temp = TempDir::new().expect("temp dir");
-        let mut manifest = ansi_manifest("png", 2);
+        let mut manifest = ansi_manifest("png", /*columns*/ 2);
         manifest["animations"][name] = animation;
-        let selector = write_pack(temp.path(), manifest, 48, 24, "png");
+        let selector = write_pack(
+            temp.path(),
+            manifest,
+            /*width*/ 48,
+            /*height*/ 24,
+            "png",
+        );
         assert_eq!(
             validate_avatar_selector(temp.path(), &selector)
                 .expect_err("reject malformed override")
@@ -252,7 +264,13 @@ fn rejects_missing_malformed_and_traversing_pack_files() {
 #[test]
 fn rejects_corrupt_image_payload_after_accepting_its_header_dimensions() {
     let temp = TempDir::new().expect("temp dir");
-    let selector = write_pack(temp.path(), ansi_manifest("png", 1), 24, 24, "png");
+    let selector = write_pack(
+        temp.path(),
+        ansi_manifest("png", /*columns*/ 1),
+        /*width*/ 24,
+        /*height*/ 24,
+        "png",
+    );
     let spritesheet = temp.path().join("avatar/spritesheet.png");
     fs::write(&spritesheet, CORRUPT_IDAT_PNG)
         .expect("write PNG with valid header but corrupt payload");
@@ -284,8 +302,8 @@ fn reports_multiple_invalid_animation_tracks_in_name_order() {
                 "alpha": {"frames": [3]}
             }
         }),
-        24,
-        24,
+        /*width*/ 24,
+        /*height*/ 24,
         "png",
     );
 
@@ -300,7 +318,13 @@ fn reports_multiple_invalid_animation_tracks_in_name_order() {
 fn decodes_locked_fixture_and_production_codecs() {
     for extension in ["png", "jpg", "gif", "webp"] {
         let temp = TempDir::new().expect("temp dir");
-        let selector = write_pack(temp.path(), ansi_manifest(extension, 1), 24, 24, extension);
+        let selector = write_pack(
+            temp.path(),
+            ansi_manifest(extension, /*columns*/ 1),
+            /*width*/ 24,
+            /*height*/ 24,
+            extension,
+        );
         validate_avatar_selector(temp.path(), &selector).expect("codec pack is valid");
     }
 
@@ -309,7 +333,8 @@ fn decodes_locked_fixture_and_production_codecs() {
     fs::create_dir_all(&pack).expect("create avatar pack");
     fs::write(
         pack.join("avatar.json"),
-        serde_json::to_vec_pretty(&ansi_manifest("ppm", 1)).expect("serialize manifest"),
+        serde_json::to_vec_pretty(&ansi_manifest("ppm", /*columns*/ 1))
+            .expect("serialize manifest"),
     )
     .expect("write manifest");
     fs::write(

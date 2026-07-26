@@ -2078,11 +2078,6 @@ async fn esc_interrupt_pauses_active_goal_turn() {
         .draw(|f| chat.render(f.area(), f.buffer_mut()))
         .expect("draw goal paused footer");
     let snapshot = normalized_backend_snapshot(terminal.backend());
-    #[cfg(target_os = "windows")]
-    insta::with_settings!({ snapshot_suffix => "windows" }, {
-        assert_chatwidget_snapshot!("esc_interrupt_goal_paused_footer", snapshot);
-    });
-    #[cfg(not(target_os = "windows"))]
     assert_chatwidget_snapshot!("esc_interrupt_goal_paused_footer", snapshot);
 }
 
@@ -2438,7 +2433,9 @@ async fn character_avatar_mode_and_pet_selection_are_independent() {
     chat.set_tui_pet_side(TuiPetSide::FarRight);
     let dir = tempfile::tempdir().unwrap();
     let _default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
-    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255]);
+    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255])
+        .canonicalize()
+        .unwrap();
     chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
         "chloe".to_string(),
         validated_test_avatar(dir.path(), "default"),
@@ -2563,7 +2560,9 @@ async fn failed_avatar_mode_swap_retains_pack_but_continues_lifecycle() {
     chat.set_collaboration_mask(locked_mask);
     let dir = tempfile::tempdir().unwrap();
     let default = write_test_character_avatar(dir.path(), "default", [0, 255, 0, 255]);
-    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255]);
+    let locked = write_test_character_avatar(dir.path(), "locked", [255, 0, 0, 255])
+        .canonicalize()
+        .unwrap();
     chat.set_avatar_binding(crate::avatars::AvatarBinding::new(
         "chloe".to_string(),
         validated_test_avatar(dir.path(), "default"),
@@ -3599,7 +3598,7 @@ async fn status_line_model_with_reasoning_includes_fast_for_fast_capable_models(
     set_fast_mode_test_catalog(&mut chat);
     assert!(get_available_model(&chat, "gpt-5.4").supports_fast_mode());
     chat.refresh_status_line();
-    let test_cwd = test_path_display("/tmp/project");
+    let test_cwd = test_project_path().display().to_string();
 
     assert_eq!(
         status_line_text(&chat),

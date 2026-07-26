@@ -14,9 +14,11 @@ mod cwd_junction;
 use anyhow::Context;
 use anyhow::Result;
 use codex_windows_sandbox::ConsoleMode;
+use codex_windows_sandbox::DESKTOP_BROKER_ARG;
 use codex_windows_sandbox::ErrorPayload;
 use codex_windows_sandbox::ErrorStage;
 use codex_windows_sandbox::ExitPayload;
+use codex_windows_sandbox::FS_HELPER_ARG;
 use codex_windows_sandbox::FramedMessage;
 use codex_windows_sandbox::IPC_PROTOCOL_VERSION;
 use codex_windows_sandbox::LocalSid;
@@ -31,15 +33,17 @@ use codex_windows_sandbox::StderrMode;
 use codex_windows_sandbox::StdinMode;
 use codex_windows_sandbox::WindowsSandboxTokenMode;
 use codex_windows_sandbox::allow_null_device;
-use codex_windows_sandbox::create_readonly_token_with_caps_and_user_from;
-use codex_windows_sandbox::create_workspace_write_token_with_caps_and_user_from;
+use codex_windows_sandbox::create_readonly_token_with_caps_and_launch_from;
+use codex_windows_sandbox::create_workspace_write_token_with_caps_and_launch_from;
 use codex_windows_sandbox::decode_bytes;
 use codex_windows_sandbox::encode_bytes;
 use codex_windows_sandbox::get_current_token_for_restriction;
 use codex_windows_sandbox::hide_current_user_profile_dir;
 use codex_windows_sandbox::log_note;
+use codex_windows_sandbox::make_random_cap_sid_string;
 use codex_windows_sandbox::read_frame;
 use codex_windows_sandbox::read_handle_loop;
+use codex_windows_sandbox::run_desktop_broker;
 use codex_windows_sandbox::spawn_process_with_pipes;
 use codex_windows_sandbox::to_wide;
 use codex_windows_sandbox::token_mode_for_permission_profile;
@@ -78,9 +82,6 @@ use windows_sys::Win32::System::Threading::PROCESS_INFORMATION;
 use windows_sys::Win32::System::Threading::TerminateProcess;
 use windows_sys::Win32::System::Threading::WaitForSingleObject;
 
-// Kept in sync with codex_exec_server::CODEX_FS_HELPER_ARG1 without introducing
-// a dependency cycle.
-const FS_HELPER_ARG: &str = "--codex-run-as-fs-helper";
 const READ_ACL_MUTEX_NAME: &str = "Local\\CodexSandboxReadAcl";
 const WAIT_TIMEOUT: u32 = 0x0000_0102;
 
@@ -279,13 +280,24 @@ fn spawn_ipc_process(req: &SpawnRequest) -> Result<IpcSpawnedProcess> {
     // child is fully spawned still releases the backing LocalAlloc memory automatically.
     let cap_psid_ptrs: Vec<*mut _> = cap_psids.iter().map(LocalSid::as_ptr).collect();
     let base = OwnedWinHandle::new(unsafe { get_current_token_for_restriction()? });
+    let launch_sid = LocalSid::from_string(&make_random_cap_sid_string())?;
+    let desktop_broker_executable =
+        std::env::current_exe().context("resolve desktop broker executable")?;
     let h_token = OwnedWinHandle::new(unsafe {
         match token_mode {
             WindowsSandboxTokenMode::ReadOnlyCapability => {
-                create_readonly_token_with_caps_and_user_from(base.raw(), &cap_psid_ptrs)
+                create_readonly_token_with_caps_and_launch_from(
+                    base.raw(),
+                    &cap_psid_ptrs,
+                    launch_sid.as_ptr(),
+                )
             }
             WindowsSandboxTokenMode::WritableRootsCapability => {
-                create_workspace_write_token_with_caps_and_user_from(base.raw(), &cap_psid_ptrs)
+                create_workspace_write_token_with_caps_and_launch_from(
+                    base.raw(),
+                    &cap_psid_ptrs,
+                    launch_sid.as_ptr(),
+                )
             }
         }
     }?);
@@ -306,6 +318,8 @@ fn spawn_ipc_process(req: &SpawnRequest) -> Result<IpcSpawnedProcess> {
     let (pi, stdout_handle, stderr_handle, stdin_handle) = if req.tty {
         let (pi, mut conpty) = codex_windows_sandbox::spawn_conpty_process_as_user(
             h_token.raw(),
+            &launch_sid,
+            &desktop_broker_executable,
             &req.command,
             &effective_cwd,
             &req.env,
@@ -338,6 +352,8 @@ fn spawn_ipc_process(req: &SpawnRequest) -> Result<IpcSpawnedProcess> {
         };
         let spawned_pipes: PipeSpawnHandles = spawn_process_with_pipes(
             h_token.raw(),
+            &launch_sid,
+            &desktop_broker_executable,
             &req.command,
             &effective_cwd,
             &req.env,
@@ -523,6 +539,10 @@ fn spawn_input_loop(
 
 /// Entry point for the Windows command runner process.
 pub fn main() -> Result<()> {
+    if std::env::args_os().any(|arg| arg == DESKTOP_BROKER_ARG) {
+        return run_desktop_broker();
+    }
+
     let mut pipe_in = None;
     let mut pipe_out = None;
     for arg in std::env::args().skip(1) {

@@ -797,7 +797,14 @@ async fn named_tool_scope_failure_never_falls_back_to_anonymous() {
         .register_memory_scope(&MemoryScope {
             thread_id,
             clanker_id: Some(canonical_id(home.path(), "chloe")),
-            project_key: MemoryProjectKey::from_canonical_path("/workspace/project").unwrap(),
+            project_key: MemoryProjectKey::from_canonical_path(
+                home.path()
+                    .canonicalize()
+                    .unwrap()
+                    .join("workspace")
+                    .join("project"),
+            )
+            .unwrap(),
             parent_thread_id: None,
             recorded_at: Utc.timestamp_opt(100, 0).unwrap(),
         })

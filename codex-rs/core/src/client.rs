@@ -844,10 +844,10 @@ impl ModelClient {
         // Useful for providers that expect "system" instead of "developer".
         if let Some(mapped_role) = &self.state.provider.info().developer_role_name {
             for item in &mut input {
-                if let ResponseItem::Message { role, .. } = item {
-                    if role == "developer" {
-                        *role = mapped_role.clone();
-                    }
+                if let ResponseItem::Message { role, .. } = item
+                    && role == "developer"
+                {
+                    *role = mapped_role.clone();
                 }
             }
         }

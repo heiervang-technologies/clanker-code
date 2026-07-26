@@ -57,18 +57,27 @@ fn project_keys_strip_credentials_and_normalize_equivalent_origins() {
 
 #[test]
 fn path_project_keys_are_explicitly_path_bound() {
-    let first = MemoryProjectKey::from_canonical_path("/workspace/first")
+    let project_root = TempDir::new().expect("project root");
+    let canonical_root = project_root.path().canonicalize().expect("canonical root");
+    let first_path = canonical_root.join("first");
+    let renamed_path = canonical_root.join("renamed");
+    let first = MemoryProjectKey::from_canonical_path(&first_path)
         .expect("absolute path should be accepted");
-    let renamed = MemoryProjectKey::from_canonical_path("/workspace/renamed")
+    let renamed = MemoryProjectKey::from_canonical_path(&renamed_path)
         .expect("absolute path should be accepted");
 
     assert_ne!(first, renamed);
-    assert_eq!(first.as_str(), "v1:path:/workspace/first");
+    assert_eq!(first.as_str(), format!("v1:path:{}", first_path.display()));
     assert!(MemoryProjectKey::from_canonical_path("relative").is_err());
-    assert!(MemoryProjectKey::from_canonical_path("/workspace/a/../b").is_err());
-    assert!(MemoryProjectKey::from_canonical_path("/workspace/a/./b").is_err());
-    assert!(MemoryProjectKey::from_canonical_path("/workspace//a").is_err());
-    assert!(MemoryProjectKey::from_canonical_path("/workspace/a\nb").is_err());
+    assert!(MemoryProjectKey::from_canonical_path(project_root.path().join("a/../b")).is_err());
+    assert!(MemoryProjectKey::from_canonical_path(project_root.path().join("a/./b")).is_err());
+    let duplicate_separator = format!(
+        "{}{separator}{separator}a",
+        canonical_root.display(),
+        separator = std::path::MAIN_SEPARATOR
+    );
+    assert!(MemoryProjectKey::from_canonical_path(duplicate_separator).is_err());
+    assert!(MemoryProjectKey::from_canonical_path(canonical_root.join("a\nb")).is_err());
 }
 
 #[test]

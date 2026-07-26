@@ -11070,10 +11070,7 @@ async fn collaboration_mode_switch_sends_full_doc_once_then_one_line_reminder() 
     );
 
     session
-        .replace_history(
-            first_switch_items,
-            /*reference_context_item*/ None,
-        )
+        .replace_history(first_switch_items, /*reference_context_item*/ None)
         .await;
 
     let second_switch_items = session

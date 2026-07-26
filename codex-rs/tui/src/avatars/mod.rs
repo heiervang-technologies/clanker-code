@@ -9,6 +9,7 @@ mod assets;
 mod binding;
 mod runtime;
 
+#[allow(unused_imports)]
 pub(crate) use assets::ensure_bundled_avatars;
 pub use assets::ensure_bundled_character_for_name;
 pub(crate) use binding::resolve_named_avatar_binding;

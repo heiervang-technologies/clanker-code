@@ -58,7 +58,12 @@ pub fn create_named_pipe(name: &str, access: u32, sandbox_username: &str) -> io:
         .map_err(|err| io::Error::new(io::ErrorKind::PermissionDenied, err.to_string()))?;
     let sandbox_sid = string_from_sid_bytes(&sandbox_sid)
         .map_err(|err| io::Error::new(io::ErrorKind::PermissionDenied, err))?;
-    let sddl = to_wide(format!("D:(A;;GA;;;{sandbox_sid})"));
+    create_named_pipe_for_sid(name, access, &sandbox_sid)
+}
+
+/// Creates a named pipe whose DACL only allows the supplied SID to connect.
+pub(crate) fn create_named_pipe_for_sid(name: &str, access: u32, sid: &str) -> io::Result<HANDLE> {
+    let sddl = to_wide(format!("D:(A;;GA;;;{sid})"));
     let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
     let ok = unsafe {
         ConvertStringSecurityDescriptorToSecurityDescriptorW(

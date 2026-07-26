@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -386,6 +388,13 @@ impl ServerHandler for McpStatusServer {
 #[derive(Clone)]
 struct SlowInventoryServer {
     tool_name: Arc<String>,
+    inventory_calls: Arc<SlowInventoryCallCounts>,
+}
+
+#[derive(Default)]
+struct SlowInventoryCallCounts {
+    resources: AtomicUsize,
+    resource_templates: AtomicUsize,
 }
 
 impl ServerHandler for SlowInventoryServer {
@@ -428,7 +437,9 @@ impl ServerHandler for SlowInventoryServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<rmcp::service::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        self.inventory_calls
+            .resources
+            .fetch_add(1, Ordering::SeqCst);
         Ok(ListResourcesResult {
             resources: Vec::new(),
             next_cursor: None,
@@ -441,7 +452,9 @@ impl ServerHandler for SlowInventoryServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<rmcp::service::RoleServer>,
     ) -> Result<ListResourceTemplatesResult, rmcp::ErrorData> {
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        self.inventory_calls
+            .resource_templates
+            .fetch_add(1, Ordering::SeqCst);
         Ok(ListResourceTemplatesResult {
             resource_templates: Vec::new(),
             next_cursor: None,
@@ -453,7 +466,8 @@ impl ServerHandler for SlowInventoryServer {
 #[tokio::test]
 async fn mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls() -> Result<()> {
     let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
-    let (mcp_server_url, mcp_server_handle) = start_slow_inventory_mcp_server("lookup").await?;
+    let (mcp_server_url, mcp_server_handle, inventory_calls) =
+        start_slow_inventory_mcp_server("lookup").await?;
     let codex_home = TempDir::new()?;
     write_mock_responses_config_toml(
         codex_home.path(),
@@ -481,6 +495,8 @@ url = "{mcp_server_url}/mcp"
         .build()
         .await?;
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+    let resources_before = inventory_calls.resources.load(Ordering::SeqCst);
+    let templates_before = inventory_calls.resource_templates.load(Ordering::SeqCst);
 
     let request_id = mcp
         .send_list_mcp_server_status_request(ListMcpServerStatusParams {
@@ -491,7 +507,7 @@ url = "{mcp_server_url}/mcp"
         })
         .await?;
     let response = timeout(
-        Duration::from_millis(500),
+        DEFAULT_READ_TIMEOUT,
         mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
     )
     .await??;
@@ -507,6 +523,16 @@ url = "{mcp_server_url}/mcp"
     );
     assert_eq!(status.resources, Vec::new());
     assert_eq!(status.resource_templates, Vec::new());
+    assert_eq!(
+        inventory_calls.resources.load(Ordering::SeqCst),
+        resources_before,
+        "tools-only status must not list resources"
+    );
+    assert_eq!(
+        inventory_calls.resource_templates.load(Ordering::SeqCst),
+        templates_before,
+        "tools-only status must not list resource templates"
+    );
 
     mcp_server_handle.abort();
     let _ = mcp_server_handle.await;
@@ -619,14 +645,19 @@ async fn start_mcp_server(tool_name: &str) -> Result<(String, JoinHandle<()>)> {
     Ok((format!("http://{addr}"), handle))
 }
 
-async fn start_slow_inventory_mcp_server(tool_name: &str) -> Result<(String, JoinHandle<()>)> {
+async fn start_slow_inventory_mcp_server(
+    tool_name: &str,
+) -> Result<(String, JoinHandle<()>, Arc<SlowInventoryCallCounts>)> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
     let tool_name = Arc::new(tool_name.to_string());
+    let inventory_calls = Arc::new(SlowInventoryCallCounts::default());
+    let inventory_calls_for_server = Arc::clone(&inventory_calls);
     let mcp_service = StreamableHttpService::new(
         move || {
             Ok(SlowInventoryServer {
                 tool_name: Arc::clone(&tool_name),
+                inventory_calls: Arc::clone(&inventory_calls_for_server),
             })
         },
         Arc::new(LocalSessionManager::default()),
@@ -638,5 +669,5 @@ async fn start_slow_inventory_mcp_server(tool_name: &str) -> Result<(String, Joi
         let _ = axum::serve(listener, router).await;
     });
 
-    Ok((format!("http://{addr}"), handle))
+    Ok((format!("http://{addr}"), handle, inventory_calls))
 }

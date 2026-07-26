@@ -25,6 +25,27 @@ pub fn create_test_sync_tool() -> ToolSpec {
         ),
     ]);
 
+    let file_rendezvous_properties = BTreeMap::from([
+        (
+            "signal_path".to_string(),
+            JsonSchema::string(Some(
+                "Path to create when this tool call reaches the rendezvous".to_string(),
+            )),
+        ),
+        (
+            "wait_for_path".to_string(),
+            JsonSchema::string(Some(
+                "Peer signal path to wait for before returning".to_string(),
+            )),
+        ),
+        (
+            "timeout_ms".to_string(),
+            JsonSchema::number(Some(
+                "Maximum file rendezvous wait in milliseconds. Defaults to 1000.".to_string(),
+            )),
+        ),
+    ]);
+
     let properties = BTreeMap::from([
         (
             "sleep_before_ms".to_string(),
@@ -43,6 +64,14 @@ pub fn create_test_sync_tool() -> ToolSpec {
             JsonSchema::object(
                 barrier_properties,
                 Some(vec!["id".to_string(), "participants".to_string()]),
+                Some(false.into()),
+            ),
+        ),
+        (
+            "file_rendezvous".to_string(),
+            JsonSchema::object(
+                file_rendezvous_properties,
+                Some(vec!["signal_path".to_string(), "wait_for_path".to_string()]),
                 Some(false.into()),
             ),
         ),

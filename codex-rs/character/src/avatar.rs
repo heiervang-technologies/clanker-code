@@ -443,19 +443,97 @@ fn validate_normalized_animations(
 fn default_animations() -> HashMap<String, AvatarAnimation> {
     [
         ("idle", idle_animation()),
-        ("running-right", app_state_animation(1, 8, 120, 220)),
-        ("running-left", app_state_animation(2, 8, 120, 220)),
-        ("waving", app_state_animation(3, 4, 140, 280)),
-        ("jumping", app_state_animation(4, 5, 140, 280)),
-        ("failed", app_state_animation(5, 8, 140, 240)),
-        ("waiting", app_state_animation(6, 6, 150, 260)),
-        ("running", app_state_animation(7, 6, 120, 220)),
-        ("review", app_state_animation(8, 6, 150, 280)),
-        ("move_right", app_state_animation(1, 8, 120, 220)),
-        ("move_left", app_state_animation(2, 8, 120, 220)),
-        ("wave", app_state_animation(3, 4, 140, 280)),
-        ("bounce", app_state_animation(4, 5, 140, 280)),
-        ("sad", app_state_animation(5, 8, 140, 240)),
+        (
+            "running-right",
+            app_state_animation(
+                /*row_index*/ 1, /*frame_count*/ 8, /*frame_duration_ms*/ 120,
+                /*final_frame_duration_ms*/ 220,
+            ),
+        ),
+        (
+            "running-left",
+            app_state_animation(
+                /*row_index*/ 2, /*frame_count*/ 8, /*frame_duration_ms*/ 120,
+                /*final_frame_duration_ms*/ 220,
+            ),
+        ),
+        (
+            "waving",
+            app_state_animation(
+                /*row_index*/ 3, /*frame_count*/ 4, /*frame_duration_ms*/ 140,
+                /*final_frame_duration_ms*/ 280,
+            ),
+        ),
+        (
+            "jumping",
+            app_state_animation(
+                /*row_index*/ 4, /*frame_count*/ 5, /*frame_duration_ms*/ 140,
+                /*final_frame_duration_ms*/ 280,
+            ),
+        ),
+        (
+            "failed",
+            app_state_animation(
+                /*row_index*/ 5, /*frame_count*/ 8, /*frame_duration_ms*/ 140,
+                /*final_frame_duration_ms*/ 240,
+            ),
+        ),
+        (
+            "waiting",
+            app_state_animation(
+                /*row_index*/ 6, /*frame_count*/ 6, /*frame_duration_ms*/ 150,
+                /*final_frame_duration_ms*/ 260,
+            ),
+        ),
+        (
+            "running",
+            app_state_animation(
+                /*row_index*/ 7, /*frame_count*/ 6, /*frame_duration_ms*/ 120,
+                /*final_frame_duration_ms*/ 220,
+            ),
+        ),
+        (
+            "review",
+            app_state_animation(
+                /*row_index*/ 8, /*frame_count*/ 6, /*frame_duration_ms*/ 150,
+                /*final_frame_duration_ms*/ 280,
+            ),
+        ),
+        (
+            "move_right",
+            app_state_animation(
+                /*row_index*/ 1, /*frame_count*/ 8, /*frame_duration_ms*/ 120,
+                /*final_frame_duration_ms*/ 220,
+            ),
+        ),
+        (
+            "move_left",
+            app_state_animation(
+                /*row_index*/ 2, /*frame_count*/ 8, /*frame_duration_ms*/ 120,
+                /*final_frame_duration_ms*/ 220,
+            ),
+        ),
+        (
+            "wave",
+            app_state_animation(
+                /*row_index*/ 3, /*frame_count*/ 4, /*frame_duration_ms*/ 140,
+                /*final_frame_duration_ms*/ 280,
+            ),
+        ),
+        (
+            "bounce",
+            app_state_animation(
+                /*row_index*/ 4, /*frame_count*/ 5, /*frame_duration_ms*/ 140,
+                /*final_frame_duration_ms*/ 280,
+            ),
+        ),
+        (
+            "sad",
+            app_state_animation(
+                /*row_index*/ 5, /*frame_count*/ 8, /*frame_duration_ms*/ 140,
+                /*final_frame_duration_ms*/ 240,
+            ),
+        ),
     ]
     .into_iter()
     .map(|(name, animation)| (name.to_string(), animation))

@@ -3,6 +3,11 @@ use codex_app_server_protocol::ImageGenerationItem;
 use codex_app_server_protocol::PluginAvailability;
 use pretty_assertions::assert_eq;
 
+#[cfg(not(windows))]
+const SNAPSHOT_TEST_CWD: &str = "/tmp/project";
+#[cfg(windows)]
+const SNAPSHOT_TEST_CWD: &str = r"C:\a\project";
+
 pub(super) async fn test_config() -> Config {
     // Start from the built-in defaults so tests do not inherit host/system config.
     let codex_home = tempfile::Builder::new()
@@ -17,14 +22,14 @@ pub(super) async fn test_config() -> Config {
     config.codex_home = codex_home.abs();
     config.sqlite_home = codex_home.clone();
     config.log_dir = codex_home.join("log");
-    config.cwd = PathBuf::from(test_path_display("/tmp/project")).abs();
+    config.cwd = PathBuf::from(SNAPSHOT_TEST_CWD).abs();
     config.config_layer_stack = ConfigLayerStack::default();
     config.startup_warnings.clear();
     config
 }
 
 pub(super) fn test_project_path() -> PathBuf {
-    PathBuf::from(test_path_display("/tmp/project"))
+    PathBuf::from(SNAPSHOT_TEST_CWD)
 }
 
 pub(super) fn truncated_path_variants(path: &str) -> Vec<String> {
@@ -37,17 +42,23 @@ pub(super) fn truncated_path_variants(path: &str) -> Vec<String> {
 pub(super) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
     let mut text = text.into();
 
-    for unix_path in ["/tmp/project", "/tmp/hooks.json"] {
-        let platform_path = test_path_display(unix_path);
+    for (platform_path, unix_path) in [
+        (SNAPSHOT_TEST_CWD.to_string(), "/tmp/project"),
+        (test_path_display("/tmp/project"), "/tmp/project"),
+        (test_path_display("/tmp/hooks.json"), "/tmp/hooks.json"),
+    ] {
         if platform_path != unix_path {
             text = text.replace(&platform_path, unix_path);
         }
     }
 
-    let platform_test_cwd = test_path_display("/tmp/project");
-    if platform_test_cwd == "/tmp/project" {
-        text
-    } else {
+    for platform_test_cwd in [
+        SNAPSHOT_TEST_CWD.to_string(),
+        test_path_display("/tmp/project"),
+    ] {
+        if platform_test_cwd == "/tmp/project" {
+            continue;
+        }
         for platform_prefix in truncated_path_variants(&platform_test_cwd)
             .into_iter()
             .rev()
@@ -58,18 +69,13 @@ pub(super) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
                 .collect();
             text = text.replace(&format!("{platform_prefix}…"), &format!("{unix_prefix}…"));
         }
-
-        text
     }
+
+    text
 }
 
 pub(super) fn normalized_backend_snapshot<T: std::fmt::Display>(value: &T) -> String {
-    let platform_test_cwd = test_path_display("/tmp/project");
     let rendered = format!("{value}");
-
-    if platform_test_cwd == "/tmp/project" {
-        return rendered;
-    }
 
     rendered
         .lines()

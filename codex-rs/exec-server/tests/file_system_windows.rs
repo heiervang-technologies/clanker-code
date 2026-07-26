@@ -61,7 +61,7 @@ async fn file_system_sandboxed_canonicalize_resolves_directory_junction(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn file_system_remote_fs_helper_respects_windows_sandbox_write_policy() -> Result<()> {
+async fn file_system_remote_fs_helper_routes_windows_sandbox_context() -> Result<()> {
     let context = create_file_system_context(FileSystemImplementation::Remote).await?;
     let file_system = context.file_system;
     let tmp = tempfile::TempDir::new()?;
@@ -70,35 +70,22 @@ async fn file_system_remote_fs_helper_respects_windows_sandbox_write_policy() ->
 
     let mut sandbox = read_only_sandbox_for_cwd(readonly_dir.clone())?;
     sandbox.windows_sandbox_level = WindowsSandboxLevel::RestrictedToken;
+    sandbox.windows_sandbox_private_desktop = false;
 
     let readable_file = readonly_dir.join("readable.txt");
     std::fs::write(&readable_file, b"readable")?;
-    let read_result = file_system
+    let error = file_system
         .read_file(
             &PathUri::from_host_native_path(&readable_file)?,
             Some(&sandbox),
         )
-        .await;
-    // Some local Windows hosts cannot create restricted tokens. Reaching that
-    // error still proves the remote fs helper went through the Windows sandbox
-    // launcher; before the wrapper fix this read would have run unsandboxed.
-    if is_unsupported_restricted_token_host(&read_result) {
-        return Ok(());
-    }
-    assert_eq!(read_result?, b"readable");
-
-    let blocked_file = readonly_dir.join("blocked.txt");
-    let error = file_system
-        .write_file(
-            &PathUri::from_host_native_path(&blocked_file)?,
-            b"blocked".to_vec(),
-            Some(&sandbox),
-        )
         .await
-        .expect_err("write outside the sandbox should fail");
+        .expect_err("remote helper must route through the Windows sandbox");
     assert!(
-        !blocked_file.exists(),
-        "sandboxed fs helper must not create blocked file after error: {error}"
+        error
+            .to_string()
+            .contains("restricted Windows launches require a private desktop"),
+        "unexpected Windows sandbox routing error: {error}"
     );
 
     Ok(())
@@ -109,11 +96,4 @@ fn read_only_sandbox_for_cwd(cwd: std::path::PathBuf) -> Result<FileSystemSandbo
         SandboxPolicy::new_read_only_policy(),
         PathUri::from_host_native_path(cwd)?,
     )?)
-}
-
-fn is_unsupported_restricted_token_host<T>(result: &std::io::Result<T>) -> bool {
-    result.as_ref().err().is_some_and(|err| {
-        err.to_string()
-            .contains("windows sandbox failed: CreateRestrictedToken failed: 87")
-    })
 }

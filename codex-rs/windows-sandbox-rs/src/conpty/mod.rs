@@ -8,6 +8,7 @@
 
 use crate::desktop::LaunchDesktop;
 use crate::proc_thread_attr::ProcThreadAttributeList;
+use crate::token::LocalSid;
 use crate::winutil::format_last_error;
 use crate::winutil::quote_windows_arg;
 use crate::winutil::to_wide;
@@ -91,8 +92,11 @@ pub fn create_conpty(cols: i16, rows: i16) -> Result<ConptyInstance> {
 ///
 /// This is the main shared ConPTY entry point and is used by both the legacy/direct path
 /// and the elevated runner path whenever a PTY-backed sandboxed process is needed.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_conpty_process_as_user(
     h_token: HANDLE,
+    launch_sid: &LocalSid,
+    desktop_broker_executable: &Path,
     argv: &[String],
     cwd: &Path,
     env_map: &HashMap<String, String>,
@@ -112,7 +116,12 @@ pub fn spawn_conpty_process_as_user(
     si.StartupInfo.hStdInput = INVALID_HANDLE_VALUE;
     si.StartupInfo.hStdOutput = INVALID_HANDLE_VALUE;
     si.StartupInfo.hStdError = INVALID_HANDLE_VALUE;
-    let desktop = LaunchDesktop::prepare(use_private_desktop, logs_base_dir)?;
+    let desktop = LaunchDesktop::prepare(
+        launch_sid,
+        desktop_broker_executable,
+        use_private_desktop,
+        logs_base_dir,
+    )?;
     si.StartupInfo.lpDesktop = desktop.startup_info_desktop();
 
     let raw = RawConPty::new(/*cols*/ 80, /*rows*/ 24)?;
