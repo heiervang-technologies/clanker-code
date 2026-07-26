@@ -144,8 +144,8 @@ impl FileSystemSandboxRunner {
                     codex_linux_sandbox_exe: self.runtime_paths.codex_linux_sandbox_exe.as_deref(),
                     use_legacy_landlock: sandbox_context.use_legacy_landlock,
                     windows_sandbox_level: sandbox_context.windows_sandbox_level,
-                    windows_sandbox_private_desktop: sandbox_context
-                        .windows_sandbox_private_desktop,
+                    windows_sandbox_private_desktop: cfg!(windows)
+                        || sandbox_context.windows_sandbox_private_desktop,
                 },
             })
             .map_err(|err| invalid_request(format!("failed to prepare fs sandbox: {err}")))

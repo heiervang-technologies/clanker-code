@@ -114,6 +114,15 @@ const DESKTOP_ALL_ACCESS: u32 = DESKTOP_READOBJECTS
     | DESKTOP_READ_CONTROL
     | DESKTOP_WRITE_DAC
     | DESKTOP_WRITE_OWNER;
+const DESKTOP_BROKER_CHILD_ACCESS: u32 = DESKTOP_READOBJECTS
+    | DESKTOP_CREATEWINDOW
+    | DESKTOP_CREATEMENU
+    | DESKTOP_HOOKCONTROL
+    | DESKTOP_JOURNALRECORD
+    | DESKTOP_JOURNALPLAYBACK
+    | DESKTOP_ENUMERATE
+    | DESKTOP_WRITEOBJECTS
+    | DESKTOP_READ_CONTROL;
 const WINDOW_STATION_ALL_ACCESS: u32 = WINSTA_ACCESSCLIPBOARD as u32
     | WINSTA_ACCESSGLOBALATOMS as u32
     | WINSTA_CREATEDESKTOP as u32
@@ -224,7 +233,9 @@ impl OwnedSecurityDescriptor {
 }
 
 fn desktop_broker_sddl(broker_logon_sid: &str, child_logon_sid: &str, launch_sid: &str) -> String {
-    format!("D:P(A;;GA;;;{broker_logon_sid})(A;;GA;;;{child_logon_sid})(A;;GA;;;{launch_sid})")
+    format!(
+        "D:P(A;;GA;;;{broker_logon_sid})(A;;0x{DESKTOP_BROKER_CHILD_ACCESS:08x};;;{child_logon_sid})(A;;0x{DESKTOP_BROKER_CHILD_ACCESS:08x};;;{launch_sid})"
+    )
 }
 
 impl Drop for OwnedSecurityDescriptor {
@@ -763,7 +774,7 @@ mod tests {
         assert_eq!(CWF_CREATE_ONLY, 1);
         assert_eq!(
             desktop_broker_sddl("S-1-5-5-1-1", "S-1-5-5-2-2", "S-1-5-21-1-2-3-4"),
-            "D:P(A;;GA;;;S-1-5-5-1-1)(A;;GA;;;S-1-5-5-2-2)(A;;GA;;;S-1-5-21-1-2-3-4)"
+            "D:P(A;;GA;;;S-1-5-5-1-1)(A;;0x000f00ff;;;S-1-5-5-2-2)(A;;0x000f00ff;;;S-1-5-21-1-2-3-4)"
         );
     }
 
