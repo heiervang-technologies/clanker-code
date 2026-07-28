@@ -1381,7 +1381,7 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     chat.open_review_popup();
 
     // Open the branch picker submenu (child view). Using a temp cwd with no git repo is fine.
-    let cwd = std::env::temp_dir();
+    let cwd = std::env::temp_dir().join("codex_mock_cwd");
     chat.show_review_branch_picker(&cwd).await;
 
     // Verify child view header.
