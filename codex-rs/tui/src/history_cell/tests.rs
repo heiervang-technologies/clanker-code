@@ -33,7 +33,7 @@ use rmcp::model::Content;
 
 const SMALL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 async fn test_config() -> Config {
-    let codex_home = std::env::temp_dir();
+    let codex_home = std::env::temp_dir().join("codex_mock_cwd");
     ConfigBuilder::default()
         .codex_home(codex_home.clone())
         .build()
@@ -44,7 +44,7 @@ async fn test_config() -> Config {
 fn test_cwd() -> PathBuf {
     // These tests only need a stable absolute cwd; using temp_dir() avoids baking Unix- or
     // Windows-specific root semantics into the fixtures.
-    std::env::temp_dir()
+    std::env::temp_dir().join("codex_mock_cwd")
 }
 
 #[test]
@@ -1534,7 +1534,7 @@ fn session_header_includes_reasoning_level_when_present() {
         "gpt-4o".to_string(),
         Some(ReasoningEffortConfig::High),
         /*show_fast_status*/ true,
-        std::env::temp_dir(),
+        std::env::temp_dir().join("codex_mock_cwd"),
         "test",
     );
 
@@ -1554,7 +1554,7 @@ fn session_header_hides_fast_status_when_disabled() {
         "gpt-4o".to_string(),
         Some(ReasoningEffortConfig::High),
         /*show_fast_status*/ false,
-        std::env::temp_dir(),
+        std::env::temp_dir().join("codex_mock_cwd"),
         "test",
     );
 
