@@ -50,19 +50,38 @@ pub async fn get_git_repo_root_with_fs(
     cwd: &AbsolutePathBuf,
 ) -> Option<AbsolutePathBuf> {
     let cwd_uri = PathUri::from_abs_path(cwd);
-    let base = match fs.get_metadata(&cwd_uri, /*sandbox*/ None).await {
+    let mut search_base = match fs.get_metadata(&cwd_uri, /*sandbox*/ None).await {
         Ok(metadata) if metadata.is_directory => cwd.clone(),
         _ => cwd.parent()?,
     };
-    find_nearest_native_ancestor_with_markers(
-        fs,
-        &base,
-        vec![".git".to_string()],
-        FindUpErrorPolicy::Ignore,
-        /*sandbox*/ None,
-    )
-    .await
-    .ok()?
+
+    loop {
+        let repo_root = find_nearest_native_ancestor_with_markers(
+            fs,
+            &search_base,
+            vec![".git".to_string()],
+            FindUpErrorPolicy::Ignore,
+            /*sandbox*/ None,
+        )
+        .await
+        .ok()??;
+        let dot_git = repo_root.join(".git");
+        let dot_git_uri = PathUri::from_abs_path(&dot_git);
+        let head_uri = PathUri::from_abs_path(&dot_git.join("HEAD"));
+        let objects_uri = PathUri::from_abs_path(&dot_git.join("objects"));
+        let (dot_git_metadata, head_metadata, objects_metadata) = tokio::join!(
+            fs.get_metadata(&dot_git_uri, /*sandbox*/ None),
+            fs.get_metadata(&head_uri, /*sandbox*/ None),
+            fs.get_metadata(&objects_uri, /*sandbox*/ None),
+        );
+        match dot_git_metadata {
+            Ok(metadata) if !metadata.is_directory => return Some(repo_root),
+            Ok(_) if head_metadata.is_ok() || objects_metadata.is_ok() => return Some(repo_root),
+            _ => {}
+        }
+
+        search_base = repo_root.parent()?;
+    }
 }
 
 /// Timeout for git commands to prevent freezing on large repositories
@@ -848,7 +867,13 @@ fn find_ancestor_git_entry(base_dir: &Path) -> Option<(PathBuf, PathBuf)> {
     loop {
         let dot_git = dir.join(".git");
         if dot_git.exists() {
-            return Some((dir, dot_git));
+            if dot_git.is_dir() {
+                if dot_git.join("HEAD").exists() || dot_git.join("objects").exists() {
+                    return Some((dir, dot_git));
+                }
+            } else {
+                return Some((dir, dot_git));
+            }
         }
 
         // Pop one component (go up one directory). `pop` returns false when
@@ -946,6 +971,31 @@ mod tests {
         for remote in ["", "file:///tmp/repo", "github.com/openai", "/tmp/repo"] {
             assert_eq!(canonicalize_git_remote_url(remote), None);
         }
+    }
+
+    #[test]
+    fn get_git_repo_root_ignores_empty_git_directory() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::create_dir(temp_dir.path().join(".git")).expect("create empty .git");
+        let nested = temp_dir.path().join("nested");
+        std::fs::create_dir(&nested).expect("create nested directory");
+
+        assert_eq!(get_git_repo_root(&nested), None);
+    }
+
+    #[test]
+    fn get_git_repo_root_accepts_git_directory_with_head() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let dot_git = temp_dir.path().join(".git");
+        std::fs::create_dir(&dot_git).expect("create .git");
+        std::fs::write(dot_git.join("HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
+        let nested = temp_dir.path().join("nested");
+        std::fs::create_dir(&nested).expect("create nested directory");
+
+        assert_eq!(
+            get_git_repo_root(&nested),
+            Some(temp_dir.path().to_path_buf())
+        );
     }
 
     #[tokio::test]
