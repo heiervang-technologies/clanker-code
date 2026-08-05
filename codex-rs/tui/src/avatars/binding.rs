@@ -7,6 +7,7 @@ use codex_character::AvatarSelector;
 use codex_character::CharacterCatalog;
 use codex_character::ResolvedCharacter;
 use codex_character::ValidatedAvatarPack;
+use codex_character::ValidationIssueCode;
 use codex_character::validate_avatar_selector;
 
 use super::AvatarBinding;
@@ -28,6 +29,34 @@ pub(crate) fn resolve_named_avatar_binding(
             anyhow::anyhow!("failed to resolve character {requested_name:?}: {details}")
         })?;
     binding_from_resolved_character(&resolved)
+}
+
+pub(crate) fn resolve_startup_avatar_binding(
+    codex_home: &Path,
+    explicit_name: Option<&str>,
+    detected_name: Option<&str>,
+) -> Result<Option<AvatarBinding>> {
+    if let Some(name) = explicit_name {
+        return resolve_named_avatar_binding(codex_home, name).map(Some);
+    }
+    let Some(name) = detected_name else {
+        return Ok(None);
+    };
+    match resolve_named_avatar_binding(codex_home, name) {
+        Ok(binding) => Ok(Some(binding)),
+        Err(_) if character_not_found(codex_home, name) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+fn character_not_found(codex_home: &Path, name: &str) -> bool {
+    CharacterCatalog::load(codex_home)
+        .resolve(name)
+        .is_err_and(|issues| {
+            issues
+                .iter()
+                .all(|issue| issue.code == ValidationIssueCode::NotFound)
+        })
 }
 
 pub(crate) fn binding_from_resolved_character(
@@ -131,6 +160,43 @@ mod tests {
     }
 
     #[test]
+    fn detected_chloe_identity_selects_avatar_without_explicit_name() {
+        let home = tempfile::tempdir().unwrap();
+
+        let binding = resolve_startup_avatar_binding(home.path(), None, Some("chloe"))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(binding.character_id(), "chloe");
+        assert!(
+            binding
+                .default_manifest()
+                .ends_with("characters/chloe/avatar/default/avatar.json")
+        );
+    }
+
+    #[test]
+    fn explicit_name_wins_over_detected_identity() {
+        let home = tempfile::tempdir().unwrap();
+
+        let binding = resolve_startup_avatar_binding(home.path(), Some("centurion"), Some("chloe"))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(binding.character_id(), "centurion");
+    }
+
+    #[test]
+    fn unknown_detected_identity_does_not_block_startup() {
+        let home = tempfile::tempdir().unwrap();
+
+        let binding =
+            resolve_startup_avatar_binding(home.path(), None, Some("unknown-agent")).unwrap();
+
+        assert!(binding.is_none());
+    }
+
+    #[test]
     fn every_bundled_character_name_resolves_to_its_own_avatar_binding() {
         let home = tempfile::tempdir().unwrap();
 
@@ -197,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_partial_bundled_character_fails_during_named_resolution() {
+    fn selected_partial_bundled_character_fails_during_detected_resolution() {
         let home = tempfile::tempdir().unwrap();
         super::super::assets::ensure_bundled_avatars(home.path()).unwrap();
         std::fs::remove_file(
@@ -206,7 +272,7 @@ mod tests {
         )
         .unwrap();
 
-        let error = resolve_named_avatar_binding(home.path(), "chloe").unwrap_err();
+        let error = resolve_startup_avatar_binding(home.path(), None, Some("chloe")).unwrap_err();
 
         let detail = format!("{error:#}");
         assert!(detail.contains("failed to resolve character \"chloe\""));
