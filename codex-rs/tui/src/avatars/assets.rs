@@ -15,6 +15,8 @@ const CHLOE_SHEET: &[u8] = include_bytes!("../../assets/chloe-r2-09/sheet.png");
 const CHLOE_LOCKED_IN_MANIFEST: &str =
     include_str!("../../assets/chloe-r2-09-locked-in/avatar.json");
 const CHLOE_LOCKED_IN_SHEET: &[u8] = include_bytes!("../../assets/chloe-r2-09-locked-in/sheet.png");
+const CENTURION_MANIFEST: &str = include_str!("../../assets/centurion/avatar.json");
+const CENTURION_SHEET: &[u8] = include_bytes!("../../assets/centurion/sheet.png");
 const CLANKER_CHARACTER_MANIFEST: &str = r#"{
   "schemaVersion": 1,
   "id": "clanker",
@@ -57,6 +59,11 @@ const BUNDLED_AVATARS: &[BundledAvatar] = &[
         id: "chloe-r2-09-locked-in",
         manifest: CHLOE_LOCKED_IN_MANIFEST,
         sheet: CHLOE_LOCKED_IN_SHEET,
+    },
+    BundledAvatar {
+        id: "centurion",
+        manifest: CENTURION_MANIFEST,
+        sheet: CENTURION_SHEET,
     },
 ];
 
@@ -206,6 +213,7 @@ mod tests {
                 .is_file()
         );
         assert!(dir.path().join("avatars/clanker/avatar.json").is_file());
+        assert!(dir.path().join("avatars/centurion/avatar.json").is_file());
         assert!(
             dir.path()
                 .join("characters/chloe/avatar/locked-in/avatar.json")
