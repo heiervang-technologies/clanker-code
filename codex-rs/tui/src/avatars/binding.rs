@@ -131,6 +131,40 @@ mod tests {
     }
 
     #[test]
+    fn every_bundled_character_name_resolves_to_its_own_avatar_binding() {
+        let home = tempfile::tempdir().unwrap();
+
+        let resolved = [
+            ("rusty", "clanker"),
+            ("cleo", "chloe"),
+            ("c-3ph0", "c3ph0"),
+            ("hai", "hai"),
+            ("clautist", "clautist"),
+            ("jasonelle", "jasonelle"),
+            ("centurion", "centurion"),
+        ]
+        .into_iter()
+        .map(|(requested_name, expected_id)| {
+            let binding = resolve_named_avatar_binding(home.path(), requested_name).unwrap();
+            (binding.character_id().to_string(), expected_id)
+        })
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            resolved,
+            vec![
+                ("clanker".to_string(), "clanker"),
+                ("chloe".to_string(), "chloe"),
+                ("c3ph0".to_string(), "c3ph0"),
+                ("hai".to_string(), "hai"),
+                ("clautist".to_string(), "clautist"),
+                ("jasonelle".to_string(), "jasonelle"),
+                ("centurion".to_string(), "centurion"),
+            ]
+        );
+    }
+
+    #[test]
     fn named_binding_ignores_unrelated_invalid_character_packages() {
         let home = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(home.path().join("characters/clanker")).unwrap();
