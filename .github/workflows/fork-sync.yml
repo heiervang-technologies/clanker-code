@@ -27,4 +27,4 @@ jobs:
       fork_branch: "clanker"
       skip_rebase: ${{ github.event.inputs.skip_rebase == 'true' }}
     secrets:
-      gh_pat: ${{ secrets.HAI_GH_PAT }}
+      gh_pat: ${{ secrets.GH_TOKEN }}
