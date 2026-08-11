@@ -1,3 +1,5 @@
+# Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 name: repo-checks
 
 on:
@@ -91,3 +93,19 @@ jobs:
       - name: Check for a clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
+
+  modification-notices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Full history: the check diffs against the pinned upstream baseline in
+      # `.github/upstream-baseline`, which a depth-1 checkout would not contain.
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify Apache-2.0 section 4(b) modification notices
+        run: python3 .github/scripts/verify_modification_notices.py --check

@@ -1,0 +1,7 @@
+# Pinned openai/codex commit that this fork's modifications are measured
+# against. Apache-2.0 section 4(b) asks which files *we* changed, so the
+# baseline must be a fixed point, not the moving `main` mirror.
+#
+# Bump this as part of a fork sync, then re-run:
+#   python3 .github/scripts/verify_modification_notices.py --apply
+cf4c8cab7cc5434e711530f5f0fecf700655e791
