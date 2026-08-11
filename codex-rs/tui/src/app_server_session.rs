@@ -1452,6 +1452,8 @@ fn thread_start_params_from_config(
         ephemeral: Some(config.ephemeral),
         session_start_source,
         thread_source: Some(ThreadSource::User),
+        dynamic_tools: (thread_params_mode == ThreadParamsMode::Embedded)
+            .then(|| vec![crate::clanker_avatar_tool::dynamic_tool_spec()]),
         developer_instructions: with_terminal_visualization_instructions(
             config, /*control_instructions*/ None,
         ),
@@ -1951,6 +1953,10 @@ mod tests {
         );
         assert_eq!(params.model_provider, Some(config.model_provider_id));
         assert_eq!(params.thread_source, Some(ThreadSource::User));
+        assert_eq!(
+            params.dynamic_tools,
+            Some(vec![crate::clanker_avatar_tool::dynamic_tool_spec()])
+        );
     }
 
     #[tokio::test]
@@ -2080,6 +2086,7 @@ mod tests {
         );
 
         assert_eq!(start.cwd, None);
+        assert_eq!(start.dynamic_tools, None);
         assert_eq!(resume.cwd, None);
         assert_eq!(fork.cwd, None);
         assert_eq!(

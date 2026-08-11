@@ -195,6 +195,36 @@ impl App {
         app_server_client: &AppServerSession,
         request: ServerRequest,
     ) {
+        if let ServerRequest::DynamicToolCall { request_id, params } = &request
+            && crate::clanker_avatar_tool::handles(params)
+        {
+            let result = crate::clanker_avatar_tool::execute(params, &self.config.codex_home);
+            if let Some(selector) = result.selector {
+                self.app_event_tx
+                    .send(AppEvent::PetSelected { pet_id: selector });
+            }
+            let response = match serde_json::to_value(result.response) {
+                Ok(response) => response,
+                Err(error) => {
+                    tracing::warn!(%error, "failed to serialize clanker avatar tool response");
+                    serde_json::json!({
+                        "contentItems": [{
+                            "type": "inputText",
+                            "text": serde_json::json!({"error": error.to_string()}).to_string(),
+                        }],
+                        "success": false,
+                    })
+                }
+            };
+            if let Err(error) = app_server_client
+                .resolve_server_request(request_id.clone(), response)
+                .await
+            {
+                tracing::warn!(%error, "failed to resolve clanker avatar tool call");
+            }
+            return;
+        }
+
         if let Some(unsupported) = self
             .pending_app_server_requests
             .note_server_request(&request)

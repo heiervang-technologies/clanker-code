@@ -60,6 +60,26 @@ pub(crate) const DEFAULT_PET_ID: &str = "codex";
 pub(crate) const CLANKER_DEFAULT_PET_ID: &str = "custom:clanker";
 pub(crate) const DISABLED_PET_ID: &str = "disabled";
 
+pub(crate) fn selectable_avatar_selector(
+    value: &str,
+    codex_home: &std::path::Path,
+) -> Option<String> {
+    if value == DISABLED_PET_ID {
+        return None;
+    }
+    if catalog::builtin_pet(value).is_some() {
+        return Some(value.to_string());
+    }
+
+    let id = value
+        .strip_prefix(model::CUSTOM_PET_PREFIX)
+        .unwrap_or(value);
+    let selector = model::custom_pet_selector(id);
+    model::Pet::load_with_codex_home(&selector, Some(codex_home))
+        .ok()
+        .map(|_| selector)
+}
+
 pub(crate) fn load_with_clanker_fallback(
     pet_id: &str,
     codex_home: &std::path::Path,

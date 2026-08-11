@@ -99,6 +99,7 @@ pub use avatars::ensure_bundled_character_for_name;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;
+mod clanker_avatar_tool;
 mod cli;
 mod clipboard_copy;
 mod clipboard_paste;
