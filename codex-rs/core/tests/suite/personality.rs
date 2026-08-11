@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use codex_config::types::Personality;
 use codex_features::Feature;
 use codex_models_manager::manager::RefreshStrategy;

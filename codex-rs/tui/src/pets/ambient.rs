@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Ambient terminal rendering for the Codex companion.
 //!
 //! Ambient pets reuse the same extracted image frames as the full-screen viewer

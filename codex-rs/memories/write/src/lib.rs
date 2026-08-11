@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Write-path implementation for Codex memories.
 //!
 //! This crate owns the startup memory pipeline, file-backed memory artifact

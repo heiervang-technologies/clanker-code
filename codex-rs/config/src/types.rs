@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Types used to define loaded and effective Codex configuration values.
 
 // Note this file should generally be restricted to simple struct/enum

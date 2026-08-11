@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::input_queue::InputQueue;
 use super::*;
 use crate::agents_md_manager::AgentsMdManager;

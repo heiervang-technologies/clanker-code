@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! The bottom pane is the interactive footer of the chat UI.
 //!
 //! The pane owns the [`ChatComposer`] (editable prompt input) and a stack of transient

@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! App-server session facade used by the TUI event loop.
 //!
 //! This module owns the typed JSON-RPC calls needed by the TUI and keeps

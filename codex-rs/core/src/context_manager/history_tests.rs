@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::*;
 use crate::context::UserInstructions;
 use crate::context::world_state::WorldState;

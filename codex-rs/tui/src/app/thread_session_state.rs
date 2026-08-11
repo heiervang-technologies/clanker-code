@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::App;
 use crate::session_resume::read_session_model;
 use crate::session_state::ThreadSessionState;

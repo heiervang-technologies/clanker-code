@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Two-region streaming controllers for agent messages and proposed plans.
 //!
 //! Each stream partitions rendered markdown into a *stable region* (committed

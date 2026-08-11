@@ -1,3 +1,5 @@
+# Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 load("@crates//:data.bzl", "DEP_DATA")
 load("@crates//:defs.bzl", "all_crate_deps")
 load("@rules_rust//cargo/private:cargo_build_script_wrapper.bzl", "cargo_build_script")

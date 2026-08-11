@@ -1,3 +1,5 @@
+# Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 import ast
 import importlib.util
 import io
@@ -94,7 +96,12 @@ def test_root_fmt_recipes_use_shared_formatter_driver() -> None:
         if lines[index] and not lines[index].startswith((" ", "\t", "#"))
     )
     actual = {
-        "working_directory": lines[0],
+        # Located by search, not by line number: the justfile carries a leading
+        # Apache-2.0 4(b) modification notice, and every other field in this
+        # assertion is already found by searching rather than by position.
+        "working_directory": next(
+            line for line in lines if line.startswith("set working-directory")
+        ),
         "fmt_comment": next(line for line in reversed(lines[:fmt_index]) if line.startswith("#")),
         "fmt_commands": [
             line.strip()

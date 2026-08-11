@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Interactive tool request surfaces for `ChatWidget`.
 //!
 //! This module owns approval, permission, elicitation, and user-input prompts

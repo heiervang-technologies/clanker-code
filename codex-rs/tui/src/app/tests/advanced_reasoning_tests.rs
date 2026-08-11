@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::*;
 use app_test_support::create_fake_rollout;
 use pretty_assertions::assert_eq;

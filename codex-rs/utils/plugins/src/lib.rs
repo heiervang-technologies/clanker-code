@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Plugin path resolution, plaintext mention sigils, and MCP connector helpers shared across Codex
 //! crates.
 

@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 mod agents_md;
 mod apps_instructions;
 mod environment;
