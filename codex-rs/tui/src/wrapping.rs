@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Word-wrapping with URL-aware heuristics.
 //!
 //! The TUI renders text that frequently contains URLs — command output,

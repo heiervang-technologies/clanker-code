@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Thread targeting helpers for app-server requests and notifications.
 
 use codex_app_server_protocol::ServerNotification;

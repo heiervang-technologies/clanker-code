@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Builds the `/pets` picker dialog for the TUI.
 //!
 //! The picker deliberately merges three sources into one list:

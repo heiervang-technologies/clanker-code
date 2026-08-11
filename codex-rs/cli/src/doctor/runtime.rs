@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Captures how this Codex process was launched.
 //!
 //! Runtime diagnostics answer provenance questions that are hard to infer from

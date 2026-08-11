@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Chat widget helpers for ambient terminal pets and the pets picker.
 
 use super::*;

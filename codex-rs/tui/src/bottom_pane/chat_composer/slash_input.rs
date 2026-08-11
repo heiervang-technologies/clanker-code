@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Slash-command input parsing, cursor detection, and completion helpers.
 
 use std::ops::Range;

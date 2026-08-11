@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Chat widget hooks for side-conversation mode.
 //!
 //! App-level side-thread lifecycle lives in `app::side`; this module owns the

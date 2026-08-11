@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Connects terminal resize events to source-backed transcript scrollback rebuilds.
 //!
 //! The app stores conversation history as `HistoryCell`s, but it also writes finalized history into

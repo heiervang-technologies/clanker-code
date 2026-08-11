@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::invalid_data_error;
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;

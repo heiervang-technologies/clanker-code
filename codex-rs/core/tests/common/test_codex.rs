@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use std::future::Future;
 use std::io::ErrorKind;
 use std::mem::swap;

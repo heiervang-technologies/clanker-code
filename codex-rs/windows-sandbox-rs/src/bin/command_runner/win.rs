@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Windows command runner used by the **elevated** sandbox path.
 //!
 //! The CLI launches this binary under the sandbox user when Windows sandbox level is

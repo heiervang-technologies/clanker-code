@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Centralized feature flags and metadata.
 //!
 //! This crate defines the feature registry plus the logic used to resolve an
