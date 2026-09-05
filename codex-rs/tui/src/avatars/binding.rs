@@ -30,6 +30,43 @@ pub(crate) fn resolve_named_avatar_binding(
     binding_from_resolved_character(&resolved)
 }
 
+pub(crate) fn resolve_startup_avatar_binding(
+    codex_home: &Path,
+    explicit_name: Option<&str>,
+    detected_name: Option<&str>,
+) -> Result<Option<AvatarBinding>> {
+    if let Some(name) = explicit_name {
+        return resolve_named_avatar_binding(codex_home, name).map(Some);
+    }
+    let Some(name) = detected_name else {
+        return Ok(None);
+    };
+    match resolve_named_avatar_binding(codex_home, name) {
+        Ok(binding) => Ok(Some(binding)),
+        Err(_) if !character_exists(codex_home, name) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+fn character_exists(codex_home: &Path, name: &str) -> bool {
+    CharacterCatalog::load(codex_home)
+        .entries()
+        .iter()
+        .any(|report| {
+            report
+                .storage_id
+                .as_deref()
+                .is_some_and(|id| id.eq_ignore_ascii_case(name))
+                || report.id().is_some_and(|id| id.eq_ignore_ascii_case(name))
+                || report.manifest.as_ref().is_some_and(|manifest| {
+                    manifest
+                        .aliases
+                        .iter()
+                        .any(|alias| alias.eq_ignore_ascii_case(name))
+                })
+        })
+}
+
 pub(crate) fn binding_from_resolved_character(
     resolved: &ResolvedCharacter,
 ) -> Result<AvatarBinding> {
@@ -131,6 +168,33 @@ mod tests {
     }
 
     #[test]
+    fn unknown_detected_identity_ignores_unrelated_catalog_collisions() {
+        let home = tempfile::tempdir().unwrap();
+        for id in ["one", "two"] {
+            let package = home.path().join("characters").join(id);
+            std::fs::create_dir_all(&package).unwrap();
+            std::fs::write(
+                package.join("character.json"),
+                format!(
+                    r#"{{
+                        "schemaVersion":1,
+                        "id":"{id}",
+                        "displayName":"{id}",
+                        "aliases":["shared"],
+                        "avatar":"avatar/default/avatar.json"
+                    }}"#
+                ),
+            )
+            .unwrap();
+        }
+
+        let binding =
+            resolve_startup_avatar_binding(home.path(), None, Some("unknown-agent")).unwrap();
+
+        assert!(binding.is_none());
+    }
+
+    #[test]
     fn every_bundled_character_name_resolves_to_its_own_avatar_binding() {
         let home = tempfile::tempdir().unwrap();
 
@@ -197,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_partial_bundled_character_fails_during_named_resolution() {
+    fn selected_partial_bundled_character_fails_during_detected_resolution() {
         let home = tempfile::tempdir().unwrap();
         super::super::assets::ensure_bundled_avatars(home.path()).unwrap();
         std::fs::remove_file(
@@ -206,7 +270,7 @@ mod tests {
         )
         .unwrap();
 
-        let error = resolve_named_avatar_binding(home.path(), "chloe").unwrap_err();
+        let error = resolve_startup_avatar_binding(home.path(), None, Some("chloe")).unwrap_err();
 
         let detail = format!("{error:#}");
         assert!(detail.contains("failed to resolve character \"chloe\""));
