@@ -41,6 +41,58 @@ fn renders_24px_avatar_as_twelve_truecolor_half_block_rows() {
     assert_eq!(buffer[(23, 0)].fg, Color::Rgb(0, 0, 255));
 }
 
+fn render_bundled_avatar(sheet: &[u8]) -> String {
+    let sheet = image::load_from_memory(sheet).unwrap().into_rgba8();
+    let image = image::imageops::crop_imm(&sheet, 0, 0, 24, 24).to_image();
+    let frame = AnsiHalfBlockFrame::from_image(image).unwrap();
+    let area = Rect::new(0, 0, AVATAR_WIDTH, AVATAR_HEIGHT);
+    let mut buffer = Buffer::empty(area);
+
+    frame.render(area, &mut buffer);
+
+    (0..AVATAR_HEIGHT)
+        .map(|row| {
+            (0..AVATAR_WIDTH)
+                .map(|column| buffer[(column, row)].symbol())
+                .collect::<String>()
+                .replace(' ', "·")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn renders_bundled_agent_avatars() {
+    let rendered = [
+        (
+            "C-3PH0",
+            include_bytes!("../../assets/c3ph0/sheet.png").as_slice(),
+        ),
+        (
+            "HAI",
+            include_bytes!("../../assets/hai/sheet.png").as_slice(),
+        ),
+        (
+            "Clautist",
+            include_bytes!("../../assets/clautist/sheet.png").as_slice(),
+        ),
+        (
+            "Jasonelle",
+            include_bytes!("../../assets/jasonelle/sheet.png").as_slice(),
+        ),
+        (
+            "Centurion",
+            include_bytes!("../../assets/centurion/sheet.png").as_slice(),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, sheet)| format!("{name}\n{}", render_bundled_avatar(sheet)))
+    .collect::<Vec<_>>()
+    .join("\n\n");
+
+    assert_snapshot!(rendered);
+}
+
 #[test]
 fn transparent_pixels_keep_the_default_background() {
     let mut image = RgbaImage::from_pixel(24, 24, Rgba([0, 0, 0, 0]));
