@@ -84,6 +84,7 @@ use uuid::Uuid;
 pub(crate) use codex_app_server_client::legacy_core;
 
 mod additional_dirs;
+mod agent_name;
 mod app;
 mod app_backtrack;
 mod app_command;
@@ -168,6 +169,7 @@ mod session_state;
 mod shimmer;
 mod skills_helpers;
 mod slash_command;
+mod startup_avatar;
 mod startup_error;
 mod startup_hooks_review;
 mod status;
@@ -898,12 +900,8 @@ pub async fn run_main(
             std::process::exit(1);
         }
     };
-    let avatar_binding = cli
-        .name
-        .as_deref()
-        .map(|name| avatars::resolve_named_avatar_binding(&codex_home, name))
-        .transpose()
-        .map_err(std::io::Error::other)?;
+    let avatar_binding =
+        startup_avatar::resolve(&codex_home, cli.name.as_deref()).map_err(std::io::Error::other)?;
 
     let mut launch_loader_overrides = loader_overrides.clone();
     if let Some(profile_v2) = cli.config_profile_v2.as_ref() {
