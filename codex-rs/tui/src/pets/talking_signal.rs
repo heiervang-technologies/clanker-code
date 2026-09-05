@@ -1,8 +1,6 @@
 //! Polls the cross-process `say` playback signal for the current agent.
 
 use std::path::PathBuf;
-#[cfg(not(test))]
-use std::process::Command;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -69,36 +67,7 @@ impl TalkingSignal {
 }
 
 fn resolve_agent_name() -> Option<String> {
-    std::env::var("AGENT_PERSONA")
-        .ok()
-        .filter(|name| valid_agent_name(name))
-        .or_else(resolve_director_agent_name)
-}
-
-#[cfg(not(test))]
-fn resolve_director_agent_name() -> Option<String> {
-    let output = Command::new("director")
-        .args(["whoami", "--name"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let name = String::from_utf8(output.stdout).ok()?;
-    let name = name.trim();
-    valid_agent_name(name).then(|| name.to_string())
-}
-
-#[cfg(test)]
-fn resolve_director_agent_name() -> Option<String> {
-    None
-}
-
-fn valid_agent_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    crate::agent_name::resolve()
 }
 
 fn flag_is_active(path: &std::path::Path) -> bool {
