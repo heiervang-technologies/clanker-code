@@ -42,6 +42,30 @@ fn renders_24px_avatar_as_twelve_truecolor_half_block_rows() {
 }
 
 #[test]
+fn renders_bundled_centurion_avatar() {
+    let sheet = image::load_from_memory(include_bytes!("../../assets/centurion/sheet.png"))
+        .unwrap()
+        .into_rgba8();
+    let image = image::imageops::crop_imm(&sheet, 0, 0, 24, 24).to_image();
+    let frame = AnsiHalfBlockFrame::from_image(image).unwrap();
+    let area = Rect::new(0, 0, AVATAR_WIDTH, AVATAR_HEIGHT);
+    let mut buffer = Buffer::empty(area);
+
+    frame.render(area, &mut buffer);
+
+    let rendered = (0..AVATAR_HEIGHT)
+        .map(|row| {
+            (0..AVATAR_WIDTH)
+                .map(|column| buffer[(column, row)].symbol())
+                .collect::<String>()
+                .replace(' ', "·")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_snapshot!(rendered);
+}
+
+#[test]
 fn transparent_pixels_keep_the_default_background() {
     let mut image = RgbaImage::from_pixel(24, 24, Rgba([0, 0, 0, 0]));
     image.put_pixel(0, 0, Rgba([10, 20, 30, 255]));
