@@ -403,7 +403,7 @@ fn validate_manifest_fields(manifest: &CharacterManifestV1, errors: &mut Vec<Val
             .at_path("schemaVersion"),
         );
     }
-    if !is_valid_id(&manifest.id) {
+    if !validate_canonical_id(&manifest.id) {
         errors.push(
             ValidationIssue::new(
                 ValidationIssueCode::InvalidId,
@@ -521,7 +521,7 @@ fn collision_errors(entries: &[ValidationReport]) -> Vec<ValidationIssue> {
     errors
 }
 
-fn is_valid_id(id: &str) -> bool {
+pub fn validate_canonical_id(id: &str) -> bool {
     let bytes = id.as_bytes();
     !bytes.is_empty()
         && bytes.len() <= 64

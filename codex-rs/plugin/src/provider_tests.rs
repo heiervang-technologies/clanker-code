@@ -48,6 +48,7 @@ fn environment_descriptor_binds_every_manifest_resource() {
             apps: Some(path_uri(&apps)),
             hooks: Some(PluginManifestHooks::Paths(vec![path_uri(&hooks)])),
         },
+        character_wizard: None,
         interface: Some(PluginManifestInterface {
             composer_icon: Some(path_uri(&composer_icon)),
             logo: Some(path_uri(&logo)),
@@ -88,6 +89,7 @@ fn environment_descriptor_binds_every_manifest_resource() {
                     &hooks
                 )])),
             },
+            character_wizard: None,
             interface: Some(PluginManifestInterface {
                 composer_icon: Some(resource("executor-1", &composer_icon)),
                 logo: Some(resource("executor-1", &logo)),
@@ -114,6 +116,7 @@ fn environment_descriptor_rejects_resources_outside_package_root() {
             apps: None,
             hooks: None,
         },
+        character_wizard: None,
         interface: None,
     };
 

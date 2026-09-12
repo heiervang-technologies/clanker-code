@@ -18,6 +18,8 @@ pub type PluginManifestInterface = codex_plugin::manifest::PluginManifestInterfa
 pub type PluginManifestMcpServers =
     codex_plugin::manifest::PluginManifestMcpServers<AbsolutePathBuf>;
 pub type PluginManifestPaths = codex_plugin::manifest::PluginManifestPaths<AbsolutePathBuf>;
+pub type CharacterWizardCapability =
+    codex_plugin::manifest::CharacterWizardCapability<AbsolutePathBuf>;
 
 pub(crate) type UriPluginManifest = codex_plugin::manifest::PluginManifest<PathUri>;
 
@@ -43,7 +45,16 @@ struct RawPluginManifest {
     #[serde(default)]
     hooks: Option<RawPluginManifestHooks>,
     #[serde(default)]
+    character_wizard: Option<RawCharacterWizardCapability>,
+    #[serde(default)]
     interface: Option<RawPluginManifestInterface>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawCharacterWizardCapability {
+    protocol_version: u32,
+    executable: String,
 }
 
 #[derive(Deserialize)]
@@ -192,6 +203,7 @@ pub(crate) fn parse_plugin_manifest_uri(
         mcp_servers,
         apps,
         hooks,
+        character_wizard,
         interface,
     } = serde_json::from_str::<RawPluginManifest>(contents)?;
     let name = plugin_root
@@ -278,6 +290,24 @@ pub(crate) fn parse_plugin_manifest_uri(
 
         has_fields.then_some(interface)
     });
+    let character_wizard = character_wizard.and_then(|capability| {
+        if capability.protocol_version != 1 {
+            tracing::warn!(
+                protocol_version = capability.protocol_version,
+                "ignoring unsupported characterWizard protocol version"
+            );
+            return None;
+        }
+        resolve_manifest_path(
+            plugin_root,
+            "characterWizard.executable",
+            Some(&capability.executable),
+        )
+        .map(|executable| codex_plugin::manifest::CharacterWizardCapability {
+            protocol_version: capability.protocol_version,
+            executable,
+        })
+    });
     Ok(codex_plugin::manifest::PluginManifest {
         name,
         version,
@@ -289,6 +319,7 @@ pub(crate) fn parse_plugin_manifest_uri(
             apps: resolve_manifest_path(plugin_root, "apps", apps.as_deref()),
             hooks: resolve_manifest_hooks(plugin_root, hooks),
         },
+        character_wizard,
         interface,
     })
 }
@@ -889,6 +920,7 @@ mod tests {
                         plugin_root.join("hooks.json").expect("hooks URI"),
                     ])),
                 },
+                character_wizard: None,
                 interface: Some(PluginManifestInterface {
                     display_name: Some("Demo Plugin".to_string()),
                     composer_icon: Some(
