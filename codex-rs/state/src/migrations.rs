@@ -111,6 +111,63 @@ WHERE version = ?
     Ok(())
 }
 
+/// Clanker-only memories migrations, as `(legacy version, current version)`.
+///
+/// Clanker shares `CODEX_HOME` with upstream Codex so both can load the same
+/// sessions. Its memories migrations originally shipped as versions 2 and 3,
+/// and upstream later shipped its own, unrelated version 2. Whichever binary
+/// stamped the DB first then failed the other's checksum validation. The
+/// fork's migrations now live at 1001+, a range upstream will not reach, and
+/// `ignore_missing` lets each binary skip the other's versions.
+const CLANKER_MEMORIES_MIGRATION_RENUMBERING: [(i64, i64); 2] = [(2, 1001), (3, 1002)];
+
+/// Move Clanker memories migrations that were applied under their legacy
+/// versions to their current versions, matching on checksum so that upstream's
+/// own version 2 is never touched.
+pub(crate) async fn repair_clanker_memories_migration_versions(
+    pool: &SqlitePool,
+    migrator: &Migrator,
+) -> anyhow::Result<()> {
+    let migrations_table_exists = sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+    if !migrations_table_exists {
+        return Ok(());
+    }
+
+    for (legacy_version, version) in CLANKER_MEMORIES_MIGRATION_RENUMBERING {
+        let Some(migration) = migrator
+            .migrations
+            .iter()
+            .find(|migration| migration.version == version)
+        else {
+            continue;
+        };
+        sqlx::query(
+            r#"
+UPDATE _sqlx_migrations
+SET version = ?, description = ?
+WHERE version = ?
+  AND checksum = ?
+  AND NOT EXISTS (
+      SELECT 1 FROM _sqlx_migrations WHERE version = ?
+  )
+            "#,
+        )
+        .bind(migration.version)
+        .bind(migration.description.as_ref())
+        .bind(legacy_version)
+        .bind(migration.checksum.as_ref())
+        .bind(migration.version)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "migrations_tests.rs"]
 mod tests;

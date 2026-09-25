@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use super::MEMORIES_MIGRATOR;
 use super::STATE_MIGRATOR;
+use super::repair_clanker_memories_migration_versions;
 use super::repair_legacy_recency_migration_version;
 
 fn migrator_through(version: i64) -> Migrator {
@@ -130,7 +131,7 @@ async fn scoped_phase2_migration_preserves_character_memory_and_adds_baselines()
         .connect("sqlite::memory:")
         .await
         .expect("in-memory database should open");
-    memories_migrator_through(/*version*/ 2)
+    memories_migrator_through(/*version*/ 1001)
         .run(&pool)
         .await
         .expect("character memory migration should apply");
@@ -374,4 +375,99 @@ async fn repair_recency_migration_succeeds_while_another_connection_holds_writer
     pool.close().await;
     let _ = tokio::fs::remove_file(database_path).await;
     repair_result.expect("current migration history should not need the writer slot");
+}
+
+#[tokio::test]
+async fn repairs_clanker_memories_migrations_applied_as_versions_2_and_3() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+
+    // Recreate the history left by older Clanker builds: character memory
+    // scope as version 2 and scoped phase2 as version 3.
+    let migration = |version: i64| {
+        MEMORIES_MIGRATOR
+            .migrations
+            .iter()
+            .find(|migration| migration.version == version)
+            .expect("memories migration should exist")
+    };
+    let mut legacy_migrations = vec![migration(1).clone()];
+    for (legacy_version, version) in [(2, 1001), (3, 1002)] {
+        let current = migration(version);
+        legacy_migrations.push(Migration::new(
+            legacy_version,
+            current.description.clone(),
+            current.migration_type,
+            current.sql.clone(),
+            current.no_tx,
+        ));
+    }
+    Migrator::with_migrations(legacy_migrations)
+        .run(&pool)
+        .await
+        .expect("legacy Clanker memories migrations should apply");
+
+    repair_clanker_memories_migration_versions(&pool, &MEMORIES_MIGRATOR)
+        .await
+        .expect("legacy memories migration history should be repaired");
+    MEMORIES_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("current memories migrations should apply after repair");
+
+    let applied = sqlx::query("SELECT version, checksum FROM _sqlx_migrations ORDER BY version")
+        .fetch_all(&pool)
+        .await
+        .expect("applied migrations should load")
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<i64, _>("version"),
+                row.get::<Vec<u8>, _>("checksum"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let expected = MEMORIES_MIGRATOR
+        .migrations
+        .iter()
+        .map(|migration| (migration.version, migration.checksum.to_vec()))
+        .collect::<Vec<_>>();
+    assert_eq!(applied, expected);
+    let consolidation_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM consolidation_progress")
+        .fetch_one(&pool)
+        .await
+        .expect("upstream consolidation table should exist");
+    assert_eq!(consolidation_rows, 1);
+}
+
+#[tokio::test]
+async fn clanker_memories_repair_leaves_upstream_version_2_alone() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("in-memory database should open");
+    // Upstream Codex stamps only 0001 and its own 0002.
+    memories_migrator_through(/*version*/ 2)
+        .run(&pool)
+        .await
+        .expect("upstream memories migrations should apply");
+
+    repair_clanker_memories_migration_versions(&pool, &MEMORIES_MIGRATOR)
+        .await
+        .expect("repair should be a no-op for upstream history");
+    MEMORIES_MIGRATOR
+        .run(&pool)
+        .await
+        .expect("Clanker migrations should apply on top of upstream history");
+
+    let versions =
+        sqlx::query_scalar::<_, i64>("SELECT version FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .expect("applied versions should load");
+    assert_eq!(versions, vec![1, 2, 1001, 1002]);
 }
