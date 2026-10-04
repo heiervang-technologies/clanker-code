@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::rollout_summary_file_stem;
 use crate::ensure_layout;
 use crate::raw_memories_file;

@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Session headers, onboarding guidance, and transcript cards.
 
 use super::*;

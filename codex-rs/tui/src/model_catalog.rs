@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use codex_protocol::config_types::CollaborationModeOverride;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::openai_models::ModelPreset;

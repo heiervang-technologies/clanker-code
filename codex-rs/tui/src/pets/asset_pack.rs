@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Built-in pet asset acquisition and cache ownership.
 //!
 //! Unlike custom pets, built-in pets are not checked into the TUI package as

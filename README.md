@@ -1,3 +1,5 @@
+<!-- Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance. -->
+
 <h1 align="center">ht-codex</h1>
 
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
@@ -25,6 +27,8 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 ## HT Fork Changes
 
 This is the **Heiervang Technologies** fork of [Codex CLI](https://github.com/openai/codex). This distribution contains downstream modifications and additions recorded in the `clanker` branch and repository history. The `main` branch is kept as a clean fast-forward mirror of upstream.
+
+Every upstream-derived file this fork has changed carries a modification notice at the top of the file, as required by Apache-2.0 section 4(b). That set is derived mechanically by diffing against the upstream commit pinned in [`.github/upstream-baseline`](.github/upstream-baseline), and CI fails if a modified file is missing its notice. To refresh the set after a fork sync, bump the baseline and run `python3 .github/scripts/verify_modification_notices.py --apply`.
 
 ### Fork documentation
 

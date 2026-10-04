@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Shared App fixtures for app submodule unit tests.
 //!
 //! This module keeps heavyweight `App` construction and config-inspection helpers available to

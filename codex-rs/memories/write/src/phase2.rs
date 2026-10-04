@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::build_consolidation_prompt;
 use crate::memory_root_for_scope;
 use crate::metrics::MEMORY_PHASE_TWO_E2E_MS;

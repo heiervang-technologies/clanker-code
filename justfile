@@ -1,3 +1,5 @@
+# Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 set working-directory := "codex-rs"
 set positional-arguments
 export JUST_SHELL := justfile_directory() / "scripts/just-shell.py"

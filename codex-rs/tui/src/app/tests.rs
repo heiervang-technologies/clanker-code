@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! App-level orchestration tests for the TUI.
 
 #[path = "tests/advanced_reasoning_tests.rs"]

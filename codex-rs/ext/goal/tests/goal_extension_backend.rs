@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 #![recursion_limit = "256"]
 #![allow(clippy::expect_used)]
 

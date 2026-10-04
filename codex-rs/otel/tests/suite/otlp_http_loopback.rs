@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use codex_otel::MetricsClient;
 use codex_otel::MetricsConfig;
 use codex_otel::OtelExporter;

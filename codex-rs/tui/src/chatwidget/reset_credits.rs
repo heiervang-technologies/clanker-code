@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::status::RateLimitSnapshotDisplay;
 use chrono::DateTime;
 use chrono::Local;

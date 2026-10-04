@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::*;
 use crate::app_event::HistoryLookupResponse;
 use codex_app_server_protocol::NetworkAccess;

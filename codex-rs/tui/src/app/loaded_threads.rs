@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Discovers subagent threads that belong to a primary thread by walking spawn-tree edges.
 //!
 //! When the TUI resumes or switches to an existing thread, it needs to populate

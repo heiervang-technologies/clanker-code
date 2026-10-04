@@ -1,3 +1,5 @@
+<!-- Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance. -->
+
 # Headers, primary, and secondary text
 
 - **Headers:** Use `bold`. For markdown with various header levels, leave in the `#` signs.

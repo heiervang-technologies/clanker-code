@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::model::ThreadMetadata;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;

@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Diagnoses whether Codex update paths target the running installation.
 //!
 //! Update diagnostics combine cached version metadata, install-channel hints,

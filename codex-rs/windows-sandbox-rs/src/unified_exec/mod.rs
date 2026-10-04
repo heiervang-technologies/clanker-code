@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Unified exec session spawner for Windows sandboxing.
 //!
 //! This module is the thin orchestration layer for Windows unified-exec sessions.

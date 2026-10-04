@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::CURRENT_THREAD_SECTION_TOKEN_BUDGET;
 use super::NOTES_SECTION_TOKEN_BUDGET;
 use super::RECENT_WORK_SECTION_TOKEN_BUDGET;

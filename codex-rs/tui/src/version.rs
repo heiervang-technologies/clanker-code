@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 /// The current Clanker Code version and its upstream Codex provenance.
 pub const CODEX_CLI_VERSION: &str = codex_config::CLANKER_VERSION;
 

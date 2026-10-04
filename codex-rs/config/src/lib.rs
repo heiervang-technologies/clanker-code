@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 mod clanker_version;
 mod cloud_config_bundle;
 mod cloud_config_layers;
