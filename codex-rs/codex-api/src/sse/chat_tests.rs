@@ -52,8 +52,8 @@ async fn streams_reasoning_then_text_and_reports_usage() {
         delta(json!({"role": "assistant", "content": null})),
         delta(json!({"reasoning_content": "think"})),
         delta(json!({"reasoning_content": "ing"})),
-        delta(json!({"content": "Hel"})),
-        delta(json!({"content": "lo"})),
+        delta(json!({"content": "Hi "})),
+        delta(json!({"content": "there"})),
         finish("stop"),
         json!({"id": "chatcmpl-1", "choices": [], "usage": {
             "prompt_tokens": 10,
@@ -86,8 +86,8 @@ async fn streams_reasoning_then_text_and_reports_usage() {
         &events[5],
         ResponseEvent::OutputItemAdded(ResponseItem::Message { .. })
     );
-    assert_matches!(&events[6], ResponseEvent::OutputTextDelta(text) if text == "Hel");
-    assert_matches!(&events[7], ResponseEvent::OutputTextDelta(text) if text == "lo");
+    assert_matches!(&events[6], ResponseEvent::OutputTextDelta(text) if text == "Hi ");
+    assert_matches!(&events[7], ResponseEvent::OutputTextDelta(text) if text == "there");
     let ResponseEvent::OutputItemDone(ResponseItem::Message { role, content, .. }) = &events[8]
     else {
         panic!("expected message done, got {:?}", events[8]);
@@ -96,7 +96,7 @@ async fn streams_reasoning_then_text_and_reports_usage() {
     assert_eq!(
         content,
         &vec![ContentItem::OutputText {
-            text: "Hello".to_string()
+            text: "Hi there".to_string()
         }]
     );
     let ResponseEvent::Completed {
@@ -135,7 +135,7 @@ async fn accepts_reasoning_field_alias() {
 #[tokio::test]
 async fn assembles_streamed_tool_calls_and_maps_tool_kinds() {
     let request = crate::requests::chat::tests::request_with_tools();
-    let tool_names = build_chat_completions_request(&request).tool_names;
+    let tool_names = build_chat_completions_request(&request, &Default::default()).tool_names;
 
     let body = sse_body(&[
         delta(json!({"tool_calls": [

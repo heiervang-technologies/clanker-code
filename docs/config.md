@@ -40,6 +40,31 @@ On the chat wire:
 - WebSockets, request compression and remote compaction are Responses-only and
   are disabled.
 
+### Reasoning control
+
+`model_reasoning_effort` is forwarded as `reasoning_effort`. Many open-weight
+servers (llama.cpp, vLLM, SGLang) ignore that field and switch thinking on or off
+through the chat template instead, so `model_reasoning_effort = "none"` or
+`"minimal"` also sends `chat_template_kwargs = { enable_thinking = false }`
+(skipped for OpenAI/Azure base URLs, which reject unknown fields). For Gemma 4
+on llama.cpp this cuts a short answer from hundreds of reasoning tokens to a
+handful.
+
+Anything else the server understands can be added per provider with
+`extra_body`, which is deep-merged into every chat request after Clanker's own
+fields:
+
+```toml
+[model_providers.gems]
+# ...
+wire_api = "chat"
+extra_body = { chat_template_kwargs = { enable_thinking = false }, top_k = 40 }
+```
+
+Large prompts on a slow local server can take longer to prefill than the
+default 300 s stream idle timeout; raise `stream_idle_timeout_ms` for such
+providers.
+
 ## Lifecycle hooks
 
 Admins can set top-level `allow_managed_hooks_only = true` in

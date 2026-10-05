@@ -5,6 +5,7 @@ use crate::endpoint::ResponsesOptions;
 use crate::endpoint::session::EndpointSession;
 use crate::error::ApiError;
 use crate::provider::Provider;
+use crate::requests::chat::ChatRequestOptions;
 use crate::requests::chat::build_chat_completions_request;
 use crate::requests::headers::build_session_headers;
 use crate::requests::headers::insert_header;
@@ -28,6 +29,7 @@ pub const CHAT_COMPLETIONS_PATH: &str = "chat/completions";
 pub struct ChatClient<T: HttpTransport> {
     session: EndpointSession<T>,
     sse_telemetry: Option<Arc<dyn SseTelemetry>>,
+    request_options: ChatRequestOptions,
 }
 
 impl<T: HttpTransport> ChatClient<T> {
@@ -35,6 +37,14 @@ impl<T: HttpTransport> ChatClient<T> {
         Self {
             session: EndpointSession::new(transport, provider, auth),
             sse_telemetry: None,
+            request_options: ChatRequestOptions::default(),
+        }
+    }
+
+    pub fn with_request_options(self, request_options: ChatRequestOptions) -> Self {
+        Self {
+            request_options,
+            ..self
         }
     }
 
@@ -46,6 +56,7 @@ impl<T: HttpTransport> ChatClient<T> {
         Self {
             session: self.session.with_request_telemetry(request),
             sse_telemetry: sse,
+            request_options: self.request_options,
         }
     }
 
@@ -74,7 +85,7 @@ impl<T: HttpTransport> ChatClient<T> {
             turn_state: _,
         } = options;
 
-        let chat_request = build_chat_completions_request(&request);
+        let chat_request = build_chat_completions_request(&request, &self.request_options);
         let body = EncodedJsonBody::encode(&chat_request.body).map_err(|e| {
             ApiError::Stream(format!("failed to encode chat completions request: {e}"))
         })?;

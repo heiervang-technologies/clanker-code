@@ -34,6 +34,7 @@ use codex_api::AgentIdentityTelemetry;
 use codex_api::ApiError;
 use codex_api::AuthProvider;
 use codex_api::ChatClient as ApiChatClient;
+use codex_api::ChatRequestOptions as ApiChatRequestOptions;
 use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
 use codex_api::Compression;
@@ -1484,7 +1485,12 @@ impl ModelClientSession {
                     .await
                 }
                 WireApi::Chat => {
+                    let provider_info = self.client.state.provider.info();
                     ApiChatClient::new(transport, client_setup.api_provider, client_setup.api_auth)
+                        .with_request_options(ApiChatRequestOptions {
+                            thinking_template_kwargs: provider_info.accepts_chat_template_kwargs(),
+                            extra_body: provider_info.extra_body.clone(),
+                        })
                         .with_telemetry(Some(request_telemetry), Some(sse_telemetry))
                         .stream_request(request, options)
                         .await

@@ -2288,6 +2288,7 @@ fn websocket_provider_with_connect_timeout(
         requires_openai_auth: false,
         supports_websockets: true,
         developer_role_name: None,
+        extra_body: None,
     }
 }
 

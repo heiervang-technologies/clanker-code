@@ -317,6 +317,7 @@ mod tests {
             requires_openai_auth: false,
             supports_websockets: true,
             developer_role_name: None,
+            extra_body: None,
         }
     }
 }

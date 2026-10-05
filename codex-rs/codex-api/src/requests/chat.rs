@@ -70,6 +70,19 @@ impl ChatToolNames {
     }
 }
 
+/// Provider-specific knobs for building a Chat Completions request.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ChatRequestOptions {
+    /// When the requested reasoning effort is `none` or `minimal`, also send
+    /// `chat_template_kwargs: {"enable_thinking": false}`. Open-weight servers
+    /// (llama.cpp, vLLM, SGLang) toggle thinking through the chat template and
+    /// ignore `reasoning_effort`; OpenAI rejects the unknown field.
+    pub thinking_template_kwargs: bool,
+    /// Extra top-level body fields, deep-merged into the request last. A
+    /// `null` value removes the field.
+    pub extra_body: Option<Map<String, Value>>,
+}
+
 /// A Chat Completions request body plus the tool name mapping needed to decode
 /// the streamed response.
 #[derive(Debug, Clone)]
@@ -81,6 +94,7 @@ pub(crate) struct ChatCompletionsRequest {
 /// Builds the Chat Completions body for `request`.
 pub(crate) fn build_chat_completions_request(
     request: &ResponsesApiRequest,
+    options: &ChatRequestOptions,
 ) -> ChatCompletionsRequest {
     let mut tool_names = ChatToolNames::default();
     let mut tools = Vec::new();
@@ -119,6 +133,12 @@ pub(crate) fn build_chat_completions_request(
         .and_then(|reasoning| reasoning.effort.as_ref())
         && let Ok(Value::String(effort)) = serde_json::to_value(effort)
     {
+        if options.thinking_template_kwargs && matches!(effort.as_str(), "none" | "minimal") {
+            body.insert(
+                "chat_template_kwargs".to_string(),
+                json!({"enable_thinking": false}),
+            );
+        }
         body.insert("reasoning_effort".to_string(), json!(effort));
     }
     if let Some(format) = request.text.as_ref().and_then(|text| text.format.as_ref()) {
@@ -149,9 +169,31 @@ pub(crate) fn build_chat_completions_request(
         body.insert("prompt_cache_key".to_string(), json!(prompt_cache_key));
     }
 
+    if let Some(extra_body) = &options.extra_body {
+        merge_json_object(&mut body, extra_body);
+    }
+
     ChatCompletionsRequest {
         body: Value::Object(body),
         tool_names,
+    }
+}
+
+/// Deep-merges `overlay` into `target`: nested objects merge, `null` removes a
+/// key, and any other value replaces the existing one.
+fn merge_json_object(target: &mut Map<String, Value>, overlay: &Map<String, Value>) {
+    for (key, value) in overlay {
+        match (target.get_mut(key), value) {
+            (_, Value::Null) => {
+                target.remove(key);
+            }
+            (Some(Value::Object(existing)), Value::Object(nested)) => {
+                merge_json_object(existing, nested);
+            }
+            _ => {
+                target.insert(key.clone(), value.clone());
+            }
+        }
     }
 }
 
@@ -329,8 +371,11 @@ impl MessageBuilder {
     fn push_message(&mut self, role: &str, content: Value) {
         self.flush_tool_images();
         let mut message = json!({"role": role, "content": content});
-        if role == "assistant"
-            && let Some(reasoning) = self.take_reasoning()
+        // Reasoning only belongs to the assistant message it preceded; drop
+        // reasoning from an interrupted turn instead of attaching it to a later
+        // answer.
+        if let Some(reasoning) = self.take_reasoning()
+            && role == "assistant"
         {
             message["reasoning_content"] = json!(reasoning);
         }

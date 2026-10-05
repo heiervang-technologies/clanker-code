@@ -27,6 +27,32 @@ fn base_request(input: Vec<ResponseItem>, tools: Option<Vec<Value>>) -> Response
     }
 }
 
+fn build_default(request: &ResponsesApiRequest) -> ChatCompletionsRequest {
+    build_chat_completions_request(request, &ChatRequestOptions::default())
+}
+
+fn with_effort(effort: ReasoningEffort) -> ResponsesApiRequest {
+    let mut request = base_request(vec![text("user", "hi")], None);
+    request.reasoning = Some(Reasoning {
+        effort: Some(effort),
+        summary: None,
+        context: None,
+    });
+    request
+}
+
+fn reasoning(text: &str) -> ResponseItem {
+    ResponseItem::Reasoning {
+        id: None,
+        summary: Vec::new(),
+        content: Some(vec![ReasoningItemContent::ReasoningText {
+            text: text.to_string(),
+        }]),
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
 fn message(role: &str, content: Vec<ContentItem>) -> ResponseItem {
     ResponseItem::Message {
         id: None,
@@ -111,7 +137,7 @@ pub(crate) fn request_with_tools() -> ResponsesApiRequest {
 
 #[test]
 fn translates_tools_to_chat_functions() {
-    let request = build_chat_completions_request(&request_with_tools());
+    let request = build_default(&request_with_tools());
     let tools = request.body["tools"].as_array().expect("tools");
     let names: Vec<&str> = tools
         .iter()
@@ -158,7 +184,7 @@ fn translates_tools_to_chat_functions() {
 
 #[test]
 fn omits_tool_fields_without_tools() {
-    let request = build_chat_completions_request(&base_request(vec![text("user", "hi")], None));
+    let request = build_default(&base_request(vec![text("user", "hi")], None));
     let body = request.body.as_object().unwrap();
     assert!(!body.contains_key("tools"));
     assert!(!body.contains_key("tool_choice"));
@@ -204,7 +230,7 @@ fn builds_conversation_with_tool_round_trip() {
         },
         text("assistant", "There is a.txt"),
     ];
-    let request = build_chat_completions_request(&base_request(input, None));
+    let request = build_default(&base_request(input, None));
     assert_eq!(
         request.body["messages"],
         json!([
@@ -242,7 +268,7 @@ fn assistant_text_and_tool_call_share_one_message() {
         function_call("call_1", "shell", "{}"),
         function_output("call_1", FunctionCallOutputBody::Text("ok".to_string())),
     ];
-    let request = build_chat_completions_request(&base_request(input, None));
+    let request = build_default(&base_request(input, None));
     assert_eq!(
         request.body["messages"][2],
         json!({
@@ -263,7 +289,7 @@ fn namespaced_function_calls_are_flattened_in_history() {
         call_id: "call_1".to_string(),
         internal_chat_message_metadata_passthrough: None,
     }];
-    let request = build_chat_completions_request(&base_request(input, None));
+    let request = build_default(&base_request(input, None));
     assert_eq!(
         request.body["messages"][1]["tool_calls"][0]["function"]["name"],
         json!("mcp__docs__search")
@@ -292,7 +318,7 @@ fn user_images_and_audio_become_media_parts() {
             },
         ],
     )];
-    let request = build_chat_completions_request(&base_request(input, None));
+    let request = build_default(&base_request(input, None));
     assert_eq!(
         request.body["messages"][1],
         json!({
@@ -327,7 +353,7 @@ fn tool_output_images_are_replayed_after_tool_messages() {
         function_output("call_2", FunctionCallOutputBody::Text("ok".to_string())),
         text("user", "thanks"),
     ];
-    let request = build_chat_completions_request(&base_request(input, None));
+    let request = build_default(&base_request(input, None));
     let messages = request.body["messages"].as_array().unwrap();
     let roles: Vec<&str> = messages
         .iter()
@@ -361,7 +387,7 @@ fn forwards_reasoning_effort_and_output_schema() {
             name: "codex_output_schema".to_string(),
         }),
     });
-    let body = build_chat_completions_request(&request).body;
+    let body = build_default(&request).body;
     assert_eq!(body["reasoning_effort"], json!("high"));
     assert_eq!(
         body["response_format"],
@@ -369,5 +395,71 @@ fn forwards_reasoning_effort_and_output_schema() {
             "type": "json_schema",
             "json_schema": {"name": "codex_output_schema", "schema": {"type": "object"}, "strict": true}
         })
+    );
+}
+
+#[test]
+fn disabling_reasoning_turns_off_template_thinking() {
+    let options = ChatRequestOptions {
+        thinking_template_kwargs: true,
+        extra_body: None,
+    };
+    for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
+        let body = build_chat_completions_request(&with_effort(effort), &options).body;
+        assert_eq!(
+            body["chat_template_kwargs"],
+            json!({"enable_thinking": false})
+        );
+    }
+
+    let body = build_chat_completions_request(&with_effort(ReasoningEffort::Low), &options).body;
+    assert_eq!(body.get("chat_template_kwargs"), None);
+    assert_eq!(body["reasoning_effort"], json!("low"));
+
+    // Providers that reject unknown fields (OpenAI) only get `reasoning_effort`.
+    let body = build_default(&with_effort(ReasoningEffort::None)).body;
+    assert_eq!(body.get("chat_template_kwargs"), None);
+    assert_eq!(body["reasoning_effort"], json!("none"));
+}
+
+#[test]
+fn extra_body_is_deep_merged_last() {
+    let options = ChatRequestOptions {
+        thinking_template_kwargs: true,
+        extra_body: Some(
+            json!({
+                "chat_template_kwargs": {"reasoning_budget": 128},
+                "reasoning_effort": null,
+                "stream_options": {"include_usage": false},
+                "top_k": 40,
+            })
+            .as_object()
+            .cloned()
+            .unwrap_or_default(),
+        ),
+    };
+    let body = build_chat_completions_request(&with_effort(ReasoningEffort::None), &options).body;
+    assert_eq!(
+        body["chat_template_kwargs"],
+        json!({"enable_thinking": false, "reasoning_budget": 128})
+    );
+    assert_eq!(body.get("reasoning_effort"), None);
+    assert_eq!(body["stream_options"], json!({"include_usage": false}));
+    assert_eq!(body["top_k"], json!(40));
+    assert_eq!(body["model"], json!("gemma-4-12b"));
+}
+
+#[test]
+fn reasoning_from_an_interrupted_turn_is_not_replayed_later() {
+    let input = vec![
+        text("user", "first"),
+        reasoning("abandoned thought"),
+        text("user", "second"),
+        text("assistant", "answer"),
+    ];
+    let messages = build_default(&base_request(input, None)).body["messages"].clone();
+    assert_eq!(
+        messages[3],
+        json!({"role": "assistant", "content": "answer"})
     );
 }

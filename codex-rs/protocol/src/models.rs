@@ -3612,7 +3612,10 @@ mod tests {
         wav.extend_from_slice(&[0u8; 24]);
         assert_eq!(sniff_audio_mime(&wav), Some("audio/wav"));
         assert_eq!(sniff_audio_mime(b"ID3\x04\0\0"), Some("audio/mpeg"));
-        assert_eq!(sniff_audio_mime(&[0xFF, 0xFB, 0x90, 0x00]), Some("audio/mpeg"));
+        assert_eq!(
+            sniff_audio_mime(&[0xFF, 0xFB, 0x90, 0x00]),
+            Some("audio/mpeg")
+        );
         assert_eq!(sniff_audio_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), None); // JPEG
         assert_eq!(sniff_audio_mime(b"\x89PNG\r\n\x1a\n"), None);
 
@@ -3625,6 +3628,9 @@ mod tests {
         let [ContentItem::InputImage { image_url, .. }] = items.as_slice() else {
             panic!("expected one attachment, got {items:?}");
         };
-        assert!(image_url.starts_with("data:audio/wav;base64,UklGR"), "{image_url}");
+        assert!(
+            image_url.starts_with("data:audio/wav;base64,UklGR"),
+            "{image_url}"
+        );
     }
 }

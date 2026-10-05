@@ -2,6 +2,7 @@
 
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
+use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
@@ -66,6 +67,7 @@ fn chat_provider(base_url: String) -> ModelProviderInfo {
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     }
 }
 
@@ -190,6 +192,66 @@ async fn chat_wire_runs_tool_call_round_trip() -> anyhow::Result<()> {
     let tool_message = messages.last().expect("tool output message");
     assert_eq!(tool_message["role"], json!("tool"));
     assert_eq!(tool_message["tool_call_id"], json!(call_id));
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn chat_wire_disables_thinking_and_merges_extra_body() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ChatSequence {
+            calls: AtomicUsize::new(0),
+            bodies: vec![chat_sse(&[
+                json!({"id": "chatcmpl-1", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}]}),
+            ])],
+        })
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut provider = chat_provider(format!("{}/v1", server.uri()));
+    provider.extra_body = json!({"chat_template_kwargs": {"keep": true}, "top_k": 40})
+        .as_object()
+        .cloned();
+    let TestCodex { codex, .. } = test_codex()
+        .with_config(move |config| {
+            config.model_provider = provider;
+            config.model_reasoning_effort = Some(ReasoningEffort::None);
+        })
+        .build(&server)
+        .await?;
+
+    codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "hi".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: Default::default(),
+        })
+        .await?;
+    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+
+    let requests = server.received_requests().await.unwrap_or_default();
+    let body: Value = requests
+        .iter()
+        .find(|request| request.url.path() == "/v1/chat/completions")
+        .expect("chat request")
+        .body_json()?;
+    assert_eq!(body["reasoning_effort"], json!("none"));
+    assert_eq!(
+        body["chat_template_kwargs"],
+        json!({"enable_thinking": false, "keep": true})
+    );
+    assert_eq!(body["top_k"], json!(40));
 
     Ok(())
 }
