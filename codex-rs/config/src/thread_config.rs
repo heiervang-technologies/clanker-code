@@ -318,6 +318,7 @@ mod tests {
             supports_websockets: true,
             developer_role_name: None,
             extra_body: None,
+            max_audio_inputs: None,
         }
     }
 }

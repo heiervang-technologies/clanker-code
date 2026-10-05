@@ -403,6 +403,7 @@ fn disabling_reasoning_turns_off_template_thinking() {
     let options = ChatRequestOptions {
         thinking_template_kwargs: true,
         extra_body: None,
+        max_audio_inputs: None,
     };
     for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
         let body = build_chat_completions_request(&with_effort(effort), &options).body;
@@ -437,6 +438,7 @@ fn extra_body_is_deep_merged_last() {
             .cloned()
             .unwrap_or_default(),
         ),
+        max_audio_inputs: None,
     };
     let body = build_chat_completions_request(&with_effort(ReasoningEffort::None), &options).body;
     assert_eq!(
@@ -462,4 +464,41 @@ fn reasoning_from_an_interrupted_turn_is_not_replayed_later() {
         messages[3],
         json!({"role": "assistant", "content": "answer"})
     );
+}
+
+fn audio(data: &str) -> ContentItem {
+    ContentItem::InputImage {
+        image_url: format!("data:audio/wav;base64,{data}"),
+        detail: None,
+    }
+}
+
+#[test]
+fn max_audio_inputs_keeps_only_the_newest_clips() {
+    let input = vec![
+        message("user", vec![audio("AAAA")]),
+        text("assistant", "heard you"),
+        message("user", vec![audio("BBBB"), audio("CCCC")]),
+    ];
+    let options = ChatRequestOptions {
+        max_audio_inputs: Some(1),
+        ..Default::default()
+    };
+    let body = build_chat_completions_request(&base_request(input, None), &options).body;
+    let note = json!({"type": "text", "text": AUDIO_DROPPED_NOTE});
+    assert_eq!(body["messages"][1]["content"], json!([note.clone()]));
+    assert_eq!(
+        body["messages"][3]["content"],
+        json!([
+            note,
+            {"type": "input_audio", "input_audio": {"data": "CCCC", "format": "wav"}}
+        ])
+    );
+}
+
+#[test]
+fn control_characters_are_scrubbed_from_text() {
+    let input = vec![text("user", "png\u{0}\u{1}bytes\tok\nline")];
+    let body = build_default(&base_request(input, None)).body;
+    assert_eq!(body["messages"][1]["content"], json!("pngbytes\tok\nline"));
 }

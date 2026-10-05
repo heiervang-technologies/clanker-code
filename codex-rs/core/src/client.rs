@@ -1490,6 +1490,7 @@ impl ModelClientSession {
                         .with_request_options(ApiChatRequestOptions {
                             thinking_template_kwargs: provider_info.accepts_chat_template_kwargs(),
                             extra_body: provider_info.extra_body.clone(),
+                            max_audio_inputs: provider_info.max_audio_inputs,
                         })
                         .with_telemetry(Some(request_telemetry), Some(sse_telemetry))
                         .stream_request(request, options)

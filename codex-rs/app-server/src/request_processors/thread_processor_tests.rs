@@ -688,6 +688,7 @@ mod thread_processor_behavior_tests {
             supports_websockets: true,
             developer_role_name: None,
             extra_body: None,
+            max_audio_inputs: None,
         };
         let config_manager = ConfigManager::new(
             temp_dir.path().to_path_buf(),

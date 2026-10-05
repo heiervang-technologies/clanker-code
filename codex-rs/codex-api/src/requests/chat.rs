@@ -81,6 +81,9 @@ pub struct ChatRequestOptions {
     /// Extra top-level body fields, deep-merged into the request last. A
     /// `null` value removes the field.
     pub extra_body: Option<Map<String, Value>>,
+    /// Keep the audio of only the newest N `input_audio` parts; older ones
+    /// become a short text note. `None` keeps all.
+    pub max_audio_inputs: Option<usize>,
 }
 
 /// A Chat Completions request body plus the tool name mapping needed to decode
@@ -112,7 +115,11 @@ pub(crate) fn build_chat_completions_request(
         }
     }
 
-    let messages = build_messages(&request.instructions, &request.input);
+    let mut messages = build_messages(&request.instructions, &request.input);
+    scrub_control_chars(&mut messages);
+    if let Some(keep) = options.max_audio_inputs {
+        keep_newest_audio(&mut messages, keep);
+    }
 
     let mut body = Map::new();
     body.insert("model".to_string(), json!(request.model));
@@ -176,6 +183,56 @@ pub(crate) fn build_chat_completions_request(
     ChatCompletionsRequest {
         body: Value::Object(body),
         tool_names,
+    }
+}
+
+/// Text shown to the model in place of audio dropped by `max_audio_inputs`.
+pub(crate) const AUDIO_DROPPED_NOTE: &str = "(an earlier voice message; its audio is no longer attached)";
+
+/// Replaces all but the newest `keep` `input_audio` parts with a text note.
+fn keep_newest_audio(messages: &mut [Value], keep: usize) {
+    let mut seen = 0usize;
+    for message in messages.iter_mut().rev() {
+        let Some(parts) = message.get_mut("content").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for part in parts.iter_mut().rev() {
+            if part.get("type").and_then(Value::as_str) != Some("input_audio") {
+                continue;
+            }
+            seen += 1;
+            if seen > keep {
+                *part = json!({"type": "text", "text": AUDIO_DROPPED_NOTE});
+            }
+        }
+    }
+}
+
+/// Removes C0 control characters other than tab, newline and carriage return
+/// from message text. Binary tool output (for example `head` on a PNG) carries
+/// NULs that are useless to the model, and llama.cpp's multimodal tokenizer
+/// rejects a prompt containing them once audio or images are attached.
+fn scrub_control_chars(messages: &mut [Value]) {
+    fn clean(text: &mut String) {
+        if text
+            .chars()
+            .any(|c| c.is_ascii_control() && !matches!(c, '\t' | '\n' | '\r' | '\u{7f}'))
+        {
+            text.retain(|c| !c.is_ascii_control() || matches!(c, '\t' | '\n' | '\r' | '\u{7f}'));
+        }
+    }
+    for message in messages.iter_mut() {
+        match message.get_mut("content") {
+            Some(Value::String(text)) => clean(text),
+            Some(Value::Array(parts)) => {
+                for part in parts.iter_mut() {
+                    if let Some(Value::String(text)) = part.get_mut("text") {
+                        clean(text);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 }
 
