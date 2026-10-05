@@ -193,6 +193,7 @@ fn model_provider_from_proto(
         supports_websockets: provider.supports_websockets,
         developer_role_name: None,
         extra_body: None,
+        max_audio_inputs: None,
     };
     Ok((id, info))
 }
@@ -546,6 +547,7 @@ mod tests {
             supports_websockets: true,
             developer_role_name: None,
             extra_body: None,
+            max_audio_inputs: None,
             aws: None,
         }
     }
