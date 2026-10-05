@@ -1424,6 +1424,16 @@ pub fn local_image_content_items_with_label_number(
         ImageDetail::Auto | ImageDetail::Low | ImageDetail::High => PromptImageMode::ResizeToFit,
     };
 
+    if let Some(mime) = sniff_audio_mime(&file_bytes) {
+        // Audio files ride the image attachment path as `data:audio/...` URLs; the Chat
+        // Completions transport turns them into `input_audio` parts for audio-capable models.
+        return local_image_content_items(
+            path,
+            data_url_from_bytes(mime, &file_bytes),
+            label_number,
+            detail,
+        );
+    }
     match load_for_prompt_bytes(path, file_bytes, mode) {
         Ok(image) => local_image_content_items(path, image.into_data_url(), label_number, detail),
         Err(err) => match &err {
@@ -1443,6 +1453,20 @@ pub fn local_image_content_items_with_label_number(
                 vec![unsupported_image_error_placeholder(path, mime)]
             }
         },
+    }
+}
+
+/// Recognizes WAV and MP3 (the formats Chat Completions `input_audio` takes) by their magic bytes.
+pub fn sniff_audio_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        Some("audio/wav")
+    } else if bytes.starts_with(b"ID3")
+        || (bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0 && bytes[1] & 0x06 != 0)
+    {
+        // MPEG audio frame sync with a non-reserved layer (JPEG's FF D8 does not match).
+        Some("audio/mpeg")
+    } else {
+        None
     }
 }
 
@@ -1642,7 +1666,11 @@ impl ResponseInputItem {
                                 }
                                 LocalImagePreparation::Defer => local_image_content_items(
                                     &path,
-                                    data_url_from_bytes("application/octet-stream", &file_bytes),
+                                    data_url_from_bytes(
+                                        sniff_audio_mime(&file_bytes)
+                                            .unwrap_or("application/octet-stream"),
+                                        &file_bytes,
+                                    ),
                                     Some(image_index),
                                     detail,
                                 ),
@@ -3576,5 +3604,27 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn local_audio_attachment_becomes_audio_data_url() {
+        let mut wav = b"RIFF\x24\0\0\0WAVEfmt ".to_vec();
+        wav.extend_from_slice(&[0u8; 24]);
+        assert_eq!(sniff_audio_mime(&wav), Some("audio/wav"));
+        assert_eq!(sniff_audio_mime(b"ID3\x04\0\0"), Some("audio/mpeg"));
+        assert_eq!(sniff_audio_mime(&[0xFF, 0xFB, 0x90, 0x00]), Some("audio/mpeg"));
+        assert_eq!(sniff_audio_mime(&[0xFF, 0xD8, 0xFF, 0xE0]), None); // JPEG
+        assert_eq!(sniff_audio_mime(b"\x89PNG\r\n\x1a\n"), None);
+
+        let items = local_image_content_items_with_label_number(
+            Path::new("/tmp/clip.wav"),
+            wav,
+            None,
+            ImageDetail::Auto,
+        );
+        let [ContentItem::InputImage { image_url, .. }] = items.as_slice() else {
+            panic!("expected one attachment, got {items:?}");
+        };
+        assert!(image_url.starts_with("data:audio/wav;base64,UklGR"), "{image_url}");
     }
 }
