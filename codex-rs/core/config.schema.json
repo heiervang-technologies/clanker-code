@@ -4729,6 +4729,13 @@
             "responses"
           ],
           "type": "string"
+        },
+        {
+          "description": "The legacy Chat Completions API exposed at `/v1/chat/completions`.\n\nClanker Code keeps this wire format for OpenAI-compatible servers that do not implement the Responses API (vLLM, llama.cpp, Ollama, LiteLLM, ...).",
+          "enum": [
+            "chat"
+          ],
+          "type": "string"
         }
       ]
     },

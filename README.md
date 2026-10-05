@@ -35,6 +35,7 @@ branch and repository history.
 | Change       | Description                                              | Contributed back? |
 | ------------ | -------------------------------------------------------- | :---------------: |
 | HT fork docs | This section, CONTRIBUTING.md with fork management guide |        No         |
+| Chat wire    | `wire_api = "chat"` providers ([docs/config.md](docs/config.md#chat-completions-providers)) |        No         |
 
 ### Branch strategy
 
