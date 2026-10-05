@@ -197,3 +197,34 @@ fn preparation_errors_use_bounded_actionable_placeholders() {
         assert_eq!(error.placeholder(), expected);
     }
 }
+
+#[test]
+fn audio_data_urls_pass_through_unchanged() {
+    let url = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IA==".to_string();
+    let mut items = vec![ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputImage {
+            image_url: url.clone(),
+            detail: Some(ImageDetail::High),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }];
+
+    prepare_response_items(&mut items);
+
+    assert_eq!(
+        items,
+        vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputImage {
+                image_url: url,
+                detail: Some(ImageDetail::High),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }]
+    );
+}

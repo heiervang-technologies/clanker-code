@@ -1704,6 +1704,11 @@
           "description": "Value to use with `Authorization: Bearer <token>` header. Use of this config is discouraged in favor of `env_key` for security reasons, but this may be necessary when using this programmatically.",
           "type": "string"
         },
+        "extra_body": {
+          "additionalProperties": true,
+          "description": "Extra top-level fields deep-merged into every request body on the Chat Completions wire (`wire_api = \"chat\"`), after Clanker's own fields. Nested tables merge; a value replaces; JSON `null` cannot be written in TOML, so removal is not supported here.\n\nExample: `extra_body = { chat_template_kwargs = { enable_thinking = false }, top_k = 40 }`.",
+          "type": "object"
+        },
         "http_headers": {
           "additionalProperties": {
             "type": "string"
@@ -4727,6 +4732,13 @@
           "description": "The Responses API exposed by OpenAI at `/v1/responses`.",
           "enum": [
             "responses"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The legacy Chat Completions API exposed at `/v1/chat/completions`.\n\nClanker Code keeps this wire format for OpenAI-compatible servers that do not implement the Responses API (vLLM, llama.cpp, Ollama, LiteLLM, ...).",
+          "enum": [
+            "chat"
           ],
           "type": "string"
         }

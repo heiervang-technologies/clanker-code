@@ -159,6 +159,7 @@ fn model_provider_from_proto(
     let id = provider.id;
     let wire_api = match proto::WireApi::try_from(provider.wire_api) {
         Ok(proto::WireApi::Responses) => WireApi::Responses,
+        Ok(proto::WireApi::Chat) => WireApi::Chat,
         Ok(proto::WireApi::Unspecified) => {
             return Err(parse_error("remote thread config omitted wire_api"));
         }
@@ -191,6 +192,7 @@ fn model_provider_from_proto(
         requires_openai_auth: provider.requires_openai_auth,
         supports_websockets: provider.supports_websockets,
         developer_role_name: None,
+        extra_body: None,
     };
     Ok((id, info))
 }
@@ -218,9 +220,10 @@ fn model_provider_to_proto(
         websocket_connect_timeout_ms,
         requires_openai_auth,
         supports_websockets,
-        // Remote thread-config proto has no developer_role_name field, so it is
+        // Remote thread-config proto has no developer_role_name or extra_body field, so they are
         // not round-tripped here.
         developer_role_name: _,
+        extra_body: _,
     } = provider;
 
     proto::ModelProvider {
@@ -293,6 +296,7 @@ fn proto_string_map(values: HashMap<String, String>) -> proto::StringMap {
 fn proto_wire_api(wire_api: WireApi) -> proto::WireApi {
     match wire_api {
         WireApi::Responses => proto::WireApi::Responses,
+        WireApi::Chat => proto::WireApi::Chat,
     }
 }
 
@@ -541,6 +545,7 @@ mod tests {
             requires_openai_auth: false,
             supports_websockets: true,
             developer_role_name: None,
+            extra_body: None,
             aws: None,
         }
     }

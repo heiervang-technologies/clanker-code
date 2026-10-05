@@ -113,6 +113,12 @@ fn is_data_url(image_url: &str) -> bool {
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
 }
 
+fn is_audio_data_url(image_url: &str) -> bool {
+    image_url
+        .get(.."data:audio/".len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:audio/"))
+}
+
 fn prepare_image(
     image_url: &mut String,
     detail: Option<ImageDetail>,
@@ -121,6 +127,11 @@ fn prepare_image(
         return Err(ImagePreparationError::RemoteUrlUnsupported);
     }
     if !is_data_url(image_url) {
+        return Ok(());
+    }
+    if is_audio_data_url(image_url) {
+        // Audio attachments pass through untouched; the Chat Completions transport sends them
+        // as `input_audio` parts.
         return Ok(());
     }
 

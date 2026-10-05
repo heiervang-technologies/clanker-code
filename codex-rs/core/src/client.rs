@@ -33,6 +33,8 @@ use std::sync::atomic::Ordering;
 use codex_api::AgentIdentityTelemetry;
 use codex_api::ApiError;
 use codex_api::AuthProvider;
+use codex_api::ChatClient as ApiChatClient;
+use codex_api::ChatRequestOptions as ApiChatRequestOptions;
 use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
 use codex_api::Compression;
@@ -157,6 +159,7 @@ const X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str =
     "x-openai-internal-codex-responses-lite";
 const REALTIME_CALLS_ENDPOINT: &str = "/realtime/calls";
 const RESPONSES_ENDPOINT: &str = "/responses";
+const CHAT_COMPLETIONS_ENDPOINT: &str = "/chat/completions";
 const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 // `/responses/compact` is unary, so the timeout covers the full response rather than one idle
 // period between stream events.
@@ -941,6 +944,7 @@ impl ModelClient {
     /// WebSocket use is controlled by provider capability and session-scoped fallback state.
     pub fn responses_websocket_enabled(&self) -> bool {
         if !self.state.provider.info().supports_websockets
+            || self.state.provider.info().wire_api != WireApi::Responses
             || self.state.disable_websockets.load(Ordering::Relaxed)
         {
             return false;
@@ -1421,11 +1425,16 @@ impl ModelClientSession {
             .as_ref()
             .map(AuthManager::unauthorized_recovery);
         let mut pending_retry = PendingUnauthorizedRetry::default();
+        let wire_api = self.client.state.provider.info().wire_api;
+        let endpoint = match wire_api {
+            WireApi::Responses => RESPONSES_ENDPOINT,
+            WireApi::Chat => CHAT_COMPLETIONS_ENDPOINT,
+        };
         loop {
             let client_setup = self.client.current_client_setup().await?;
             let transport = self
                 .client
-                .build_api_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?;
+                .build_api_transport(&client_setup.api_provider, endpoint)?;
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),
                 client_setup.api_auth.as_ref(),
@@ -1435,7 +1444,7 @@ impl ModelClientSession {
             let (request_telemetry, sse_telemetry) = Self::build_streaming_telemetry(
                 session_telemetry,
                 request_auth_context,
-                RequestRouteTelemetry::for_endpoint(RESPONSES_ENDPOINT),
+                RequestRouteTelemetry::for_endpoint(endpoint),
                 self.client.state.auth_env_telemetry.clone(),
             );
             let compression = self.responses_request_compression(client_setup.auth.as_ref());
@@ -1464,13 +1473,29 @@ impl ModelClientSession {
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
-            let client = ApiResponsesClient::new(
-                transport,
-                client_setup.api_provider,
-                client_setup.api_auth,
-            )
-            .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
-            let stream_result = client.stream_request(request, options).await;
+            let stream_result = match wire_api {
+                WireApi::Responses => {
+                    ApiResponsesClient::new(
+                        transport,
+                        client_setup.api_provider,
+                        client_setup.api_auth,
+                    )
+                    .with_telemetry(Some(request_telemetry), Some(sse_telemetry))
+                    .stream_request(request, options)
+                    .await
+                }
+                WireApi::Chat => {
+                    let provider_info = self.client.state.provider.info();
+                    ApiChatClient::new(transport, client_setup.api_provider, client_setup.api_auth)
+                        .with_request_options(ApiChatRequestOptions {
+                            thinking_template_kwargs: provider_info.accepts_chat_template_kwargs(),
+                            extra_body: provider_info.extra_body.clone(),
+                        })
+                        .with_telemetry(Some(request_telemetry), Some(sse_telemetry))
+                        .stream_request(request, options)
+                        .await
+                }
+            };
 
             match stream_result {
                 Ok(stream) => {
@@ -1797,6 +1822,19 @@ impl ModelClientSession {
     ) -> Result<ResponseStream> {
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
+            WireApi::Chat => {
+                self.stream_responses_api(
+                    prompt,
+                    model_info,
+                    session_telemetry,
+                    effort,
+                    summary,
+                    service_tier,
+                    responses_metadata,
+                    inference_trace,
+                )
+                .await
+            }
             WireApi::Responses => {
                 if self.client.responses_websocket_enabled() {
                     let request_trace = current_span_w3c_trace_context();

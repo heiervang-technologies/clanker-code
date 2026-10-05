@@ -30,6 +30,7 @@ base_url = "http://localhost:11434/v1"
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -65,6 +66,7 @@ query_params = { api-version = "2025-04-01-preview" }
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -103,6 +105,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -110,7 +113,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
 }
 
 #[test]
-fn test_deserialize_chat_wire_api_shows_helpful_error() {
+fn test_deserialize_chat_wire_api() {
     let provider_toml = r#"
 name = "OpenAI using Chat Completions"
 base_url = "https://api.openai.com/v1"
@@ -118,8 +121,44 @@ env_key = "OPENAI_API_KEY"
 wire_api = "chat"
         "#;
 
+    let provider = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap();
+    assert_eq!(provider.wire_api, WireApi::Chat);
+    assert_eq!(provider.wire_api.to_string(), "chat");
+    assert!(!provider.accepts_chat_template_kwargs());
+}
+
+#[test]
+fn test_deserialize_chat_provider_extra_body() {
+    let provider_toml = r#"
+name = "gems"
+base_url = "https://api.markus.sh/v1"
+env_key = "GEMS_API_KEY"
+wire_api = "chat"
+extra_body = { chat_template_kwargs = { enable_thinking = false }, top_k = 40 }
+        "#;
+
+    let provider = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap();
+    assert_eq!(
+        provider.extra_body,
+        serde_json::json!({"chat_template_kwargs": {"enable_thinking": false}, "top_k": 40})
+            .as_object()
+            .cloned()
+    );
+    assert!(provider.accepts_chat_template_kwargs());
+}
+
+#[test]
+fn test_deserialize_unknown_wire_api_lists_variants() {
+    let provider_toml = r#"
+name = "Bogus"
+base_url = "https://example.com/v1"
+wire_api = "bogus"
+        "#;
+
     let err = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap_err();
-    assert!(err.to_string().contains(CHAT_WIRE_API_REMOVED_ERROR));
+    let message = err.to_string();
+    assert!(message.contains("responses"), "{message}");
+    assert!(message.contains("chat"), "{message}");
 }
 
 #[test]
@@ -181,6 +220,7 @@ fn test_supports_remote_compaction_for_azure_name() {
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     };
 
     assert!(provider.supports_remote_compaction());
@@ -207,6 +247,7 @@ fn test_supports_remote_compaction_for_non_openai_non_azure_provider() {
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     };
 
     assert!(!provider.supports_remote_compaction());
@@ -316,6 +357,7 @@ fn test_create_amazon_bedrock_provider() {
             requires_openai_auth: false,
             supports_websockets: false,
             developer_role_name: None,
+            extra_body: None,
         }
     );
 }
@@ -515,6 +557,7 @@ fn test_validate_provider_aws_rejects_conflicting_auth() {
         env_key: Some("AWS_BEARER_TOKEN_BEDROCK".to_string()),
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
         ..ModelProviderInfo::create_openai_provider(/*base_url*/ None)
     };
 
@@ -534,6 +577,7 @@ fn test_validate_provider_aws_rejects_websockets() {
         requires_openai_auth: false,
         supports_websockets: true,
         developer_role_name: None,
+        extra_body: None,
         ..ModelProviderInfo::create_openai_provider(/*base_url*/ None)
     };
 

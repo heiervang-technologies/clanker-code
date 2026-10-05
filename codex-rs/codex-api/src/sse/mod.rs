@@ -1,3 +1,4 @@
+pub(crate) mod chat;
 pub(crate) mod responses;
 
 pub(crate) use responses::ResponsesStreamEvent;

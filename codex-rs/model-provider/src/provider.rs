@@ -442,6 +442,7 @@ mod tests {
             requires_openai_auth: false,
             supports_websockets: false,
             developer_role_name: None,
+            extra_body: None,
         }
     }
 

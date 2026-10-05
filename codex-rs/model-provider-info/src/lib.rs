@@ -47,7 +47,6 @@ pub const AMAZON_BEDROCK_DEFAULT_BASE_URL: &str =
     "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER: &str = "x-amzn-mantle-client-agent";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "codex";
-const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
 
@@ -58,12 +57,18 @@ pub enum WireApi {
     /// The Responses API exposed by OpenAI at `/v1/responses`.
     #[default]
     Responses,
+    /// The legacy Chat Completions API exposed at `/v1/chat/completions`.
+    ///
+    /// Clanker Code keeps this wire format for OpenAI-compatible servers that do
+    /// not implement the Responses API (vLLM, llama.cpp, Ollama, LiteLLM, ...).
+    Chat,
 }
 
 impl fmt::Display for WireApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             Self::Responses => "responses",
+            Self::Chat => "chat",
         };
         f.write_str(value)
     }
@@ -77,8 +82,11 @@ impl<'de> Deserialize<'de> for WireApi {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "responses" => Ok(Self::Responses),
-            "chat" => Err(serde::de::Error::custom(CHAT_WIRE_API_REMOVED_ERROR)),
-            _ => Err(serde::de::Error::unknown_variant(&value, &["responses"])),
+            "chat" => Ok(Self::Chat),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["responses", "chat"],
+            )),
         }
     }
 }
@@ -150,6 +158,14 @@ pub struct ModelProviderInfo {
     ///
     /// Default (`None`) keeps the role as `"developer"`.
     pub developer_role_name: Option<String>,
+
+    /// Extra top-level fields deep-merged into every request body on the
+    /// Chat Completions wire (`wire_api = "chat"`), after Clanker's own
+    /// fields. Nested tables merge; a value replaces; JSON `null` cannot be
+    /// written in TOML, so removal is not supported here.
+    ///
+    /// Example: `extra_body = { chat_template_kwargs = { enable_thinking = false }, top_k = 40 }`.
+    pub extra_body: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -373,6 +389,7 @@ impl ModelProviderInfo {
             requires_openai_auth: true,
             supports_websockets: true,
             developer_role_name: None,
+            extra_body: None,
         }
     }
 
@@ -407,11 +424,23 @@ impl ModelProviderInfo {
             requires_openai_auth: false,
             supports_websockets: false,
             developer_role_name: None,
+            extra_body: None,
         }
     }
 
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
+    }
+
+    /// Whether chat requests may carry `chat_template_kwargs`, the field
+    /// open-weight servers (llama.cpp, vLLM, SGLang) use to toggle thinking.
+    /// OpenAI and Azure reject unknown request fields.
+    pub fn accepts_chat_template_kwargs(&self) -> bool {
+        let hosted_openai = self.base_url.as_deref().is_some_and(|base_url| {
+            let base_url = base_url.to_ascii_lowercase();
+            base_url.contains("openai.com") || base_url.contains(".azure.")
+        });
+        !self.is_openai() && !hosted_openai
     }
 
     pub fn uses_openai_actor_authorization(&self) -> bool {
@@ -429,7 +458,9 @@ impl ModelProviderInfo {
     }
 
     pub fn supports_remote_compaction(&self) -> bool {
-        self.is_openai() || is_azure_responses_provider(&self.name, self.base_url.as_deref())
+        self.wire_api == WireApi::Responses
+            && (self.is_openai()
+                || is_azure_responses_provider(&self.name, self.base_url.as_deref()))
     }
 
     pub fn has_command_auth(&self) -> bool {
@@ -555,6 +586,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         requires_openai_auth: false,
         supports_websockets: false,
         developer_role_name: None,
+        extra_body: None,
     }
 }
 
