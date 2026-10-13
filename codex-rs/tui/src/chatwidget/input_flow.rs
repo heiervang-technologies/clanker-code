@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! User input submission, queue draining, and draft restore flow for `ChatWidget`.
 //!
 //! The queue data itself lives in `input_queue`; this module owns the app-level

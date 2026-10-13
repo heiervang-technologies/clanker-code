@@ -1,3 +1,5 @@
+# Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 load("//:defs.bzl", "codex_rust_crate")
 
 codex_rust_crate(

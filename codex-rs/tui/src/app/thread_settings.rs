@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Thread settings sync between TUI-local state and app-server thread state.
 
 use super::App;

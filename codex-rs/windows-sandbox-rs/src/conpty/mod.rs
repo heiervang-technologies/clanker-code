@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! ConPTY helpers for spawning sandboxed processes with a PTY on Windows.
 //!
 //! This module encapsulates ConPTY creation and process spawn with the required

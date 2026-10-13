@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::history_cell::CompositeHistoryCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;

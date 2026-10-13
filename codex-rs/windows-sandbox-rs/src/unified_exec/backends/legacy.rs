@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::windows_common::finish_driver_spawn;
 use crate::FS_HELPER_ARG;
 use crate::conpty::ConptyInstance;

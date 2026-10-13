@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 #[cfg(any(not(debug_assertions), test))]
 use codex_install_context::InstallContext;
 #[cfg(any(not(debug_assertions), test))]

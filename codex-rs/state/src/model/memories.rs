@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use chrono::DateTime;
 use chrono::Utc;
 use codex_character::CharacterCatalog;

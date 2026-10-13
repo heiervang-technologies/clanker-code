@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use codex_app_server_protocol::McpToolCallResult;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::Turn;

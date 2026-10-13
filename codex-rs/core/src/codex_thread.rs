@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::agent::AgentStatus;
 use crate::config::ConstraintResult;
 use crate::elicitation::ElicitationRegistration;

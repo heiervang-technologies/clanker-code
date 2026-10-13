@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use anyhow::Result;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::ModeKind;

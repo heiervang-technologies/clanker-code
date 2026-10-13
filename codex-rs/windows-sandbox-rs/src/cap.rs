@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::path_normalization::canonical_path_key;
 use crate::path_normalization::canonicalize_path;
 use anyhow::Context;

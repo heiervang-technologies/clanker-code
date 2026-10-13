@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! SQLite-backed state for rollout metadata.
 //!
 //! This crate is intentionally small and focused: it extracts rollout metadata

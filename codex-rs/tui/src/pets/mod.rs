@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Ambient terminal pets configured from the /pets slash command.
 //!
 //! The TUI treats built-in and custom pets differently on purpose:

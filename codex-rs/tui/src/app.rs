@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Top-level TUI application state and runtime wiring.
 //!
 //! This module owns the `App` struct, shared imports, and the high-level run loop that coordinates

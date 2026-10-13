@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Renders doctor reports for terminal users.
 //!
 //! The renderer is intentionally separate from check construction so the JSON

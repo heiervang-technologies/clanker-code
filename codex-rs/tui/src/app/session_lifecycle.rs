@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Session, resume, fork, and subagent selection lifecycle for the TUI app.
 //!
 //! This module owns the high-level transitions between app-server threads: starting fresh sessions,

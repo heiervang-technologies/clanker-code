@@ -1,3 +1,5 @@
+# Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 name: blocking-ci
 
 # This is the single entrypoint for checks that block a PR merge. It also runs

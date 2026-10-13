@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;

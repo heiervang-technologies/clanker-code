@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 pub const PLAN: &str = include_str!("../templates/plan.md");
 pub const LARP: &str = include_str!("../templates/larp.md");
 pub const LOCKED_IN: &str = include_str!("../templates/locked_in.md");

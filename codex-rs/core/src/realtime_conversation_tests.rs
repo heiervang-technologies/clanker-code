@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use super::RealtimeHandoffState;
 use super::RealtimeSessionKind;
 use super::realtime_delegation_from_handoff;

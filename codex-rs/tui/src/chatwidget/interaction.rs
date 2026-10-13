@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Key routing and composer-adjacent UI interaction for `ChatWidget`.
 
 use super::*;

@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! App-level handlers for ambient terminal pet events.
 
 use super::*;

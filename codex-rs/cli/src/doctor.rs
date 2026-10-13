@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Implements the `codex doctor` diagnostic report.
 //!
 //! Doctor is intentionally read-mostly: checks inspect the current installation,

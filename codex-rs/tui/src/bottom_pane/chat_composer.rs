@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! The chat composer is the bottom-pane text input state machine.
 //!
 //! It is responsible for:

@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Verifies that parent and spawned subagent Responses API requests carry the expected window,
 //! parent-thread, and subagent identity headers.
 

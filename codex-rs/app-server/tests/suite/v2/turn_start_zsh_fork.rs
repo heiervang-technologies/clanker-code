@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 #![cfg(not(windows))]
 //
 // Running these tests with the patched zsh fork:

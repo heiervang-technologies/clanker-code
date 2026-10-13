@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Bazel-only integration coverage for a Windows exec-server running under Wine.
 
 use anyhow::Context;

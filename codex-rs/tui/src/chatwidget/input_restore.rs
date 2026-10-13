@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 //! Input queue restore and thread-input snapshot behavior for `ChatWidget`.
 
 use std::collections::HashSet;

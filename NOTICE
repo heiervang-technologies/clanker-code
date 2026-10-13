@@ -8,3 +8,9 @@ Copyright (c) 2023-2025 The Ratatui Developers
 This distribution is a modified fork of openai/codex maintained by
 Heiervang Technologies. Downstream modifications and additions are recorded
 in the clanker branch and repository history.
+
+Per Apache-2.0 section 4(b), every upstream-derived file this fork has changed
+carries a notice at the top of the file stating that it was modified. That set
+is derived mechanically from the upstream commit pinned in
+.github/upstream-baseline, and is enforced in CI by
+.github/scripts/verify_modification_notices.py.

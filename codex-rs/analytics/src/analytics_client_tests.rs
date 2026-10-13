@@ -1,3 +1,5 @@
+// Modified by Heiervang Technologies from the openai/codex original; see NOTICE for fork provenance.
+
 use crate::client::AnalyticsEventsQueue;
 use crate::events::AppServerRpcTransport;
 use crate::events::CodexAcceptedLineFingerprintsEventParams;
