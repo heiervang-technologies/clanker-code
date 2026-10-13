@@ -768,6 +768,7 @@ async fn load_plugin(
         plugin_namespace: None,
         manifest_description: None,
         root,
+        character_wizard: None,
         enabled: plugin.enabled,
         skill_roots: Vec::new(),
         disabled_skill_paths: HashSet::new(),
@@ -808,6 +809,7 @@ async fn load_plugin(
     };
 
     let manifest_paths = &manifest.paths;
+    loaded_plugin.character_wizard = manifest.character_wizard.clone();
     loaded_plugin.plugin_namespace = Some(manifest.name.clone());
     match scope {
         PluginLoadScope::AllCapabilities {

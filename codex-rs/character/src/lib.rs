@@ -1,5 +1,6 @@
 mod avatar;
 mod manifest;
+mod onboarding;
 
 pub use avatar::AvatarAnimation;
 pub use avatar::AvatarAnimationFrame;
@@ -20,5 +21,22 @@ pub use manifest::ValidationIssue;
 pub use manifest::ValidationIssueCode;
 pub use manifest::ValidationReport;
 pub use manifest::validate_manifest_path;
+pub use manifest::validate_canonical_id;
+pub use onboarding::ActivationError;
+pub use onboarding::ActivationJournal;
+pub use onboarding::ActivationJournalCoordinator;
+pub use onboarding::ActivationPhase;
+pub use onboarding::CharacterWizardRequestV1;
+pub use onboarding::CharacterWizardResultV1;
+pub use onboarding::LastActiveStore;
+pub use onboarding::CharacterPackageSource;
+pub use onboarding::DirectoryPackageSource;
+pub use onboarding::WizardOperation;
+pub use onboarding::WizardOperationId;
+pub use onboarding::WizardOperationReceipt;
+pub use onboarding::WizardOutcome;
+pub use onboarding::encode_bounded_request;
+pub use onboarding::resolve_candidate_path;
+pub use onboarding::resolve_wizard_executable;
 
 pub const CHARACTER_SCHEMA_VERSION: u32 = 1;

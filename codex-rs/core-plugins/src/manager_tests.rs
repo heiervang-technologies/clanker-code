@@ -863,6 +863,7 @@ async fn load_plugins_loads_default_skills_and_mcp_servers() {
                 "Plugin that includes the sample MCP server and Skills".to_string(),
             ),
             root: AbsolutePathBuf::try_from(plugin_root.clone()).unwrap(),
+            character_wizard: None,
             enabled: true,
             skill_roots: vec![plugin_root.join("skills").abs()],
             disabled_skill_paths: HashSet::new(),
@@ -2064,6 +2065,7 @@ async fn load_plugin_skills_dedupes_overlapping_manifest_roots() {
             apps: None,
             hooks: None,
         },
+        character_wizard: None,
         interface: None,
     };
     let plugin_id = PluginId::parse("sample@test").expect("plugin id should parse");
@@ -2292,6 +2294,7 @@ async fn load_plugins_preserves_disabled_plugins_without_effective_contributions
             plugin_namespace: None,
             manifest_description: None,
             root: AbsolutePathBuf::try_from(plugin_root).unwrap(),
+            character_wizard: None,
             enabled: false,
             skill_roots: Vec::new(),
             disabled_skill_paths: HashSet::new(),
@@ -2467,6 +2470,7 @@ fn capability_index_filters_inactive_and_zero_capability_plugins() {
         ),
         manifest_description: None,
         root: AbsolutePathBuf::try_from(codex_home.path().join(dir_name)).unwrap(),
+        character_wizard: None,
         enabled: true,
         skill_roots: Vec::new(),
         disabled_skill_paths: HashSet::new(),

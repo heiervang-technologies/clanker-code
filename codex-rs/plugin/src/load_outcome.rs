@@ -20,6 +20,7 @@ pub struct LoadedPlugin<M> {
     pub plugin_namespace: Option<String>,
     pub manifest_description: Option<String>,
     pub root: AbsolutePathBuf,
+    pub character_wizard: Option<crate::manifest::CharacterWizardCapability<AbsolutePathBuf>>,
     pub enabled: bool,
     pub skill_roots: Vec<AbsolutePathBuf>,
     pub disabled_skill_paths: HashSet<AbsolutePathBuf>,
@@ -91,6 +92,13 @@ pub fn prompt_safe_plugin_description(description: Option<&str>) -> Option<Strin
 pub struct PluginLoadOutcome<M> {
     plugins: Vec<LoadedPlugin<M>>,
     capability_summaries: Vec<PluginCapabilitySummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CharacterWizardProviderSelection<'a, M> {
+    None,
+    One(&'a LoadedPlugin<M>),
+    Conflict(Vec<String>),
 }
 
 impl<M: Clone> Default for PluginLoadOutcome<M> {
@@ -190,6 +198,29 @@ impl<M: Clone> PluginLoadOutcome<M> {
     pub fn plugins(&self) -> &[LoadedPlugin<M>] {
         &self.plugins
     }
+
+    /// Returns active providers in deterministic config-name order. Callers retain the full
+    /// LoadedPlugin receipt, including config name, namespace, and canonical installed root.
+    pub fn active_character_wizard_providers(&self) -> Vec<&LoadedPlugin<M>> {
+        let mut providers = self
+            .plugins
+            .iter()
+            .filter(|plugin| plugin.is_active() && plugin.character_wizard.is_some())
+            .collect::<Vec<_>>();
+        providers.sort_unstable_by(|left, right| left.config_name.cmp(&right.config_name));
+        providers
+    }
+
+    pub fn select_character_wizard_provider(&self) -> CharacterWizardProviderSelection<'_, M> {
+        let providers = self.active_character_wizard_providers();
+        match providers.as_slice() {
+            [] => CharacterWizardProviderSelection::None,
+            [provider] => CharacterWizardProviderSelection::One(provider),
+            many => CharacterWizardProviderSelection::Conflict(
+                many.iter().map(|provider| provider.config_name.clone()).collect(),
+            ),
+        }
+    }
 }
 
 /// Implemented by [`PluginLoadOutcome`] so callers (e.g. skills) can depend on `codex-plugin`
@@ -231,6 +262,7 @@ mod tests {
             ),
             manifest_description: None,
             root: test_path(config_name),
+            character_wizard: None,
             enabled: true,
             skill_roots,
             disabled_skill_paths: HashSet::new(),
@@ -260,5 +292,24 @@ mod tests {
                 plugin_root: test_path("zeta@test"),
             }]
         );
+    }
+
+    #[test]
+    fn character_wizard_providers_are_active_and_deterministic() {
+        let mut zeta = loaded_plugin("zeta@test", vec![]);
+        zeta.character_wizard = Some(crate::manifest::CharacterWizardCapability {
+            protocol_version: 1,
+            executable: test_path("zeta@test/wizard"),
+        });
+        let mut alpha = loaded_plugin("alpha@test", vec![]);
+        alpha.character_wizard = Some(crate::manifest::CharacterWizardCapability {
+            protocol_version: 1,
+            executable: test_path("alpha@test/wizard"),
+        });
+        alpha.enabled = false;
+        let outcome = PluginLoadOutcome::from_plugins(vec![zeta, alpha]);
+        let providers = outcome.active_character_wizard_providers();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].config_name, "zeta@test");
     }
 }

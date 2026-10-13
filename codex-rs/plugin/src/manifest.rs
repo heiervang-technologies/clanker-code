@@ -11,7 +11,14 @@ pub struct PluginManifest<Resource> {
     pub description: Option<String>,
     pub keywords: Vec<String>,
     pub paths: PluginManifestPaths<Resource>,
+    pub character_wizard: Option<CharacterWizardCapability<Resource>>,
     pub interface: Option<PluginManifestInterface<Resource>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharacterWizardCapability<Resource> {
+    pub protocol_version: u32,
+    pub executable: Resource,
 }
 
 /// Component resources declared by a plugin manifest.
@@ -101,6 +108,7 @@ impl<Resource> PluginManifest<Resource> {
             description,
             keywords,
             paths,
+            character_wizard,
             interface,
         } = self;
         let PluginManifestPaths {
@@ -185,6 +193,14 @@ impl<Resource> PluginManifest<Resource> {
                 apps: apps.map(&mut map).transpose()?,
                 hooks,
             },
+            character_wizard: character_wizard
+                .map(|capability| {
+                    Ok(CharacterWizardCapability {
+                        protocol_version: capability.protocol_version,
+                        executable: map(capability.executable)?,
+                    })
+                })
+                .transpose()?,
             interface,
         })
     }
