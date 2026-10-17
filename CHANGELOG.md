@@ -67,11 +67,13 @@ An animated avatar system rendered directly in the terminal UI.
   `waiting`, `review`, `failed`, `planning`, `tired-idle`, `tired-running`,
   `talking`), declared in an `avatar.json` manifest.
 - **Bundled character avatars** — `clanker`, `chloe`, `c3ph0`, `hai`,
-  `clautist`, `jasonelle`, and `centurion` resolve as named characters with a
-  canonical avatar binding. The underlying packs are also installed into the
-  pet catalog, including `chloe-r2-09` and its Locked In variant.
+  `clautist`, `jasonelle`, `centurion`, `crystal-mom`, `snoop-kube`, `penny`,
+  `lawrence`, and the five Clanker Races (`claudian`, `chatgepert`, `geminoid`,
+  `xinan`, and `gonker`) resolve as named characters with a canonical avatar
+  binding. The underlying packs are also installed into the pet catalog,
+  including `chloe-r2-09` and its Locked In variant.
 - **Reproducible assets** — generator scripts document and reproduce the
-  Clautist and Centurion avatar sources; the Clautist generator keeps exact
+  bundled hand-rolled avatar sources; the Clautist generator keeps exact
   compatibility capture separate from normalized preview art.
 - **Custom avatars** — loaded at runtime from `$CODEX_HOME/avatars/<id>/avatar.json`;
   the bundled default is auto-installed on first use.
