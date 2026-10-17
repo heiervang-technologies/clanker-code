@@ -15,16 +15,6 @@ const CHLOE_SHEET: &[u8] = include_bytes!("../../assets/chloe-r2-09/sheet.png");
 const CHLOE_LOCKED_IN_MANIFEST: &str =
     include_str!("../../assets/chloe-r2-09-locked-in/avatar.json");
 const CHLOE_LOCKED_IN_SHEET: &[u8] = include_bytes!("../../assets/chloe-r2-09-locked-in/sheet.png");
-const C3PH0_MANIFEST: &str = include_str!("../../assets/c3ph0/avatar.json");
-const C3PH0_SHEET: &[u8] = include_bytes!("../../assets/c3ph0/sheet.png");
-const HAI_MANIFEST: &str = include_str!("../../assets/hai/avatar.json");
-const HAI_SHEET: &[u8] = include_bytes!("../../assets/hai/sheet.png");
-const CLAUTIST_MANIFEST: &str = include_str!("../../assets/clautist/avatar.json");
-const CLAUTIST_SHEET: &[u8] = include_bytes!("../../assets/clautist/sheet.png");
-const JASONELLE_MANIFEST: &str = include_str!("../../assets/jasonelle/avatar.json");
-const JASONELLE_SHEET: &[u8] = include_bytes!("../../assets/jasonelle/sheet.png");
-const CENTURION_MANIFEST: &str = include_str!("../../assets/centurion/avatar.json");
-const CENTURION_SHEET: &[u8] = include_bytes!("../../assets/centurion/sheet.png");
 const CLANKER_CHARACTER_MANIFEST: &str = r#"{
   "schemaVersion": 1,
   "id": "clanker",
@@ -81,6 +71,76 @@ const CENTURION_CHARACTER_MANIFEST: &str = r#"{
   "avatar": "avatar/default/avatar.json",
   "avatarPlacement": "far_right"
 }"#;
+const CRYSTAL_MOM_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "crystal-mom",
+  "displayName": "Crystal-Mom",
+  "aliases": ["crystal_mom"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const SNOOP_KUBE_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "snoop-kube",
+  "displayName": "Snoop-Kube",
+  "aliases": ["snoop-kubernetes", "snoop_kubernetes", "snoop_kube"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const PENNY_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "penny",
+  "displayName": "Penny",
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const LAWRENCE_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "lawrence",
+  "displayName": "Lawrence",
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const CLAUDIAN_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "claudian",
+  "displayName": "Claudian",
+  "aliases": ["claudians"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const CHATGEPERT_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "chatgepert",
+  "displayName": "Chatgepert",
+  "aliases": ["chatgeperts", "gepert", "geperts"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const GEMINOID_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "geminoid",
+  "displayName": "Geminoid",
+  "aliases": ["geminoids"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const XINAN_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "xinan",
+  "displayName": "Xinan",
+  "aliases": ["xinans"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
+const GONKER_CHARACTER_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "id": "gonker",
+  "displayName": "Gonker",
+  "aliases": ["gonkers"],
+  "avatar": "avatar/default/avatar.json",
+  "avatarPlacement": "far_right"
+}"#;
 
 #[derive(Clone, Copy)]
 struct BundledAvatar {
@@ -97,47 +157,50 @@ struct BundledCharacter {
     install_eagerly: bool,
 }
 
+macro_rules! bundled_avatar {
+    ($id:literal) => {
+        BundledAvatar {
+            id: $id,
+            manifest: include_str!(concat!("../../assets/", $id, "/avatar.json")),
+            sheet: include_bytes!(concat!("../../assets/", $id, "/sheet.png")),
+        }
+    };
+}
+
+macro_rules! lazy_character {
+    ($id:literal, $manifest:ident, [$($alias:literal),* $(,)?]) => {
+        BundledCharacter {
+            id: $id,
+            aliases: &[$($alias),*],
+            manifest: $manifest,
+            avatars: &[BundledAvatar {
+                id: "default",
+                manifest: include_str!(concat!("../../assets/", $id, "/avatar.json")),
+                sheet: include_bytes!(concat!("../../assets/", $id, "/sheet.png")),
+            }],
+            install_eagerly: false,
+        }
+    };
+}
+
 const BUNDLED_AVATARS: &[BundledAvatar] = &[
-    BundledAvatar {
-        id: "clanker",
-        manifest: CLANKER_MANIFEST,
-        sheet: CLANKER_SHEET,
-    },
-    BundledAvatar {
-        id: "chloe-r2-09",
-        manifest: CHLOE_MANIFEST,
-        sheet: CHLOE_SHEET,
-    },
-    BundledAvatar {
-        id: "chloe-r2-09-locked-in",
-        manifest: CHLOE_LOCKED_IN_MANIFEST,
-        sheet: CHLOE_LOCKED_IN_SHEET,
-    },
-    BundledAvatar {
-        id: "c3ph0",
-        manifest: C3PH0_MANIFEST,
-        sheet: C3PH0_SHEET,
-    },
-    BundledAvatar {
-        id: "hai",
-        manifest: HAI_MANIFEST,
-        sheet: HAI_SHEET,
-    },
-    BundledAvatar {
-        id: "clautist",
-        manifest: CLAUTIST_MANIFEST,
-        sheet: CLAUTIST_SHEET,
-    },
-    BundledAvatar {
-        id: "jasonelle",
-        manifest: JASONELLE_MANIFEST,
-        sheet: JASONELLE_SHEET,
-    },
-    BundledAvatar {
-        id: "centurion",
-        manifest: CENTURION_MANIFEST,
-        sheet: CENTURION_SHEET,
-    },
+    bundled_avatar!("clanker"),
+    bundled_avatar!("chloe-r2-09"),
+    bundled_avatar!("chloe-r2-09-locked-in"),
+    bundled_avatar!("c3ph0"),
+    bundled_avatar!("hai"),
+    bundled_avatar!("clautist"),
+    bundled_avatar!("jasonelle"),
+    bundled_avatar!("centurion"),
+    bundled_avatar!("crystal-mom"),
+    bundled_avatar!("snoop-kube"),
+    bundled_avatar!("penny"),
+    bundled_avatar!("lawrence"),
+    bundled_avatar!("claudian"),
+    bundled_avatar!("chatgepert"),
+    bundled_avatar!("geminoid"),
+    bundled_avatar!("xinan"),
+    bundled_avatar!("gonker"),
 ];
 
 const BUNDLED_CHARACTERS: &[BundledCharacter] = &[
@@ -170,61 +233,32 @@ const BUNDLED_CHARACTERS: &[BundledCharacter] = &[
         ],
         install_eagerly: true,
     },
-    BundledCharacter {
-        id: "c3ph0",
-        aliases: &["c-3ph0"],
-        manifest: C3PH0_CHARACTER_MANIFEST,
-        avatars: &[BundledAvatar {
-            id: "default",
-            manifest: C3PH0_MANIFEST,
-            sheet: C3PH0_SHEET,
-        }],
-        install_eagerly: false,
-    },
-    BundledCharacter {
-        id: "hai",
-        aliases: &[],
-        manifest: HAI_CHARACTER_MANIFEST,
-        avatars: &[BundledAvatar {
-            id: "default",
-            manifest: HAI_MANIFEST,
-            sheet: HAI_SHEET,
-        }],
-        install_eagerly: false,
-    },
-    BundledCharacter {
-        id: "clautist",
-        aliases: &[],
-        manifest: CLAUTIST_CHARACTER_MANIFEST,
-        avatars: &[BundledAvatar {
-            id: "default",
-            manifest: CLAUTIST_MANIFEST,
-            sheet: CLAUTIST_SHEET,
-        }],
-        install_eagerly: false,
-    },
-    BundledCharacter {
-        id: "jasonelle",
-        aliases: &[],
-        manifest: JASONELLE_CHARACTER_MANIFEST,
-        avatars: &[BundledAvatar {
-            id: "default",
-            manifest: JASONELLE_MANIFEST,
-            sheet: JASONELLE_SHEET,
-        }],
-        install_eagerly: false,
-    },
-    BundledCharacter {
-        id: "centurion",
-        aliases: &[],
-        manifest: CENTURION_CHARACTER_MANIFEST,
-        avatars: &[BundledAvatar {
-            id: "default",
-            manifest: CENTURION_MANIFEST,
-            sheet: CENTURION_SHEET,
-        }],
-        install_eagerly: false,
-    },
+    lazy_character!("c3ph0", C3PH0_CHARACTER_MANIFEST, ["c-3ph0"]),
+    lazy_character!("hai", HAI_CHARACTER_MANIFEST, []),
+    lazy_character!("clautist", CLAUTIST_CHARACTER_MANIFEST, []),
+    lazy_character!("jasonelle", JASONELLE_CHARACTER_MANIFEST, []),
+    lazy_character!("centurion", CENTURION_CHARACTER_MANIFEST, []),
+    lazy_character!(
+        "crystal-mom",
+        CRYSTAL_MOM_CHARACTER_MANIFEST,
+        ["crystal_mom"]
+    ),
+    lazy_character!(
+        "snoop-kube",
+        SNOOP_KUBE_CHARACTER_MANIFEST,
+        ["snoop-kubernetes", "snoop_kubernetes", "snoop_kube"]
+    ),
+    lazy_character!("penny", PENNY_CHARACTER_MANIFEST, []),
+    lazy_character!("lawrence", LAWRENCE_CHARACTER_MANIFEST, []),
+    lazy_character!("claudian", CLAUDIAN_CHARACTER_MANIFEST, ["claudians"]),
+    lazy_character!(
+        "chatgepert",
+        CHATGEPERT_CHARACTER_MANIFEST,
+        ["chatgeperts", "gepert", "geperts"]
+    ),
+    lazy_character!("geminoid", GEMINOID_CHARACTER_MANIFEST, ["geminoids"]),
+    lazy_character!("xinan", XINAN_CHARACTER_MANIFEST, ["xinans"]),
+    lazy_character!("gonker", GONKER_CHARACTER_MANIFEST, ["gonkers"]),
 ];
 
 /// Materialize built-in packs without overwriting an existing user-owned id.
@@ -364,6 +398,15 @@ mod tests {
                 "clautist",
                 "jasonelle",
                 "centurion",
+                "crystal-mom",
+                "snoop-kube",
+                "penny",
+                "lawrence",
+                "claudian",
+                "chatgepert",
+                "geminoid",
+                "xinan",
+                "gonker",
             ]
         );
         assert!(
