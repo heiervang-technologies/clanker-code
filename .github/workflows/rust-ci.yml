@@ -209,6 +209,9 @@ jobs:
       # Bazel and Ubuntu 24.04 does not ship.
       - name: cargo clippy
         run: cargo clippy --workspace --exclude codex-voice-host --all-targets --locked -- -D warnings
+      # TUI integration tests drive the real `codex` binary.
+      - name: Build codex binary for integration tests
+        run: cargo build --locked -p codex-cli --bin codex
       - name: Fork crate tests
         run: >-
           cargo nextest run --locked --no-fail-fast
