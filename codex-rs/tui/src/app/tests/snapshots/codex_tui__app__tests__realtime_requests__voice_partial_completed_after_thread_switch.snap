@@ -5,16 +5,16 @@ expression: "normalize_voice_snapshot_directory(&format!(\"Other task:\\n{other_
 Other task:
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
 Restored owner:
  voice ● listening                                      f9 mute     /voice stop
    mic ▁▁▁▁▁▁  codex ▁▁▁▁▁▁
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
 
-  >_ OpenAI Codex (v0.0.0)
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93)
      /tmp/project
 
   To get started, describe a task or try one of these commands:

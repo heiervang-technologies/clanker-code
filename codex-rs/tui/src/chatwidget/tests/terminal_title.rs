@@ -67,6 +67,9 @@ async fn goal_clock_refresh_redraws_only_when_elapsed_label_changes() {
     chat.refresh_goal_status_indicator_for_time_tick();
     chat.refresh_terminal_title();
     assert!(draw_rx.try_recv().is_ok());
+    // The fork's LARP indicator update also syncs footer and ambient visuals, which may
+    // queue more than one coalesced frame request for the same label change.
+    while draw_rx.try_recv().is_ok() {}
     assert!(chat.terminal_title_next_refresh.is_some());
 
     chat.refresh_goal_status_indicator_for_time_tick();

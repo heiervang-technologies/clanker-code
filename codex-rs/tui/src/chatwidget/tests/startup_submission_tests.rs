@@ -287,7 +287,7 @@ async fn startup_submission_escape_restores_editing_without_submitting() {
             );
             assert_snapshot!(
                 render_bottom_popup(&chat, /*width*/ 80).lines().last().unwrap(),
-                @"  ⌃c quit"
+                @"  ⌃c quit                                            LARP mode (⇧tab to cycle)"
             );
             chat.input_queue.suppress_queue_autosend = false;
         } else {

@@ -316,6 +316,7 @@ fn active_transcript_preserves_clipped_markdown_hyperlinks() {
     let renderable = TranscriptAreaRenderable {
         child: &cell,
         top: 1,
+        left: 0,
         right: 2,
         persistent_layout: None,
     };
@@ -400,9 +401,10 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
 
     let cwd = widget.config.cwd.as_path().display().to_string();
 
-    insta::assert_snapshot!(header.replace(&cwd, "/tmp/project"), @r"
-      >_ OpenAI Codex (v<VERSION>)
-         /tmp/project
+    insta::assert_snapshot!(header.replace(&cwd, "/tmp/project"), @"
+
+    >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+       /tmp/project
     ");
 }
 

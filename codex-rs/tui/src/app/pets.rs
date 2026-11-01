@@ -184,15 +184,18 @@ impl App {
         side: codex_config::types::TuiPetSide,
     ) {
         let edit = crate::legacy_core::config::edit::tui_pet_side_edit(side);
-        match ConfigEditsBuilder::new(&self.config.codex_home)
+        match ConfigEditsBuilder::new(&self.local_settings.codex_home)
             .with_edits([edit])
             .apply()
             .await
         {
             Ok(()) => {
-                self.config.tui_pet_side = side;
+                self.local_settings.tui.pet_side = side;
                 self.chat_widget.set_tui_pet_side(side);
-                if let Err(err) = self.reflow_transcript_now(tui) {
+                let terminal_width = tui.terminal.last_known_screen_size.into();
+                if self.overlay.is_some() {
+                    self.schedule_immediate_resize_reflow(tui);
+                } else if let Err(err) = self.reflow_transcript_now(tui, terminal_width) {
                     self.chat_widget.add_error_message(format!(
                         "Pet side saved, but transcript reflow failed: {err}"
                     ));

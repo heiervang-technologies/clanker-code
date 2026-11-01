@@ -36,7 +36,7 @@ fn gov_cloud_startup_persists_only_acknowledgment() -> Result<()> {
                     ensure!(status.success(), "quit exited with {status}");
                     break;
                 }
-            } else if terminal.screen_contains("OpenAI Codex") {
+            } else if terminal.screen_contains(codex_config::CLANKER_PRODUCT_NAME) {
                 break;
             }
             ensure!(Instant::now() < deadline, "{action} did not complete");

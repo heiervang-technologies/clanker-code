@@ -5,7 +5,7 @@ expression: popup
       Upload logs?
 › As
       The following files will be sent:
-  GP    • codex-logs.log
+  GP    • codex-logs.log                                                    e)
         • client-logs.txt (if available)
         • codex-doctor-report.json
         • codex-apps-tools-cache.json (if available)

@@ -80,6 +80,7 @@ impl LocalSettings {
                 theme: config.tui_theme.clone(),
                 pet: config.tui_pet.clone(),
                 pet_anchor: config.tui_pet_anchor,
+                pet_side: config.tui_pet_side,
                 session_picker_view: Some(config.tui_session_picker_view),
                 agents_overview_grouping: config.tui_agents_overview_grouping,
                 resume_cwd: config.tui_resume_cwd,

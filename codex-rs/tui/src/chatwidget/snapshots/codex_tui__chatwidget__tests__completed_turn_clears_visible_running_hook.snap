@@ -9,10 +9,10 @@ before completion:
 "                                                                                "
 "› Ask Codex to do anything                                                      "
 "                                                                                "
-"  GPT-5.6-Sol default · /tmp/project                                            "
+"  GPT-5.6-Sol default · /tmp/project                                 LARP mode  "
 after completion:
 "                                                                                "
 "                                                                                "
 "› Ask Codex to do anything                                                      "
 "                                                                                "
-"  GPT-5.6-Sol default · /tmp/project                                            "
+"  GPT-5.6-Sol default · /tmp/project                 LARP mode (⇧tab to cycle)  "

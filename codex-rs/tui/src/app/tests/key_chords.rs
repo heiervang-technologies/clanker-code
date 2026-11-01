@@ -117,7 +117,7 @@ async fn global_chord_keeps_hints_and_completes_before_deadline() -> Result<()> 
         @"
     › Ask Codex to do anything
 
-      ⌃x then · ⌃t open transcript · ⌃u interrupt turn · esc cancel
+      ⌃x then · ⌃t open transcript · ⌃u interrupt turn · esc cancel      LARP mode
     "
     );
 

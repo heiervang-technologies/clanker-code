@@ -1480,8 +1480,10 @@ mod tests {
             lines_to_plain_strings(&committed.transcript_lines(u16::MAX)),
         );
 
-        let context = InlineVisualizationContext::new(&test_cwd(), codex_protocol::ThreadId::new())
-            .expect("visualization context");
+        // The fork's mock cwd is not created on disk; the context canonicalizes its codex home.
+        let context =
+            InlineVisualizationContext::new(&std::env::temp_dir(), codex_protocol::ThreadId::new())
+                .expect("visualization context");
         for (context, definition) in [
             (None, "[ref]: https://example.com\n"),
             (Some(context), "[ref]: https://example.com\n"),

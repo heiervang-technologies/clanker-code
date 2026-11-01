@@ -2,7 +2,7 @@
 source: tui/src/app/tests/new_session_tests.rs
 expression: "normalize_snapshot_paths(render_bottom_popup(&app.chat_widget, 80))"
 ---
-  >_ OpenAI Codex (v0.0.0)
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93)
      /tmp/project
 
 
@@ -13,4 +13,4 @@ expression: "normalize_snapshot_paths(render_bottom_popup(&app.chat_widget, 80))
 
 › $stat
 
-  GPT-5.6-Sol default · /tmp/project
+  GPT-5.6-Sol default · /tmp/project                 LARP mode (⇧tab to cycle)

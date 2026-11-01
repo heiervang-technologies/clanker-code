@@ -137,7 +137,7 @@ impl ChatWidget {
     }
 
     pub(crate) fn as_renderable(&self) -> RenderableItem<'_> {
-        RenderableItem::Owned(Box::new(ChatWidgetSurface { chat_widget: self }))
+        RenderableItem::Owned(Box::new(ChatWidgetSurface::new(self)))
     }
 
     /// Lays out the chat surface for a concrete width so ambient avatar and pet reserves and
@@ -405,36 +405,55 @@ impl ChatWidget {
 }
 
 /// Clanker: the full chat surface, including ANSI avatar and pet overlays drawn over the layout.
+///
+/// The width-specific layout is built once per width and reused, so the `FlexRenderable` child
+/// height cache survives between `desired_height` and `render` exactly like upstream's single
+/// layout object.
 struct ChatWidgetSurface<'a> {
     chat_widget: &'a ChatWidget,
+    layout: std::cell::RefCell<Option<(u16, RenderableItem<'a>)>>,
+}
+
+impl<'a> ChatWidgetSurface<'a> {
+    fn new(chat_widget: &'a ChatWidget) -> Self {
+        Self {
+            chat_widget,
+            layout: std::cell::RefCell::new(None),
+        }
+    }
+
+    fn with_layout<R>(&self, width: u16, f: impl FnOnce(&RenderableItem<'a>) -> R) -> R {
+        let mut layout = self.layout.borrow_mut();
+        let layout = match &mut *layout {
+            Some((cached_width, layout)) if *cached_width == width => layout,
+            slot => {
+                &mut slot
+                    .insert((width, self.chat_widget.as_renderable_for_width(width)))
+                    .1
+            }
+        };
+        f(layout)
+    }
 }
 
 impl Renderable for ChatWidgetSurface<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        self.chat_widget
-            .as_renderable_for_width(area.width)
-            .render(area, buf);
+        self.with_layout(area.width, |layout| layout.render(area, buf));
         self.chat_widget.render_ambient_visual_ansi(area, buf);
         self.chat_widget.render_pet_picker_preview_ansi(buf);
     }
 
     fn desired_height(&self, width: u16) -> u16 {
-        self.chat_widget
-            .as_renderable_for_width(width)
-            .desired_height(width)
+        self.with_layout(width, |layout| layout.desired_height(width))
             .max(self.chat_widget.ambient_visual_min_height(width))
     }
 
     fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
-        self.chat_widget
-            .as_renderable_for_width(area.width)
-            .cursor_pos(area)
+        self.with_layout(area.width, |layout| layout.cursor_pos(area))
     }
 
     fn cursor_style(&self, area: Rect) -> crossterm::cursor::SetCursorStyle {
-        self.chat_widget
-            .as_renderable_for_width(area.width)
-            .cursor_style(area)
+        self.with_layout(area.width, |layout| layout.cursor_style(area))
     }
 }
 

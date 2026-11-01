@@ -7,7 +7,7 @@ expression: normalized_backend_snapshot(terminal.backend())
 "› The composer keeps its full width when the avatar has a   "
 "  vertical band.                                            "
 "                                                            "
-"  gpt-5.6-sol default · /tmp/project             LARP mode  "
+"  GPT-5.6-Sol default · /tmp/project             LARP mode  "
 "                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀"
 "                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀"
 "                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀"

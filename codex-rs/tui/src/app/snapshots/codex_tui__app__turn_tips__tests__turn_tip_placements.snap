@@ -1,6 +1,5 @@
 ---
 source: tui/src/app/turn_tips_tests.rs
-assertion_line: 387
 expression: "crate::chatwidget::tests::helpers::normalize_snapshot_paths(screens.join(\"\\n\\n\"))"
 ---
 working=true, response rows=1, 80x12
@@ -14,7 +13,7 @@ Response row 0
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                                    LARP mode
   ? for shortcuts
 
 working=true, response rows=1, 80x6
@@ -22,7 +21,7 @@ working=true, response rows=1, 80x6
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                                    LARP mode
   ? for shortcuts
 
 working=false, response rows=1, 80x12
@@ -36,7 +35,7 @@ working=false, response rows=1, 80x12
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 working=false, response rows=1, 80x24
@@ -62,7 +61,7 @@ Response row 0
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 Completion tip selected, 80x24
@@ -88,7 +87,7 @@ Response row 0
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 working=false, response rows=30, 80x12
@@ -102,7 +101,7 @@ working=false, response rows=30, 80x12
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 working=false, response rows=1, 80x9
@@ -113,7 +112,7 @@ working=false, response rows=1, 80x9
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 working=false, response rows=1, 80x10
@@ -125,7 +124,7 @@ working=false, response rows=1, 80x10
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 working=false, response rows=1, 80x11
@@ -138,7 +137,7 @@ working=false, response rows=1, 80x11
 
 › Ask Codex to do anything
 
-  gpt-test default · /tmp/project
+  gpt-test default · /tmp/project                    LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 working=false, response rows=1, 12x12
@@ -152,7 +151,7 @@ working=false, response rows=1, 12x12
 
 › Ask Codex
 
-  gpt-test …
+ LARP mode
   ? for shor
 
 working=false, response rows=1, 80x4

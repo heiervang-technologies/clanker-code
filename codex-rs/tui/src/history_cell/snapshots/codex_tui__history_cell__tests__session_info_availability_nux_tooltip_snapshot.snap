@@ -1,10 +1,9 @@
 ---
 source: tui/src/history_cell/tests.rs
-assertion_line: 778
 expression: rendered
 ---
 
-  >_ OpenAI Codex (v0.0.0)
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93)
      /tmp/project
 
   Tip: Model just became available

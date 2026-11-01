@@ -1,15 +1,16 @@
 ---
 source: tui/src/chatwidget/tests/slash_commands.rs
-assertion_line: 2890
 expression: popup
 ---
-  Select Pet
-  Choose a pet to wake in the terminal.
+  Avatar Wheel
+  Previewing: idle
 
-  Type to filter pets...
+   Idle   R   T   W   V   F   P   Ti   Tr
 
-  Disable terminal pets
-  BSOD                                                Loading preview...
+  Type to filter avatars...
+
+  Disable terminal pets                               Loading preview...
+  BSOD
 › Codex
   Dewey
   Fireball
@@ -17,4 +18,4 @@ expression: popup
   Rocky
   Seedy
 ↓
-  enter select · esc back
+  ↑/↓ avatar · ←/→ state · enter select · esc cancel

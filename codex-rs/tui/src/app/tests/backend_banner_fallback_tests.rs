@@ -55,8 +55,11 @@ async fn backend_banner_fallback_updates_task_settings_and_keeps_notice() -> Res
         app.chat_widget
             .set_reasoning_effort(Some(ReasoningEffortConfig::Medium));
         if mode_kind == ModeKind::Plan {
-            app.chat_widget
-                .handle_key_event(KeyEvent::from(KeyCode::BackTab));
+            // Clanker cycles Larp -> LockedIn -> Based -> Cringe -> Ultrachill -> Plan.
+            for _ in 0..5 {
+                app.chat_widget
+                    .handle_key_event(KeyEvent::from(KeyCode::BackTab));
+            }
             app.chat_widget
                 .set_plan_mode_reasoning_effort(Some(ReasoningEffortConfig::High));
         }
@@ -160,7 +163,9 @@ async fn backend_banner_fallback_updates_task_settings_and_keeps_notice() -> Res
             let chat = &mut app.chat_widget;
             chat.handle_key_event(KeyEvent::from(KeyCode::BackTab));
             assert_eq!(chat.active_collaboration_mode_kind(), ModeKind::Default);
-            chat.handle_key_event(KeyEvent::from(KeyCode::BackTab));
+            for _ in 0..5 {
+                chat.handle_key_event(KeyEvent::from(KeyCode::BackTab));
+            }
         }
         app.chat_widget
             .restore_user_message_to_composer(UserMessage::from("continue"));

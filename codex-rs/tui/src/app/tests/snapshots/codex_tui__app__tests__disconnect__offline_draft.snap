@@ -13,4 +13,4 @@ expression: "format!(\"{}\\n{}\",\nlines_to_single_string(&app.transcript_cells.
 
 › keep this draft!
 
-  ⌃c quit
+  ⌃c quit                                            LARP mode (⇧tab to cycle)

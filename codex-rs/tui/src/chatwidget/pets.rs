@@ -116,7 +116,7 @@ impl ChatWidget {
             .as_ref()
             .is_some_and(crate::pets::AmbientPet::ansi_enabled)
         {
-            self.config.tui_pet_side
+            self.local_settings.tui.pet_side
         } else {
             TuiPetSide::FarRight
         }
@@ -237,7 +237,7 @@ impl ChatWidget {
     }
 
     pub(crate) fn set_tui_pet_side(&mut self, side: TuiPetSide) {
-        self.config.tui_pet_side = side;
+        self.local_settings.tui.pet_side = side;
         self.request_redraw();
     }
 

@@ -975,10 +975,11 @@ mod tests {
     fn prepending_spaces_preserves_hyperlink_target_columns() {
         let mut line = HyperlinkLine {
             line: Line::from("go link"),
-            hyperlinks: vec![TerminalHyperlink {
-                columns: 3..7,
-                destination: "https://example.com".to_string(),
-            }],
+            hyperlinks: vec![TerminalHyperlink::web(
+                3..7,
+                "https://example.com".to_string(),
+            )],
+            source: None,
         };
 
         line.prepend_spaces(/*columns*/ 4);
@@ -987,10 +988,11 @@ mod tests {
             line,
             HyperlinkLine {
                 line: Line::from(vec![Span::from("    "), Span::from("go link")]),
-                hyperlinks: vec![TerminalHyperlink {
-                    columns: 7..11,
-                    destination: "https://example.com".to_string(),
-                }],
+                hyperlinks: vec![TerminalHyperlink::web(
+                    7..11,
+                    "https://example.com".to_string(),
+                )],
+                source: None,
             }
         );
     }

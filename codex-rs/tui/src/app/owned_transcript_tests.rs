@@ -1376,9 +1376,17 @@ async fn slash_picker_overlays_history_without_moving_the_transcript_or_composer
             assert_ne!(open, before);
         }
         let composer_start = open.index_of(bottom.x, composer_y);
+        // Clanker always shows the collaboration mode in the footer, and the mode indicator
+        // drops its "(⇧tab to cycle)" hint while a popup owns shift+tab, so only the composer
+        // rows (through the cursor row) must stay pixel-identical.
+        let composer_end = if cursor.y.saturating_add(1) < open.area.bottom() {
+            open.index_of(open.area.x, cursor.y + 1)
+        } else {
+            open.content().len()
+        };
         assert_eq!(
-            &open.content()[composer_start..],
-            &before.content()[composer_start..]
+            &open.content()[composer_start..composer_end],
+            &before.content()[composer_start..composer_end]
         );
         if (width, height) == (80, 14) {
             insta::assert_snapshot!("slash_picker_overlays_history", open_text);

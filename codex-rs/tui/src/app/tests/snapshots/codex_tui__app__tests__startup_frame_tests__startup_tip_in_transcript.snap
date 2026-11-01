@@ -4,7 +4,7 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
 ---
 80 columns
 
-  >_ OpenAI Codex (v0.0.0)
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.10.355.g5c19155cbd93)
      /tmp/project
 
 • Conversation continues here.
@@ -21,12 +21,12 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
 
 › Ask Codex to do anything
 
-  GPT-5.6-Sol default · /tmp/project
+  GPT-5.6-Sol default · /tmp/project                 LARP mode (⇧tab to cycle)
   ? for shortcuts
 
 32 columns
 
-  >_ OpenAI Codex (v0.0.0)
+  >_ Clanker Code (v0.1.0+codex…
      /tmp/project
 
 • Conversation continues here.
@@ -43,5 +43,5 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
 
 › Ask Codex to do anything
 
-  GPT-5.6-Sol default · /tmp/pr…
+  GPT-5.6-Sol defau… LARP mode
   ? for shortcuts

@@ -1,8 +1,7 @@
 ---
 source: tui/src/app/tests.rs
-assertion_line: 5874
 expression: rendered
 ---
 
-  >_ OpenAI Codex (v<VERSION>)
+  >_ Clanker Code (v<VERSION>)
      /tmp/project

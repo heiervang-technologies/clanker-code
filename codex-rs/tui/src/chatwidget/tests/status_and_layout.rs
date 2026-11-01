@@ -2846,7 +2846,7 @@ async fn character_avatar_mode_and_pet_selection_are_independent() {
         Some(&locked)
     );
     assert_eq!(chat.local_settings.tui.pet.as_deref(), Some("ansi-pet"));
-    assert_eq!(chat.config.tui_pet_side, TuiPetSide::FarRight);
+    assert_eq!(chat.local_settings.tui.pet_side, TuiPetSide::FarRight);
 
     chat.set_tui_pet(Some(crate::pets::DISABLED_PET_ID.to_string()));
     assert_eq!(
@@ -2891,7 +2891,7 @@ async fn character_avatar_wins_when_viewport_cannot_fit_companion() {
     assert_eq!(chat.ambient_visual_horizontal_reserves(53), (26, 26));
     assert_eq!(chat.history_wrap_width(53), 1);
     assert_eq!(chat.local_settings.tui.pet.as_deref(), Some("ansi-pet"));
-    assert_eq!(chat.config.tui_pet_side, TuiPetSide::FarRight);
+    assert_eq!(chat.local_settings.tui.pet_side, TuiPetSide::FarRight);
 }
 
 #[tokio::test]
@@ -3061,7 +3061,7 @@ async fn character_avatar_image_failure_degrades_visual_not_identity() {
     );
     assert_eq!(chat.ambient_visual_horizontal_reserves(80), (0, 26));
     assert_eq!(chat.local_settings.tui.pet.as_deref(), Some("ansi-pet"));
-    assert_eq!(chat.config.tui_pet_side, TuiPetSide::FarRight);
+    assert_eq!(chat.local_settings.tui.pet_side, TuiPetSide::FarRight);
 }
 
 #[tokio::test]

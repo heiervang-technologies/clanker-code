@@ -7,7 +7,7 @@ connecting:
 
 › Ask Codex to do anything
 
-  status line stays visible
+  status line stays visible                          LARP mode (⇧tab to cycle)
 
 listening:
  voice ● listening                                      f9 mute     /voice stop
@@ -15,7 +15,7 @@ listening:
 
 › Ask Codex to do anything
 
-  status line stays visible
+  status line stays visible                          LARP mode (⇧tab to cycle)
 
 speaking:
  voice ● speaking                                       f9 mute     /voice stop
@@ -23,7 +23,7 @@ speaking:
 
 › Ask Codex to do anything
 
-  status line stays visible
+  status line stays visible                          LARP mode (⇧tab to cycle)
 
 muted:
  voice ◌ muted                                          f9 unmute   /voice stop
@@ -31,7 +31,7 @@ muted:
 
 › Ask Codex to do anything
 
-  status line stays visible
+  status line stays visible                          LARP mode (⇧tab to cycle)
 
 transcript:
  voice ● speaking                                       f9 mute     /voice stop
@@ -39,7 +39,7 @@ transcript:
 
 › Ask Codex to do anything
 
-  status line stays visible
+  status line stays visible                          LARP mode (⇧tab to cycle)
 
 interrupted:
  voice ● heard                                          f9 mute     /voice stop
@@ -47,4 +47,4 @@ interrupted:
 
 › Ask Codex to do anything
 
-  status line stays visible
+  status line stays visible                          LARP mode (⇧tab to cycle)
