@@ -182,9 +182,7 @@ def save_variant(
         raise ValueError(f"{directory / 'source.png'} must be 24x24")
 
     frames = frames_for(source, variant)
-    strip = Image.new(
-        "RGBA", (FRAME_SIZE * FRAME_COUNT, FRAME_SIZE), TRANSPARENT
-    )
+    strip = Image.new("RGBA", (FRAME_SIZE * FRAME_COUNT, FRAME_SIZE), TRANSPARENT)
     for index, frame in enumerate(frames):
         alpha = frame.getchannel("A").point(lambda value: 255 if value >= 128 else 0)
         frame.putalpha(alpha)

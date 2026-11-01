@@ -48,9 +48,7 @@ class GeneratorTests(unittest.TestCase):
                     (module.FRAME_SIZE * module.FRAME_COUNT, module.FRAME_SIZE),
                 )
 
-            manifest_path = (
-                module.ASSET_ROOT / "chloe-r2-09-locked-in" / "avatar.json"
-            )
+            manifest_path = module.ASSET_ROOT / "chloe-r2-09-locked-in" / "avatar.json"
             manifest = json.loads(manifest_path.read_text())
             frame = manifest["frame"]
             self.assertEqual(

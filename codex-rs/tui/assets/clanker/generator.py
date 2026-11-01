@@ -16,6 +16,7 @@ binary alpha, horizontal strip. 22 frames covering all 9 states:
   20-21 talking       (mouth half-open / open; closed reuses frame 0,
                        cycle [0,20,21,20] — calm pose, the mouth carries it)
 """
+
 from pathlib import Path
 from PIL import Image, ImageDraw
 
@@ -55,41 +56,45 @@ def frame(head_dy=0, antenna="up", eyes="on", arms="rest", mouth="grill", extras
 
     # --- body (static; feet at the floor) -------------------------------
     d.rounded_rectangle([6, 14, 17, 22], radius=2, fill=RUST_D, outline=INKY)
-    d.line([7, 18, 16, 18], fill=OXIDE)                     # chest seam
-    d.point([(11, 16), (12, 16)], fill=BOLT)                # center bolt
+    d.line([7, 18, 16, 18], fill=OXIDE)  # chest seam
+    d.point([(11, 16), (12, 16)], fill=BOLT)  # center bolt
     d.point([(7, 15), (16, 15), (7, 21), (16, 21)], fill=STEEL_D)  # rivets
     if "tap" in extras:
-        d.rectangle([6, 21, 9, 22], fill=(0, 0, 0, 0))      # foot raised
+        d.rectangle([6, 21, 9, 22], fill=(0, 0, 0, 0))  # foot raised
         d.rectangle([6, 20, 9, 21], fill=STEEL_D)
-    d.rectangle([6, 22, 9, 23], fill=STEEL_D)               # feet
+    d.rectangle([6, 22, 9, 23], fill=STEEL_D)  # feet
     d.rectangle([14, 22, 17, 23], fill=STEEL_D)
 
     # --- arms ------------------------------------------------------------
     if arms == "rest":
-        d.rectangle([4, 15, 5, 19], fill=RUST); d.rectangle([18, 15, 19, 19], fill=RUST)
-    elif arms == "a":       # left up, right back
-        d.rectangle([4, 13, 5, 16], fill=RUST); d.rectangle([18, 17, 19, 20], fill=RUST)
-    elif arms == "b":       # right up, left back
-        d.rectangle([4, 17, 5, 20], fill=RUST); d.rectangle([18, 13, 19, 16], fill=RUST)
+        d.rectangle([4, 15, 5, 19], fill=RUST)
+        d.rectangle([18, 15, 19, 19], fill=RUST)
+    elif arms == "a":  # left up, right back
+        d.rectangle([4, 13, 5, 16], fill=RUST)
+        d.rectangle([18, 17, 19, 20], fill=RUST)
+    elif arms == "b":  # right up, left back
+        d.rectangle([4, 17, 5, 20], fill=RUST)
+        d.rectangle([18, 13, 19, 16], fill=RUST)
     elif arms == "slump":
-        d.rectangle([4, 16, 5, 21], fill=RUST); d.rectangle([18, 16, 19, 21], fill=RUST)
+        d.rectangle([4, 16, 5, 21], fill=RUST)
+        d.rectangle([18, 16, 19, 21], fill=RUST)
 
     # --- head -------------------------------------------------------------
     d.rounded_rectangle([5, 3 + hy, 18, 13 + hy], radius=2, fill=RUST, outline=INKY)
-    d.rectangle([6, 11 + hy, 17, 12 + hy], fill=OXIDE)      # jaw shade
+    d.rectangle([6, 11 + hy, 17, 12 + hy], fill=OXIDE)  # jaw shade
     d.point([(6, 4 + hy), (17, 4 + hy), (6, 12 + hy)], fill=STEEL)  # rivets
     # patch plate (welded scar) — top-left, with stitches
     if "patch_ajar" in extras:
-        d.rectangle([6, 5 + hy, 9, 7 + hy], fill=FACE)      # gap behind
+        d.rectangle([6, 5 + hy, 9, 7 + hy], fill=FACE)  # gap behind
         d.rectangle([7, 6 + hy, 10, 8 + hy], fill=PATCH)
     else:
         d.rectangle([6, 5 + hy, 9, 7 + hy], fill=PATCH)
         d.point([(6, 5 + hy), (9, 7 + hy)], fill=STEEL_D)
-    d.point([(18, 12 + hy)], fill=BOLT)                     # the loose bolt
+    d.point([(18, 12 + hy)], fill=BOLT)  # the loose bolt
 
     # --- face band + eyes ---------------------------------------------------
     d.rectangle([7, 6 + hy, 16, 9 + hy], fill=FACE)
-    exl, exr = 8, 14                                        # eye x origins (2x2)
+    exl, exr = 8, 14  # eye x origins (2x2)
     ey = 7 + hy
     if eyes == "on":
         d.rectangle([exl, ey, exl + 1, ey + 1], fill=AMBER)
@@ -129,9 +134,11 @@ def frame(head_dy=0, antenna="up", eyes="on", arms="rest", mouth="grill", extras
 
     # --- antenna ------------------------------------------------------------
     if antenna == "up":
-        d.line([11, 0, 11, 3 + hy], fill=STEEL_D); d.point([(11, 0), (12, 0)], fill=RED)
+        d.line([11, 0, 11, 3 + hy], fill=STEEL_D)
+        d.point([(11, 0), (12, 0)], fill=RED)
     elif antenna == "sway":
-        d.line([11, 3 + hy, 13, 1], fill=STEEL_D); d.point([(13, 0), (14, 0)], fill=RED)
+        d.line([11, 3 + hy, 13, 1], fill=STEEL_D)
+        d.point([(13, 0), (14, 0)], fill=RED)
     elif antenna == "droop":
         d.line([11, 3 + hy, 14, 2 + hy], fill=STEEL_D)
         d.point([(15, 3 + hy)], fill=RED)
@@ -146,20 +153,27 @@ def frame(head_dy=0, antenna="up", eyes="on", arms="rest", mouth="grill", extras
         d.ellipse([13, 5 + hy + dy, 18, 10 + hy + dy], outline=BOLT)
         d.line([18, 10 + hy + dy, 20, 13 + hy + dy], fill=BOLT)
     if "smoke0" in extras:
-        d.point([(8, 1), (9, 1), (8, 0)], fill=SMOKE); d.point([(15, 2)], fill=SMOKE)
+        d.point([(8, 1), (9, 1), (8, 0)], fill=SMOKE)
+        d.point([(15, 2)], fill=SMOKE)
     if "smoke1" in extras:
-        d.point([(9, 0), (10, 1)], fill=SMOKE); d.point([(15, 0), (16, 1)], fill=SMOKE)
+        d.point([(9, 0), (10, 1)], fill=SMOKE)
+        d.point([(15, 0), (16, 1)], fill=SMOKE)
     if any(e.startswith("blueprint") for e in extras):
         stage = int([e for e in extras if e.startswith("blueprint")][0][-1])
         d.rectangle([1, 15, 9, 21], fill=BLUE, outline=BP_LINE)
         d.line([3, 17, 7, 17], fill=BP_LINE)
-        if stage >= 1: d.line([3, 19, 6, 19], fill=BP_LINE)
-        if stage >= 2: d.point([(7, 19), (8, 18)], fill=BP_LINE)
-        d.line([19, 14 + (1 if stage == 1 else 0), 21, 17 + (1 if stage == 1 else 0)], fill=BOLT)  # pencil
+        if stage >= 1:
+            d.line([3, 19, 6, 19], fill=BP_LINE)
+        if stage >= 2:
+            d.point([(7, 19), (8, 18)], fill=BP_LINE)
+        d.line(
+            [19, 14 + (1 if stage == 1 else 0), 21, 17 + (1 if stage == 1 else 0)],
+            fill=BOLT,
+        )  # pencil
     if "coffee" in extras:
         d.rectangle([20, 20, 22, 23], fill=(235, 230, 225))
         d.line([20, 20, 22, 20], fill=COFFEE)
-        d.point([(23, 21)], fill=(235, 230, 225))            # handle
+        d.point([(23, 21)], fill=(235, 230, 225))  # handle
     if "steam0" in extras:
         d.point([(21, 18), (20, 16)], fill=STEAM)
     if "steam1" in extras:
@@ -167,7 +181,8 @@ def frame(head_dy=0, antenna="up", eyes="on", arms="rest", mouth="grill", extras
     if "sweat0" in extras:
         d.point([(19, 5 + hy)], fill=SWEAT)
     if "sweat1" in extras:
-        d.point([(20, 7 + hy)], fill=SWEAT); d.point([(19, 4 + hy)], fill=SWEAT)
+        d.point([(20, 7 + hy)], fill=SWEAT)
+        d.point([(19, 4 + hy)], fill=SWEAT)
 
     return img
 
@@ -196,11 +211,27 @@ FRAMES = [
     frame(eyes="down", head_dy=1, extras=("blueprint1",)),
     frame(eyes="on", extras=("blueprint2",)),
     # tired-idle 16-17
-    frame(eyes="half", antenna="droop", head_dy=1, arms="slump", extras=("coffee", "steam0")),
-    frame(eyes="half", antenna="droop", head_dy=1, arms="slump", extras=("coffee", "steam1")),
+    frame(
+        eyes="half",
+        antenna="droop",
+        head_dy=1,
+        arms="slump",
+        extras=("coffee", "steam0"),
+    ),
+    frame(
+        eyes="half",
+        antenna="droop",
+        head_dy=1,
+        arms="slump",
+        extras=("coffee", "steam1"),
+    ),
     # tired-running 18-19
-    frame(eyes="half", antenna="droop", head_dy=1, arms="a", extras=("sweat0", "lines0")),
-    frame(eyes="half", antenna="droop", head_dy=1, arms="b", extras=("sweat1", "lines1")),
+    frame(
+        eyes="half", antenna="droop", head_dy=1, arms="a", extras=("sweat0", "lines0")
+    ),
+    frame(
+        eyes="half", antenna="droop", head_dy=1, arms="b", extras=("sweat1", "lines1")
+    ),
     # talking 20-21 (closed = frame 0)
     frame(mouth="half"),
     frame(mouth="open"),
