@@ -426,7 +426,7 @@ impl ChatWidget {
         // Inactive-thread prompts must leave the foreground stream and command activity intact.
         self.bottom_pane
             .push_user_verification_request(thread_id, request);
-        self.set_ambient_pet_notification(
+        self.set_ambient_visual_notification(
             crate::pets::PetNotificationKind::Waiting,
             /*body*/ None,
         );

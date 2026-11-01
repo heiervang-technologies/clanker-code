@@ -409,7 +409,8 @@ impl App {
         }
         self.model_catalog = Arc::new(
             ModelCatalog::new(bootstrap.available_models)
-                .with_collaboration_modes(bootstrap.collaboration_modes),
+                .with_collaboration_modes(bootstrap.collaboration_modes)
+                .with_collaboration_mode_overrides(self.config.collaboration_modes.clone()),
         );
         self.pending_app_server_requests.clear();
         // The displayed task was resumed above. Keep offscreen selections pending until those

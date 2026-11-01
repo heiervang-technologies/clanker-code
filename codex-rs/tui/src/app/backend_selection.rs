@@ -95,7 +95,8 @@ impl App {
             self.bind_backend_workspace(destination, prepared.config.cwd.to_path_buf());
             self.model_catalog = Arc::new(
                 ModelCatalog::new(bootstrap.available_models)
-                    .with_collaboration_modes(bootstrap.collaboration_modes),
+                    .with_collaboration_modes(bootstrap.collaboration_modes)
+                    .with_collaboration_mode_overrides(prepared.config.collaboration_modes.clone()),
             );
             self.feedback_audience = bootstrap.feedback_audience;
             self.chat_widget.requires_openai_auth = bootstrap.requires_openai_auth;

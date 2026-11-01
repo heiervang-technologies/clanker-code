@@ -241,6 +241,7 @@ impl App {
         cloud_config_bundle: CloudConfigBundleLoader,
         initial_prompt: Option<String>,
         initial_images: Vec<PathBuf>,
+        avatar_binding: Option<crate::avatars::AvatarBinding>,
         session_selection: SessionSelection,
         feedback: codex_feedback::CodexFeedback,
         is_first_run: bool,
@@ -519,7 +520,8 @@ impl App {
         }
         let model_catalog = Arc::new(
             ModelCatalog::new(available_models.clone())
-                .with_collaboration_modes(bootstrap.collaboration_modes),
+                .with_collaboration_modes(bootstrap.collaboration_modes)
+                .with_collaboration_mode_overrides(config.collaboration_modes.clone()),
         );
         let feedback_audience = bootstrap.feedback_audience;
         let auth_mode = bootstrap.auth_mode;
@@ -639,6 +641,7 @@ impl App {
                     session_telemetry: session_telemetry.clone(),
                 };
                 let mut chat_widget = ChatWidget::new_with_app_event(init);
+                super::bind_character_avatar(&mut chat_widget, avatar_binding.as_ref())?;
                 chat_widget.set_queue_submissions_until_session_configured(
                     /*queue*/ !start_in_agents_overview,
                 );
@@ -792,7 +795,9 @@ impl App {
                         .clone(),
                     session_telemetry: session_telemetry.clone(),
                 };
-                (ChatWidget::new_with_app_event(init), resumed)
+                let mut chat_widget = ChatWidget::new_with_app_event(init);
+                super::bind_character_avatar(&mut chat_widget, avatar_binding.as_ref())?;
+                (chat_widget, resumed)
             }
             SessionSelection::Fork(target_session) => {
                 let explicit_permission_override =
@@ -904,7 +909,9 @@ impl App {
                         .clone(),
                     session_telemetry: session_telemetry.clone(),
                 };
-                (ChatWidget::new_with_app_event(init), forked)
+                let mut chat_widget = ChatWidget::new_with_app_event(init);
+                super::bind_character_avatar(&mut chat_widget, avatar_binding.as_ref())?;
+                (chat_widget, forked)
             }
         };
         let startup_session_cancelled = initial_started_thread.is_none()
@@ -968,6 +975,7 @@ See the Codex keymap documentation for supported actions and examples."
         let agents_overview =
             agents_overview::AgentsOverviewState::new(local_settings.tui.agents_overview_grouping);
         let mut app = Self {
+            avatar_binding,
             feature_write_lock: Arc::default(),
             config_notification_test_generation: 0,
             config_notification_test_pending: None,
@@ -1704,6 +1712,7 @@ See the Codex keymap documentation for supported actions and examples."
         if let Err(err) = backends.shutdown().await {
             tracing::warn!(error = %err, "failed to shut down embedded app server");
         }
+        let clear_avatar_result = tui.clear_ambient_avatar_image();
         let clear_pet_result = tui.clear_ambient_pet_image();
         let clear_images = tui.terminal.clear_frame_images(&mut tui.retained_images);
         let clear_result = clear_images.and(tui.terminal.clear());
@@ -1715,11 +1724,15 @@ See the Codex keymap documentation for supported actions and examples."
         // Keep the alternate screen active until the outer guard restores both keyboard stacks.
         let exit_reason = match exit_reason_result {
             Ok(exit_reason) => {
+                clear_avatar_result?;
                 clear_pet_result?;
                 clear_result?;
                 exit_reason
             }
             Err(err) => {
+                if let Err(clear_avatar_err) = clear_avatar_result {
+                    tracing::warn!(error = %clear_avatar_err, "failed to clear ambient avatar image");
+                }
                 if let Err(clear_pet_err) = clear_pet_result {
                     tracing::warn!(error = %clear_pet_err, "failed to clear ambient pet image");
                 }
