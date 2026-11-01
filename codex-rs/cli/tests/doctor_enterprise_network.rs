@@ -43,6 +43,16 @@ async fn local_provider() -> Result<(MockServer, TempDir)> {
     Ok((server, home))
 }
 
+// clanker-delta: the doctor header reports the pipeline-stamped Clanker Code
+// version, which changes on every upstream sync. Replace only the exact
+// expected value so the snapshot still proves the header uses it.
+fn redact_clanker_version(stdout: &str) -> String {
+    stdout.replace(
+        &format!("Doctor v{}", codex_config::CLANKER_VERSION),
+        "Doctor v<CLANKER_VERSION>",
+    )
+}
+
 fn local_command(home: &TempDir) -> Result<Command> {
     let mut command = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
     command
@@ -220,7 +230,7 @@ async fn network_only_human_output() -> Result<()> {
         .output()?;
     let stdout = String::from_utf8(output.stdout)?;
     assert!(output.status.success(), "{stdout}");
-    insta::assert_snapshot!("network_only_human_output", stdout);
+    insta::assert_snapshot!("network_only_human_output", redact_clanker_version(&stdout));
     Ok(())
 }
 
@@ -243,7 +253,10 @@ async fn network_only_config_failure_human_output() -> Result<()> {
     let file_row = Regex::new(r"(?m)^(      file +).+[\\/]config\.toml$")?;
     assert!(file_row.is_match(&stdout), "{stdout}");
     let stdout = file_row.replace_all(&stdout, "${1}<CODEX_HOME>/config.toml");
-    insta::assert_snapshot!("network_only_config_failure_human_output", stdout);
+    insta::assert_snapshot!(
+        "network_only_config_failure_human_output",
+        redact_clanker_version(&stdout)
+    );
     Ok(())
 }
 

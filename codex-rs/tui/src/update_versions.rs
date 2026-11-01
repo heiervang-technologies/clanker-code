@@ -38,6 +38,14 @@ pub(crate) fn server_version_notice_kind(
     client: &str,
     server: &str,
 ) -> Option<ServerVersionNoticeKind> {
+    // clanker-delta: app servers advertise the upstream workspace package version
+    // in their user agent, while Clanker surfaces display CLANKER_VERSION. Compare
+    // this build against the same identity its own app server would report.
+    let client = if client == crate::version::CODEX_CLI_VERSION {
+        env!("CARGO_PKG_VERSION")
+    } else {
+        client
+    };
     let client = semver::Version::parse(client).ok()?;
     let server = semver::Version::parse(server).ok()?;
     let client_release = (client.major, client.minor, client.patch);
@@ -172,6 +180,21 @@ mod tests {
                 Some(ServerVersionNoticeKind::Different)
             );
             assert_eq!(server_version_notice_kind(client, client), None);
+        }
+    }
+
+    #[test]
+    fn clanker_build_matches_the_version_its_own_app_server_reports() {
+        let client = crate::version::CODEX_CLI_VERSION;
+        assert_eq!(
+            server_version_notice_kind(client, env!("CARGO_PKG_VERSION")),
+            None
+        );
+        if env!("CARGO_PKG_VERSION") == "0.0.0" {
+            assert_eq!(
+                server_version_notice_kind(client, "0.153.0"),
+                Some(ServerVersionNoticeKind::Different)
+            );
         }
     }
 

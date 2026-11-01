@@ -173,8 +173,14 @@ async fn run_cloud_sandbox(args: &[&str], bundle: Value) -> Result<Option<TempDi
         stderr,
     );
     if !nested_macos_sandbox_unavailable {
-        assert!(
-            String::from_utf8(output.stdout)?.starts_with("codex"),
+        // clanker-delta: `--version` prints the Clanker Code product name and version.
+        assert_eq!(
+            String::from_utf8(output.stdout)?,
+            format!(
+                "{} {}\n",
+                codex_config::CLANKER_PRODUCT_NAME,
+                codex_config::CLANKER_VERSION
+            ),
             "expected the sandboxed Codex version command to run",
         );
     }

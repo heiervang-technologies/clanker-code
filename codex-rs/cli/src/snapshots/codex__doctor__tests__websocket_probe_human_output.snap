@@ -3,7 +3,7 @@ source: cli/src/doctor.rs
 expression: rendered
 ---
 successful handshake
-Codex Doctor v0.0.0
+Clanker Code Doctor v0.0.0
 
 Connectivity
   [ok] network      network environment is readable
@@ -22,7 +22,7 @@ Connectivity
 --json redacted report
 
 immediate close
-Codex Doctor v0.0.0
+Clanker Code Doctor v0.0.0
 
 Notes
    [!!] websocket    Responses WebSocket closed immediately after handshake - Check proxy, VPN, firewall, DNS, custom CA, and WebSocket policy support.
@@ -45,7 +45,7 @@ Connectivity
 --json redacted report
 
 stream failure
-Codex Doctor v0.0.0
+Clanker Code Doctor v0.0.0
 
 Notes
    [!!] websocket    Responses WebSocket failed; HTTPS fallback may still work - Check proxy, VPN, firewall, DNS, custom CA, and WebSocket policy support.
