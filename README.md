@@ -32,9 +32,9 @@ This table lists fork-specific documentation only. It is not an exhaustive
 inventory of downstream code changes; those are recorded in the `clanker`
 branch and repository history.
 
-| Change       | Description                                              | Contributed back? |
-| ------------ | -------------------------------------------------------- | :---------------: |
-| HT fork docs | This section, CONTRIBUTING.md with fork management guide |        No         |
+| Change       | Description                                                                                 | Contributed back? |
+| ------------ | ------------------------------------------------------------------------------------------- | :---------------: |
+| HT fork docs | This section, CONTRIBUTING.md with fork management guide                                    |        No         |
 | Chat wire    | `wire_api = "chat"` providers ([docs/config.md](docs/config.md#chat-completions-providers)) |        No         |
 
 ### Branch strategy

@@ -205,8 +205,10 @@ jobs:
             ${{ steps.setup.outputs.cargo-target-dir }}
           key: clanker-linux-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock') }}
           restore-keys: clanker-linux-
+      # codex-voice-host needs GStreamer >= 1.28, which upstream supplies through
+      # Bazel and Ubuntu 24.04 does not ship.
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --exclude codex-voice-host --all-targets --locked -- -D warnings
       - name: Fork crate tests
         run: >-
           cargo nextest run --locked --no-fail-fast
@@ -227,14 +229,7 @@ jobs:
   # --- Gatherer job that you mark as the ONLY required status -----------------
   results:
     name: CI results (required)
-    needs:
-      [
-        changed,
-        general,
-        cargo_shear,
-        argument_comment_lint_package,
-        linux,
-      ]
+    needs: [changed, general, cargo_shear, argument_comment_lint_package, linux]
     if: always()
     runs-on: ubuntu-24.04
     steps:
