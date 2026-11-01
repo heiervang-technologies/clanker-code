@@ -1,4 +1,8 @@
 [env]
+# Clanker: unoptimized test builds of memories/TUI flows nest large futures
+# and overflow the default 2 MiB test-thread stack. Match the 8 MiB stack
+# upstream links into Windows binaries. Only affects processes cargo runs.
+RUST_MIN_STACK = { value = "8388608", force = false }
 # Roughly one arena per four CPUs reduces idle RSS after Linux musl conversations unload.
 JEMALLOC_SYS_WITH_MALLOC_CONF = "narenas_ratio:0.25"
 
