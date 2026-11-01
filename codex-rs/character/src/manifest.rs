@@ -385,8 +385,6 @@ fn mode_key(mode: ModeKind) -> &'static str {
         ModeKind::Based => "based",
         ModeKind::Cringe => "cringe",
         ModeKind::Ultrachill => "ultrachill",
-        ModeKind::PairProgramming => "pair_programming",
-        ModeKind::Execute => "execute",
     }
 }
 

@@ -1,0 +1,65 @@
+---
+source: tui/src/startup_draft_tests.rs
+expression: "snapshots.join(\"\\n---\\n\")"
+---
+empty (48 columns):
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+configured (48 columns):
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     workspace
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+resuming (48 columns):
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+  Resuming session…
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+forking (48 columns):
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+  Forking session…
+
+› draft while loading
+
+
+---
+multiline (48 columns):
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+
+
+› first startup line
+  second startup line
+
+
+---
+narrow (18 columns):
+
+  >_ Clanker Code…
+     loading
+
+
+› first startup
+  line
+  second startup
+  line

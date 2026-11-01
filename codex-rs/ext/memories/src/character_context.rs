@@ -1,6 +1,5 @@
 use codex_character::CharacterCatalog;
 use codex_context_fragments::CharacterMemoryContext;
-use codex_context_fragments::ContextualUserFragment;
 use codex_state::MemorySelectionScope;
 use codex_state::ScopedMemoryRecord;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -63,7 +62,7 @@ source_thread_id UUID once in rollout_ids:\n\
         added += 1;
     }
 
-    (added > 0).then(|| CharacterMemoryContext::new(body).render())
+    (added > 0).then(|| CharacterMemoryContext::new(body).render_text())
 }
 
 async fn validated_artifact_body<'a>(
@@ -177,7 +176,7 @@ fn escaped_episode_body(represented: &str, truncated: bool) -> String {
 }
 
 fn rendered_tokens(body: &str) -> usize {
-    approx_token_count(&CharacterMemoryContext::new(body).render())
+    approx_token_count(&CharacterMemoryContext::new(body).render_text())
 }
 
 fn xml_escape(value: &str) -> String {

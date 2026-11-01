@@ -1,0 +1,69 @@
+---
+source: tui/src/startup_draft_tests.rs
+expression: "snapshots.join(\"\\n---\\n\")"
+---
+resume lookup fallback:
+before:
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+  Resuming session…
+
+› draft while loading
+
+
+after:
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+
+
+› draft while loading
+
+
+---
+fork lookup fallback:
+before:
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+  Forking session…
+
+› draft while loading
+
+
+after:
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+
+
+› draft while loading
+
+
+---
+resume picker cancellation:
+before:
+hidden while picker owns input
+after:
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+fork picker cancellation:
+before:
+hidden while picker owns input
+after:
+
+  >_ Clanker Code (v0.1.0+codex.0.143.0-alpha.1…
+     loading
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts

@@ -4,11 +4,6 @@ on:
   schedule:
     - cron: "30 6 * * *"
   workflow_dispatch:
-    inputs:
-      skip_rebase:
-        description: "Only sync main, skip rebase of clanker"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -25,4 +20,7 @@ jobs:
       upstream_repo: "openai/codex"
       upstream_branch: "main"
       fork_branch: "clanker"
-      skip_rebase: ${{ github.event.inputs.skip_rebase == 'true' }}
+      # clanker integrates upstream by merge (see 2026-11-01 upstream sync), so
+      # it must never be rebased: a rebase would rewrite published history.
+      # This workflow only fast-forwards main; merge main into clanker by PR.
+      skip_rebase: true

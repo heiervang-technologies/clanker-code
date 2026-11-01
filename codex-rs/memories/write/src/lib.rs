@@ -9,14 +9,18 @@ mod extensions;
 mod guard;
 mod metrics;
 mod phase1;
+mod phase1_output;
 mod phase2;
 mod prompts;
+mod rollout_input;
 mod runtime;
 mod scope;
 mod start;
 mod storage;
 pub mod workspace;
+mod workspace_lock;
 
+use codex_protocol::MemoryVersion;
 use codex_state::MemorySelectionScope;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use std::path::Path;
@@ -36,6 +40,7 @@ pub use storage::rollout_summary_file_stem;
 pub use storage::scoped_episode_body;
 pub use storage::sync_rollout_summaries_from_memories;
 pub use storage::sync_rollout_summaries_from_scoped_memories;
+pub use workspace_lock::MemoryWorkspaceLock;
 
 #[cfg(test)]
 mod startup_tests;
@@ -48,7 +53,7 @@ mod artifacts {
 
 mod extension_resources {
     pub(super) const FILENAME_TS_FORMAT: &str = "%Y-%m-%dT%H-%M-%S";
-    pub(super) const RETENTION_DAYS: i64 = 7;
+    pub(super) const RETENTION_DAYS: i64 = 14;
 }
 
 mod guard_limits {
@@ -125,8 +130,22 @@ pub fn memory_root(codex_home: &AbsolutePathBuf) -> AbsolutePathBuf {
     codex_home.join("memories")
 }
 
+/// Returns the legacy (v1) memory root for a selection scope.
 pub fn memory_root_for_scope(
     codex_home: &AbsolutePathBuf,
+    scope: &MemorySelectionScope,
+) -> AbsolutePathBuf {
+    memory_root_for_scope_and_version(codex_home, MemoryVersion::V1, scope)
+}
+
+/// Returns the memory root for a selection scope under a memory version.
+///
+/// Anonymous scopes use the version's isolated directory. Named character
+/// scopes always live in their own character/project workspace, which uses the
+/// v1 artifact format regardless of the configured version.
+pub fn memory_root_for_scope_and_version(
+    codex_home: &AbsolutePathBuf,
+    version: MemoryVersion,
     scope: &MemorySelectionScope,
 ) -> AbsolutePathBuf {
     match scope {
@@ -139,7 +158,7 @@ pub fn memory_root_for_scope(
             .join(clanker_id.as_str())
             .join("projects")
             .join(project_key.artifact_digest()),
-        MemorySelectionScope::Anonymous => memory_root(codex_home),
+        MemorySelectionScope::Anonymous => codex_home.join(version.directory_name()),
     }
 }
 
@@ -156,5 +175,18 @@ pub fn raw_memories_file(root: &Path) -> PathBuf {
 }
 
 pub async fn ensure_layout(root: &Path) -> std::io::Result<()> {
+    tokio::fs::create_dir_all(root).await?;
+    if tokio::fs::symlink_metadata(root)
+        .await?
+        .file_type()
+        .is_symlink()
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("memory root cannot be a symbolic link: {}", root.display()),
+        ));
+    }
+
+    workspace::remove_memory_symlinks(root).await?;
     tokio::fs::create_dir_all(rollout_summaries_dir(root)).await
 }

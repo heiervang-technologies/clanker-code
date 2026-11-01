@@ -1,0 +1,7 @@
+---
+source: tui/src/app/tests/disconnect_tests.rs
+expression: "normalize_snapshot_paths(render_bottom_popup(&app.chat_widget, 80))"
+---
+› startup draft
+
+  gpt-retry high · /tmp/project                      LARP mode (⇧tab to cycle)

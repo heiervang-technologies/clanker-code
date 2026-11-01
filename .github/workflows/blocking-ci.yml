@@ -2,19 +2,19 @@ name: blocking-ci
 
 # This is the single entrypoint for checks that block a PR merge. It also runs
 # after pushes to main so the same check family stays grouped in the Actions UI.
+#
+# Clanker keeps this gate lean: Linux only, no Bazel matrix, no SDK builds.
+# The heavy upstream suites (bazel.yml, sdk.yml, rust-ci-full.yml,
+# v8-canary.yml) remain available through workflow_dispatch.
+# main is a pure upstream mirror and is not validated here.
 on:
   pull_request: {}
   push:
-    branches: [main, clanker]
+    branches: [clanker]
 
 jobs:
   # Keep reusable workflow calls alphabetized. The `required` job below is the
   # version-controlled list that the main-branch ruleset should require.
-  bazel:
-    name: Bazel
-    uses: ./.github/workflows/bazel.yml
-    secrets: inherit
-
   blob-size-policy:
     name: Blob size policy
     uses: ./.github/workflows/blob-size-policy.yml
@@ -40,37 +40,23 @@ jobs:
     uses: ./.github/workflows/rust-ci.yml
     secrets: inherit
 
-  sdk:
-    name: sdk
-    uses: ./.github/workflows/sdk.yml
-    secrets: inherit
-
   required:
     name: CI required
     # Without `always()`, GitHub skips this job after a failed dependency and a
     # required check can appear successful instead of reporting the failure.
     if: ${{ always() }}
     needs:
-      - bazel
       - blob-size-policy
       - cargo-deny
       - codespell
       - repo-checks
       - rust-ci
-      - sdk
     runs-on: ubuntu-24.04
     steps:
-      # Keep the helper on the same revision as the caller and child workflows.
-      # CI workflow uploads are restricted, so this repository does not need a
-      # separate trusted-base checkout for the terminal policy step. Using the
-      # PR head also lets the introducing PR exercise a newly added helper.
-      #
-      # During the initial rollout, PR branches created before
-      # check_ci_results.py exists must rebase onto main before this gate can
-      # run.
+      # Keep the helper on the same combined revision as the child workflows so
+      # the merge gate evaluates the exact candidate they validated.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Require successful dependencies

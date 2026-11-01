@@ -20,10 +20,12 @@
 //! [`ResponseItem`] variant.
 
 use crate::common::ResponsesApiRequest;
+use codex_protocol::models::AudioReference;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::ImageReference;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::plaintext_agent_message_content;
@@ -31,6 +33,7 @@ use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
+use tracing::debug;
 
 /// Name of the single string argument used when exposing a freeform tool as a
 /// Chat Completions function.
@@ -98,7 +101,7 @@ pub(crate) fn build_chat_completions_request(
 ) -> ChatCompletionsRequest {
     let mut tool_names = ChatToolNames::default();
     let mut tools = Vec::new();
-    for tool in request.tools.iter().flatten() {
+    for tool in &responses_tools(request) {
         push_chat_tools(tool, &mut tools, &mut tool_names);
     }
     for item in &request.input {
@@ -106,13 +109,16 @@ pub(crate) fn build_chat_completions_request(
             tools: extra_tools, ..
         } = item
         {
-            for tool in extra_tools {
+            for tool in extra_tools.iter() {
                 push_chat_tools(tool, &mut tools, &mut tool_names);
             }
         }
     }
 
-    let messages = build_messages(&request.instructions, &request.input);
+    // Base instructions arrive as the leading developer (or provider-mapped
+    // `developer_role_name`) message in `input`; `build_messages` folds them
+    // into the single leading system message.
+    let messages = build_messages(&request.input);
 
     let mut body = Map::new();
     body.insert("model".to_string(), json!(request.model));
@@ -176,6 +182,21 @@ pub(crate) fn build_chat_completions_request(
     ChatCompletionsRequest {
         body: Value::Object(body),
         tool_names,
+    }
+}
+
+/// Decodes the serialized Responses tool list. The client stores tools as raw
+/// JSON so it can be forwarded verbatim to the Responses API.
+fn responses_tools(request: &ResponsesApiRequest) -> Vec<Value> {
+    let Some(tools) = request.tools.as_ref() else {
+        return Vec::new();
+    };
+    match serde_json::from_str::<Vec<Value>>(tools.as_raw_value().get()) {
+        Ok(tools) => tools,
+        Err(err) => {
+            debug!("failed to decode Responses tools for chat completions: {err}");
+            Vec::new()
+        }
     }
 }
 
@@ -436,8 +457,13 @@ impl MessageBuilder {
                         FunctionCallOutputContentItem::InputText { text } => {
                             texts.push(text.as_str())
                         }
-                        FunctionCallOutputContentItem::InputImage { image_url, .. } => {
-                            self.pending_tool_images.push(media_part(image_url));
+                        FunctionCallOutputContentItem::InputImage { image, .. } => {
+                            if let Some(part) = image_part(image) {
+                                self.pending_tool_images.push(part);
+                            }
+                        }
+                        FunctionCallOutputContentItem::InputAudio { audio_url } => {
+                            self.pending_tool_images.push(media_part(audio_url));
                         }
                         FunctionCallOutputContentItem::EncryptedContent { .. } => {}
                     }
@@ -472,6 +498,22 @@ fn media_part(url: &str) -> Value {
     json!({"type": "image_url", "image_url": {"url": url}})
 }
 
+/// Chat Completions has no way to reference an uploaded Responses file, so
+/// file-backed media is dropped.
+fn image_part(image: &ImageReference) -> Option<Value> {
+    match image {
+        ImageReference::Inline { image_url } => Some(media_part(image_url)),
+        ImageReference::File { .. } => None,
+    }
+}
+
+fn audio_part(audio: &AudioReference) -> Option<Value> {
+    match audio {
+        AudioReference::Inline { audio_url } => Some(media_part(audio_url)),
+        AudioReference::File { .. } => None,
+    }
+}
+
 fn parse_audio_data_url(url: &str) -> Option<(String, &str)> {
     let rest = url.strip_prefix("data:audio/")?;
     let (mime_params, data) = rest.split_once(',')?;
@@ -488,16 +530,13 @@ fn parse_audio_data_url(url: &str) -> Option<(String, &str)> {
     Some((format.to_string(), data))
 }
 
-fn build_messages(instructions: &str, input: &[ResponseItem]) -> Vec<Value> {
+fn build_messages(input: &[ResponseItem]) -> Vec<Value> {
     let mut builder = MessageBuilder::default();
 
     // Chat templates for many open models only accept a single leading system
     // message, so fold the base instructions and any leading developer/system
     // messages together.
     let mut system_parts = Vec::new();
-    if !instructions.trim().is_empty() {
-        system_parts.push(instructions.to_string());
-    }
     let mut start = 0;
     for item in input {
         match item {
@@ -510,7 +549,9 @@ fn build_messages(instructions: &str, input: &[ResponseItem]) -> Vec<Value> {
                 }
                 start += 1;
             }
-            ResponseItem::AdditionalTools { .. } => start += 1,
+            ResponseItem::AdditionalTools { .. } | ResponseItem::ConfigurationUpdate { .. } => {
+                start += 1
+            }
             _ => break,
         }
     }
@@ -533,15 +574,22 @@ fn build_messages(instructions: &str, input: &[ResponseItem]) -> Vec<Value> {
                     builder.push_message(role, json!(message_text(content)));
                 } else if content
                     .iter()
-                    .any(|part| matches!(part, ContentItem::InputImage { .. }))
+                    .any(|part| {
+                        matches!(
+                            part,
+                            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. }
+                        )
+                    })
                 {
                     let parts = content
                         .iter()
-                        .map(|part| match part {
-                            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
-                                json!({"type": "text", "text": text})
+                        .filter_map(|part| match part {
+                            ContentItem::InputText { text }
+                            | ContentItem::OutputText { text, .. } => {
+                                Some(json!({"type": "text", "text": text}))
                             }
-                            ContentItem::InputImage { image_url, .. } => media_part(image_url),
+                            ContentItem::InputImage { image, .. } => image_part(image),
+                            ContentItem::InputAudio { audio } => audio_part(audio),
                         })
                         .collect::<Vec<_>>();
                     builder.push_message(role, Value::Array(parts));
@@ -600,8 +648,8 @@ fn build_messages(instructions: &str, input: &[ResponseItem]) -> Vec<Value> {
             }
             ResponseItem::FunctionCallOutput {
                 call_id, output, ..
-            }
-            | ResponseItem::CustomToolCallOutput {
+            } => builder.push_tool_output(call_id.as_deref().unwrap_or_default(), output),
+            ResponseItem::CustomToolCallOutput {
                 call_id, output, ..
             } => builder.push_tool_output(call_id, output),
             ResponseItem::AdditionalTools { .. }
@@ -611,6 +659,8 @@ fn build_messages(instructions: &str, input: &[ResponseItem]) -> Vec<Value> {
             | ResponseItem::ImageGenerationCall { .. }
             | ResponseItem::Compaction { .. }
             | ResponseItem::CompactionTrigger { .. }
+            // Backend-interpreted controls with no Chat Completions equivalent.
+            | ResponseItem::ConfigurationUpdate { .. }
             | ResponseItem::ContextCompaction { .. }
             | ResponseItem::Other => {}
         }
@@ -623,10 +673,10 @@ fn message_text(content: &[ContentItem]) -> String {
     content
         .iter()
         .filter_map(|part| match part {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 Some(text.as_str())
             }
-            ContentItem::InputImage { .. } => None,
+            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => None,
         })
         .collect::<Vec<_>>()
         .join("")

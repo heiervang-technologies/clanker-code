@@ -61,10 +61,12 @@ mod tests {
         let provider = ModelProviderInfo {
             name: "Custom".to_string(),
             base_url: None,
+            model_catalog_url: None,
             env_key: Some("sk-should-not-leak".to_string()),
             env_key_instructions: None,
             experimental_bearer_token: None,
             auth: None,
+            gateway_oauth: None,
             aws: None,
             wire_api: WireApi::Responses,
             query_params: None,
@@ -78,6 +80,12 @@ mod tests {
             supports_websockets: false,
             developer_role_name: None,
             extra_body: None,
+            supports_standalone_web_search: false,
+            capabilities: None,
+            project_id: None,
+            location: None,
+            credential_file: None,
+            include_internal_metadata: false,
         };
 
         let telemetry =

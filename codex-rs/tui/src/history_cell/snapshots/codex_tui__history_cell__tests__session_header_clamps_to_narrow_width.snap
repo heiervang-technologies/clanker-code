@@ -1,0 +1,8 @@
+---
+source: tui/src/history_cell/tests.rs
+expression: "render_lines(&lines).join(\"\\n\")"
+---
+
+  >_ Clanker Code (vtest)
+     project
+  permissions: YOLO mode

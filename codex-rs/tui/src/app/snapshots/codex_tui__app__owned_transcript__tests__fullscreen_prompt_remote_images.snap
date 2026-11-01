@@ -1,0 +1,72 @@
+---
+source: tui/src/app/owned_transcript_tests.rs
+expression: "normalize_snapshot_paths(frames.join(\"\\n\\n\"))"
+---
+Draft
+History stays visible
+
+
+
+
+  [Image #1]
+  [Image #2]
+
+› Edit this prompt
+
+  GPT-5.6-Sol default · /tmp/project             LARP mode
+
+
+Up
+History stays visible
+
+
+
+
+  [Image #11]
+  [Image #12]
+
+› Edit this prompt
+
+  GPT-5.6-Sol default · /tmp/project             LARP mode
+
+
+Up
+History stays visible
+
+
+
+
+  [Image #10]
+  [Image #11]
+
+› Edit this prompt
+
+  GPT-5.6-Sol default · /tmp/project             LARP mode
+
+
+Delete
+History stays visible
+
+
+
+
+  [Image #10]
+  [Image #11]
+
+› Edit this prompt
+
+  GPT-5.6-Sol default · /tmp/project             LARP mode
+
+
+Down
+History stays visible
+
+
+
+
+  [Image #1]
+  [Image #2]
+
+› Edit this prompt
+
+  GPT-5.6-Sol default · /tmp/project             LARP mode

@@ -37,6 +37,12 @@ use tokio::io::AsyncReadExt;
 use codex_config::types::History;
 use codex_config::types::HistoryPersistence;
 
+mod batch;
+pub use batch::HistoryBatch;
+pub use batch::HistoryBatchCursor;
+pub use batch::HistoryBatchEntry;
+pub use batch::lookup_batch;
+
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]

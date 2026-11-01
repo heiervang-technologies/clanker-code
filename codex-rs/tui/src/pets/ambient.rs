@@ -278,6 +278,10 @@ impl AmbientPet {
         }
     }
 
+    pub(crate) fn set_animations_enabled(&mut self, enabled: bool) {
+        self.animations_enabled = enabled;
+    }
+
     pub(crate) fn set_talking(&mut self, talking: bool) {
         if self.talking != talking {
             self.talking = talking;
