@@ -63,8 +63,12 @@ pub(crate) fn spawn_chat_stream(
         .await;
     });
     ResponseStream {
+        // Chat Completions providers have no ChatGPT routing pin and no
+        // graceful-interrupt channel, matching the Responses SSE path.
+        routing_affinity: None,
         rx_event,
         upstream_request_id,
+        interrupt: None,
     }
 }
 
@@ -98,7 +102,10 @@ impl ChatStreamState {
     async fn ensure_created(&mut self) {
         if !self.created_sent {
             self.created_sent = true;
-            self.send(ResponseEvent::Created).await;
+            // Chat completion ids are not Responses API response ids, so do not
+            // expose them as a parent response for follow-up requests.
+            self.send(ResponseEvent::Created { response_id: None })
+                .await;
         }
     }
 
@@ -217,14 +224,18 @@ impl ChatStreamState {
             };
             let item = match self.tool_names.resolve(&wire_name) {
                 ChatTool::Function { namespace, name } => ResponseItem::FunctionCall {
+                    encrypted_content: None,
+                    status: None,
                     id: None,
                     name,
                     namespace,
                     arguments,
+                    encrypted_function_args: None,
                     call_id,
                     internal_chat_message_metadata_passthrough: None,
                 },
                 ChatTool::Freeform { name } => ResponseItem::CustomToolCall {
+                    encrypted_content: None,
                     id: None,
                     status: None,
                     call_id,
@@ -253,6 +264,7 @@ impl ChatStreamState {
         self.send(ResponseEvent::Completed {
             response_id,
             token_usage,
+            usage_metadata: None,
             end_turn: None,
         })
         .await;
@@ -422,12 +434,18 @@ fn reasoning_item(id: ResponseItemId, text: String) -> ResponseItem {
 
 fn assistant_message(id: ResponseItemId, text: String) -> ResponseItem {
     ResponseItem::Message {
+        encrypted_content: None,
+        status: None,
         id: Some(id),
         role: "assistant".to_string(),
         content: if text.is_empty() {
             Vec::new()
         } else {
-            vec![ContentItem::OutputText { text }]
+            vec![ContentItem::OutputText {
+                text,
+                annotations: None,
+                logprobs: None,
+            }]
         },
         phase: None,
         internal_chat_message_metadata_passthrough: None,
@@ -476,6 +494,7 @@ fn token_usage_from_chat(usage: &Value) -> TokenUsage {
         output_tokens,
         reasoning_output_tokens: int(usage.pointer("/completion_tokens_details/reasoning_tokens")),
         total_tokens,
+        codex_rollout_budget_units: None,
     }
 }
 

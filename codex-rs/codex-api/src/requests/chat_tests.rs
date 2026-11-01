@@ -4,14 +4,23 @@ use crate::common::TextControls;
 use crate::common::TextFormat;
 use crate::common::TextFormatType;
 use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::ImageReference;
 use codex_protocol::openai_models::ReasoningEffort;
 use pretty_assertions::assert_eq;
+use serde_json::value::RawValue;
+use std::sync::Arc;
 
 fn base_request(input: Vec<ResponseItem>, tools: Option<Vec<Value>>) -> ResponsesApiRequest {
+    // The client sends base instructions as the leading developer message.
+    let mut request_input = vec![text("developer", "You are Clanker.")];
+    request_input.extend(input);
+    let tools = tools.map(|tools| {
+        let raw = RawValue::from_string(Value::Array(tools).to_string()).expect("valid tool JSON");
+        Arc::<RawValue>::from(raw).into()
+    });
     ResponsesApiRequest {
         model: "gemma-4-12b".to_string(),
-        instructions: "You are Clanker.".to_string(),
-        input,
+        input: request_input,
         tools,
         tool_choice: "auto".to_string(),
         parallel_tool_calls: true,
@@ -24,6 +33,7 @@ fn base_request(input: Vec<ResponseItem>, tools: Option<Vec<Value>>) -> Response
         prompt_cache_key: None,
         text: None,
         client_metadata: None,
+        access_programs: None,
     }
 }
 
@@ -55,6 +65,8 @@ fn reasoning(text: &str) -> ResponseItem {
 
 fn message(role: &str, content: Vec<ContentItem>) -> ResponseItem {
     ResponseItem::Message {
+        encrypted_content: None,
+        status: None,
         id: None,
         role: role.to_string(),
         content,
@@ -67,6 +79,8 @@ fn text(role: &str, text: &str) -> ResponseItem {
     let part = if role == "assistant" {
         ContentItem::OutputText {
             text: text.to_string(),
+            annotations: None,
+            logprobs: None,
         }
     } else {
         ContentItem::InputText {
@@ -78,10 +92,13 @@ fn text(role: &str, text: &str) -> ResponseItem {
 
 fn function_call(call_id: &str, name: &str, arguments: &str) -> ResponseItem {
     ResponseItem::FunctionCall {
+        encrypted_content: None,
+        status: None,
         id: None,
         name: name.to_string(),
         namespace: None,
         arguments: arguments.to_string(),
+        encrypted_function_args: None,
         call_id: call_id.to_string(),
         internal_chat_message_metadata_passthrough: None,
     }
@@ -90,7 +107,9 @@ fn function_call(call_id: &str, name: &str, arguments: &str) -> ResponseItem {
 fn function_output(call_id: &str, body: FunctionCallOutputBody) -> ResponseItem {
     ResponseItem::FunctionCallOutput {
         id: None,
-        call_id: call_id.to_string(),
+        call_id: Some(call_id.to_string()),
+        name: None,
+        namespace: None,
         output: FunctionCallOutputPayload {
             body,
             success: Some(true),
@@ -210,6 +229,7 @@ fn builds_conversation_with_tool_round_trip() {
         function_output("call_1", FunctionCallOutputBody::Text("a.txt".to_string())),
         function_output("call_2", FunctionCallOutputBody::Text("/tmp".to_string())),
         ResponseItem::CustomToolCall {
+            encrypted_content: None,
             id: None,
             status: None,
             call_id: "call_3".to_string(),
@@ -282,10 +302,13 @@ fn assistant_text_and_tool_call_share_one_message() {
 #[test]
 fn namespaced_function_calls_are_flattened_in_history() {
     let input = vec![ResponseItem::FunctionCall {
+        encrypted_content: None,
+        status: None,
         id: None,
         name: "search".to_string(),
         namespace: Some("mcp__docs__".to_string()),
         arguments: "{}".to_string(),
+        encrypted_function_args: None,
         call_id: "call_1".to_string(),
         internal_chat_message_metadata_passthrough: None,
     }];
@@ -305,15 +328,21 @@ fn user_images_and_audio_become_media_parts() {
                 text: "What is this?".to_string(),
             },
             ContentItem::InputImage {
-                image_url: "data:image/png;base64,AAAA".to_string(),
+                image: ImageReference::Inline {
+                    image_url: "data:image/png;base64,AAAA".to_string(),
+                },
                 detail: None,
             },
             ContentItem::InputImage {
-                image_url: "data:audio/wav;base64,UklGRg==".to_string(),
+                image: ImageReference::Inline {
+                    image_url: "data:audio/wav;base64,UklGRg==".to_string(),
+                },
                 detail: None,
             },
             ContentItem::InputImage {
-                image_url: "data:audio/mpeg;base64,SUQz".to_string(),
+                image: ImageReference::Inline {
+                    image_url: "data:audio/mpeg;base64,SUQz".to_string(),
+                },
                 detail: None,
             },
         ],
@@ -345,7 +374,9 @@ fn tool_output_images_are_replayed_after_tool_messages() {
                     text: "screenshot".to_string(),
                 },
                 FunctionCallOutputContentItem::InputImage {
-                    image_url: "data:image/png;base64,AAAA".to_string(),
+                    image: ImageReference::Inline {
+                        image_url: "data:image/png;base64,AAAA".to_string(),
+                    },
                     detail: None,
                 },
             ]),
@@ -461,5 +492,39 @@ fn reasoning_from_an_interrupted_turn_is_not_replayed_later() {
     assert_eq!(
         messages[3],
         json!({"role": "assistant", "content": "answer"})
+    );
+}
+
+#[test]
+fn input_audio_is_sent_and_file_images_are_dropped() {
+    let input = vec![message(
+        "user",
+        vec![
+            ContentItem::InputText {
+                text: "Listen".to_string(),
+            },
+            ContentItem::InputAudio {
+                audio: codex_protocol::models::AudioReference::Inline {
+                    audio_url: "data:audio/wav;base64,UklGRg==".to_string(),
+                },
+            },
+            ContentItem::InputImage {
+                image: ImageReference::File {
+                    file_id: "file_1".to_string(),
+                },
+                detail: None,
+            },
+        ],
+    )];
+    let request = build_default(&base_request(input, None));
+    assert_eq!(
+        request.body["messages"][1],
+        json!({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Listen"},
+                {"type": "input_audio", "input_audio": {"data": "UklGRg==", "format": "wav"}}
+            ]
+        })
     );
 }

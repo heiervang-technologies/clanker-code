@@ -66,7 +66,7 @@ async fn streams_reasoning_then_text_and_reports_usage() {
     let events = collect(body, ChatToolNames::default()).await;
     let events: Vec<ResponseEvent> = events.into_iter().map(Result::unwrap).collect();
 
-    assert_matches!(events[0], ResponseEvent::Created);
+    assert_matches!(events[0], ResponseEvent::Created { response_id: None });
     assert_matches!(
         &events[1],
         ResponseEvent::OutputItemAdded(ResponseItem::Reasoning { .. })
@@ -96,7 +96,9 @@ async fn streams_reasoning_then_text_and_reports_usage() {
     assert_eq!(
         content,
         &vec![ContentItem::OutputText {
-            text: "Hi there".to_string()
+            text: "Hi there".to_string(),
+            annotations: None,
+            logprobs: None,
         }]
     );
     let ResponseEvent::Completed {
@@ -117,6 +119,7 @@ async fn streams_reasoning_then_text_and_reports_usage() {
             output_tokens: 5,
             reasoning_output_tokens: 2,
             total_tokens: 15,
+            codex_rollout_budget_units: None,
         })
     );
     assert_eq!(events.len(), 10);
@@ -173,14 +176,18 @@ async fn assembles_streamed_tool_calls_and_maps_tool_kinds() {
         items,
         vec![
             &ResponseItem::FunctionCall {
+                encrypted_content: None,
+                status: None,
                 id: None,
                 name: "shell".to_string(),
                 namespace: None,
                 arguments: "{\"command\":[\"ls\"]}".to_string(),
+                encrypted_function_args: None,
                 call_id: "call_a".to_string(),
                 internal_chat_message_metadata_passthrough: None,
             },
             &ResponseItem::CustomToolCall {
+                encrypted_content: None,
                 id: None,
                 status: None,
                 call_id: "call_b".to_string(),
@@ -190,10 +197,13 @@ async fn assembles_streamed_tool_calls_and_maps_tool_kinds() {
                 internal_chat_message_metadata_passthrough: None,
             },
             &ResponseItem::FunctionCall {
+                encrypted_content: None,
+                status: None,
                 id: None,
                 name: "search".to_string(),
                 namespace: Some("mcp__docs__".to_string()),
                 arguments: "{\"q\":\"x\"}".to_string(),
+                encrypted_function_args: None,
                 call_id: "call_c".to_string(),
                 internal_chat_message_metadata_passthrough: None,
             },
