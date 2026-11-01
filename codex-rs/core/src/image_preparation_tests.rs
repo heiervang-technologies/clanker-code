@@ -691,7 +691,7 @@ async fn audio_data_urls_pass_through_unchanged() {
     };
     let mut items = vec![message(url.clone())];
 
-    prepare_response_items(
+    let metadata = prepare_response_items(
         "image-preparation-thread",
         /*ephemeral*/ false,
         &mut items,
@@ -701,5 +701,19 @@ async fn audio_data_urls_pass_through_unchanged() {
     )
     .await;
 
-    assert_eq!(items, vec![message(url)]);
+    // Audio is neither decoded, resized, uploaded, nor replaced by an error placeholder.
+    // (Upstream's annotated-content round trip may attach generic content-kind metadata to
+    // any message; that is unrelated to image preparation, so only content is compared.)
+    assert!(metadata.is_empty());
+    let [ResponseItem::Message { content, .. }] = items.as_slice() else {
+        panic!("expected a single message, got {items:?}");
+    };
+    let ResponseItem::Message {
+        content: expected_content,
+        ..
+    } = message(url)
+    else {
+        unreachable!();
+    };
+    assert_eq!(content, &expected_content);
 }

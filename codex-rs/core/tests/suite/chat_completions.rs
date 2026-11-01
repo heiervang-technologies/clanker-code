@@ -123,6 +123,8 @@ async fn chat_wire_runs_tool_call_round_trip() -> anyhow::Result<()> {
     let TestCodex { codex, .. } = test_codex()
         .with_config(move |config| {
             config.model_provider = provider;
+            // update_plan is opt-in upstream (openai/codex#41744).
+            config.update_plan_enabled = true;
         })
         .build(&server)
         .await?;
