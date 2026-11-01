@@ -9,9 +9,9 @@
 //! resolving a selected pet id, preparing frames for terminal image protocols,
 //! rendering the ambient sprite and picker preview, and preserving enough
 //! metadata for `/pets` to behave like a first-class configuration surface.
-//! It does not own config persistence or popup orchestration; callers must
-//! ensure a built-in asset exists before loading it and must persist the final
-//! selection only after the load succeeds.
+//! It prepares built-in assets before loading pets, but does not own config
+//! persistence or popup orchestration; callers must persist the final selection
+//! only after the load succeeds.
 
 use std::io::Write;
 
@@ -29,6 +29,10 @@ mod talking_signal;
 
 use anyhow::Context;
 use anyhow::Result;
+use codex_http_client::RouteAwareClientPool;
+use codex_utils_absolute_path::AbsolutePathBuf;
+
+use crate::tui::FrameRequester;
 
 pub(crate) use ambient::AmbientPet;
 pub(crate) use ambient::AmbientPetDraw;
@@ -42,17 +46,21 @@ pub(crate) use asset_pack::builtin_spritesheet_path;
 pub(crate) use asset_pack::ensure_clanker_default;
 #[cfg(test)]
 pub(crate) use asset_pack::write_test_pack;
-#[cfg(test)]
 pub(crate) use image_protocol::ImageProtocol;
-#[cfg(test)]
 pub(crate) use image_protocol::PetImageSupport;
 #[cfg(test)]
 pub(crate) use image_protocol::PetImageUnsupportedReason;
+#[cfg(not(test))]
+pub(crate) use image_protocol::detect_pet_image_support;
+pub(crate) use image_protocol::kitty_delete_image;
+pub(crate) use image_protocol::kitty_transmit_png_file_with_id;
+pub(crate) use image_protocol::kitty_transmit_png_with_id;
 pub(crate) use picker::PET_PICKER_VIEW_ID;
 pub(crate) use picker::PetCycleDirection;
 pub(crate) use picker::adjacent_pet_selector;
 pub(crate) use picker::build_pet_picker_params;
 pub(crate) use preview::PetPickerPreviewState;
+pub(crate) use sixel::encode_rgba;
 pub(crate) use talking_signal::TalkingSignal;
 
 pub(crate) const DEFAULT_PET_ID: &str = "codex";
@@ -95,18 +103,34 @@ pub(crate) fn load_with_clanker_fallback(
 /// Ensure that a selected built-in pet has a locally cached spritesheet.
 ///
 /// Custom pets are intentionally a no-op here because their source of truth is
-/// already local. Callers should invoke this before loading a built-in pet for
-/// preview or selection; skipping it would make first-use preview and
-/// persistence failures depend on deeper image-loading errors instead of the
-/// asset-fetch boundary.
-pub(crate) fn ensure_builtin_pack_for_pet(
+/// already local. Preparing this before loading keeps first-use preview and
+/// persistence failures at the asset-fetch boundary rather than surfacing as
+/// deeper image-loading errors.
+async fn ensure_builtin_pack_for_pet(
     pet_id: &str,
     codex_home: &std::path::Path,
+    http_client: &RouteAwareClientPool,
 ) -> Result<()> {
     if let Some(pet) = catalog::builtin_pet(pet_id) {
-        asset_pack::ensure_builtin_pet(codex_home, pet)?;
+        asset_pack::ensure_builtin_pet(codex_home, pet, http_client).await?;
     }
     Ok(())
+}
+
+/// Prepare a pet's built-in assets and load its synchronous state off the runtime.
+pub(crate) async fn load_pet_with_assets(
+    pet_id: String,
+    codex_home: AbsolutePathBuf,
+    frame_requester: FrameRequester,
+    animations_enabled: bool,
+    http_client: &RouteAwareClientPool,
+) -> Result<AmbientPet> {
+    ensure_builtin_pack_for_pet(&pet_id, &codex_home, http_client).await?;
+    tokio::task::spawn_blocking(move || {
+        load_with_clanker_fallback(&pet_id, &codex_home, frame_requester, animations_enabled)
+    })
+    .await
+    .context("join pet load task")?
 }
 
 #[derive(Debug)]
@@ -429,7 +453,7 @@ mod tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.contains("a=d,d=I,i=49374,q=2;"));
         assert!(output.contains("\x1b[4;3H"));
-        assert!(output.contains("a=T,t=f,f=100,c=4,r=2,q=2,i=49374;"));
+        assert!(output.contains("a=T,t=f,f=100,c=4,r=2,q=2,i=49374,C=1;"));
         assert!(!output.contains("cG5n"));
         assert!(output.contains("\x1b8"));
     }

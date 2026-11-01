@@ -54,7 +54,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Prepare Bazel CI
@@ -73,8 +72,18 @@ jobs:
 
       - name: Check MODULE.bazel.lock is up to date
         if: matrix.os == 'ubuntu-24.04' && matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
         run: ./scripts/check-module-bazel-lock.sh
+
+      - name: Resolve app-server/exec-server compatibility releases
+        if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          releases="$(python3 .github/scripts/resolve_exec_server_releases.py)"
+          echo "CODEX_COMPAT_RELEASES=$releases" >> "$GITHUB_ENV"
 
       - name: bazel test //...
         env:
@@ -87,7 +96,6 @@ jobs:
             # path. V8 consumers under `//codex-rs/...` still participate
             # transitively through `//...`.
             -//third_party/v8:all
-            -//codex-rs/v8-poc:v8-poc-unit-tests
           )
 
           bazel_wrapper_args=(
@@ -152,13 +160,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Test BuildBuddy Bazel wrapper
         if: matrix.shard == 1
         shell: pwsh
         run: python .github/scripts/test_run_bazel_with_buildbuddy.py
+
+      - name: Test Windows Bazel target selector
+        if: matrix.shard == 1
+        shell: pwsh
+        run: python -m unittest discover -s .github/scripts -p test_select_windows_bazel_targets.py
 
       - name: Prepare Bazel CI
         id: prepare_bazel
@@ -180,29 +192,19 @@ jobs:
           set -euo pipefail
 
           bazel_test_query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-          mapfile -t bazel_targets < <(
-            ./.github/scripts/run-bazel-query-ci.sh --output=label -- "${bazel_test_query}" \
-              | LC_ALL=C sort
-          )
+          bazel_targets_file="$(mktemp)"
+          selected_targets_file="$(mktemp)"
+          trap 'rm -f "${bazel_targets_file}" "${selected_targets_file}"' EXIT
 
-          selected_targets=()
-          for bazel_target in "${bazel_targets[@]}"; do
-            target_bucket="$(
-              printf '%s\n' "${bazel_target}" \
-                | cksum \
-                | awk -v shard_count="${BAZEL_TEST_SHARD_COUNT}" '{ print ($1 % shard_count) + 1 }'
-            )"
-            if [[ "${target_bucket}" == "${BAZEL_TEST_SHARD}" ]]; then
-              selected_targets+=("${bazel_target}")
-            fi
-          done
-
-          if [[ ${#selected_targets[@]} -eq 0 ]]; then
-            echo "No Bazel test targets selected for Windows shard ${BAZEL_TEST_SHARD}/${BAZEL_TEST_SHARD_COUNT}." >&2
-            exit 1
-          fi
-
-          echo "Selected ${#selected_targets[@]} of ${#bazel_targets[@]} Bazel test targets for Windows shard ${BAZEL_TEST_SHARD}/${BAZEL_TEST_SHARD_COUNT}."
+          # Keep query and selection in the foreground so failures cannot leave
+          # different jobs assigning different partial target lists.
+          ./.github/scripts/run-bazel-query-ci.sh --output=label -- "${bazel_test_query}" \
+            | LC_ALL=C sort > "${bazel_targets_file}"
+          python .github/scripts/select_windows_bazel_targets.py \
+            --shard "${BAZEL_TEST_SHARD}" \
+            --shard-count "${BAZEL_TEST_SHARD_COUNT}" \
+            < "${bazel_targets_file}" > "${selected_targets_file}"
+          mapfile -t selected_targets < "${selected_targets_file}"
 
           bazel_test_args=(
             test
@@ -256,11 +258,12 @@ jobs:
   test-windows-native-integration:
     # Native Windows Bazel tests are slower and frequently approach the
     # hosted-runner PR budget. Run this only for post-merge commits to an
-    # integration branch and give it the full Bazel timeout.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/clanker')
+    # integration branch and give it the full Bazel timeout. Also allow manual
+    # runs for native toolchain changes.
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/clanker')) || github.event_name == 'workflow_dispatch'
     timeout-minutes: 120
     runs-on: windows-latest
-    name: Bazel test on windows-latest for x86_64-pc-windows-gnullvm (native integration)
+    name: Bazel test on windows-latest for x86_64-pc-windows-msvc (native integration)
     environment:
       name: bazel
       deployment: false
@@ -268,14 +271,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Prepare Bazel CI
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          target: x86_64-pc-windows-gnullvm
+          target: x86_64-pc-windows-msvc
           cache-scope: bazel-${{ github.job }}
 
       - name: bazel test //...
@@ -294,6 +296,8 @@ jobs:
 
           bazel_test_args=(
             test
+            --config=ci-windows-msvc
+            --platforms=//:windows_x86_64_msvc
             --test_tag_filters=-argument-comment-lint
             --test_verbose_timeout_warnings
             --build_metadata=COMMIT_SHA=${GITHUB_SHA}
@@ -303,6 +307,7 @@ jobs:
           ./.github/scripts/run-bazel-ci.sh \
             --print-failed-action-summary \
             --print-failed-test-logs \
+            --windows-msvc-host-platform \
             -- \
             "${bazel_test_args[@]}" \
             -- \
@@ -313,7 +318,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: bazel-execution-logs-test-windows-native-x86_64-pc-windows-gnullvm
+          name: bazel-execution-logs-test-windows-native-x86_64-pc-windows-msvc
           path: ${{ runner.temp }}/bazel-execution-logs
           if-no-files-found: ignore
 
@@ -356,7 +361,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Prepare Bazel CI
@@ -365,6 +369,14 @@ jobs:
         with:
           target: ${{ matrix.target }}
           cache-scope: bazel-${{ github.job }}
+
+      - name: Resolve app-server/exec-server compatibility releases
+        if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          releases="$(python3 .github/scripts/resolve_exec_server_releases.py)"
+          echo "CODEX_COMPAT_RELEASES=$releases" >> "$GITHUB_ENV"
 
       - name: bazel build --config=clippy lint targets
         env:
@@ -453,7 +465,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Prepare Bazel CI
@@ -462,6 +473,14 @@ jobs:
         with:
           target: ${{ matrix.target }}
           cache-scope: bazel-${{ github.job }}
+
+      - name: Resolve app-server/exec-server compatibility releases
+        if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          releases="$(python3 .github/scripts/resolve_exec_server_releases.py)"
+          echo "CODEX_COMPAT_RELEASES=$releases" >> "$GITHUB_ENV"
 
       - name: bazel build verify-release-build targets
         env:

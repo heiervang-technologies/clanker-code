@@ -4,5 +4,6 @@ pub const LOCKED_IN: &str = include_str!("../templates/locked_in.md");
 pub const BASED: &str = include_str!("../templates/based.md");
 pub const CRINGE: &str = include_str!("../templates/cringe.md");
 pub const ULTRACHILL: &str = include_str!("../templates/ultrachill.md");
-pub const EXECUTE: &str = include_str!("../templates/execute.md");
-pub const PAIR_PROGRAMMING: &str = include_str!("../templates/pair_programming.md");
+/// Clanker's default collaboration mode is LARP; upstream consumers that
+/// resolve the bundled "default" mode message receive the LARP template.
+pub const DEFAULT: &str = LARP;

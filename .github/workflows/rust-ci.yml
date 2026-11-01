@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- Detect what changed so the fast PR workflow only runs relevant jobs ----
+  # --- Detect changed paths so the fast PR workflow only runs relevant jobs ---
   changed:
     name: Detect changed areas
     runs-on: ubuntu-24.04
@@ -16,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Detect changed paths (no external action)
@@ -69,7 +68,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-ci
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -95,7 +93,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-ci
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -115,25 +112,24 @@ jobs:
     needs: changed
     if: ${{ needs.changed.outputs.argument_comment_lint_package == 'true' }}
     env:
-      CARGO_DYLINT_VERSION: 5.0.0
-      DYLINT_LINK_VERSION: 5.0.0
+      CARGO_DYLINT_VERSION: 6.1.0
+      DYLINT_LINK_VERSION: 6.1.0
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-ci
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
       - name: Install nightly argument-comment-lint toolchain
         shell: bash
         run: |
-          rustup toolchain install nightly-2025-09-18 \
+          rustup toolchain install nightly-2026-08-20 \
             --profile minimal \
             --component llvm-tools-preview \
             --component rustc-dev \
             --component rust-src \
             --no-self-update
-          rustup default nightly-2025-09-18
+          rustup default nightly-2026-08-20
       - name: Cache cargo-dylint tooling
         id: cargo_dylint_cache
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -157,7 +153,7 @@ jobs:
         run: python3 -m unittest discover -s tools/argument-comment-lint -p 'test_*.py'
       - name: Test argument comment lint package
         working-directory: tools/argument-comment-lint
-        run: cargo test
+        run: bash ./test-with-clippy-compat.sh
         env:
           RUST_MIN_STACK: "8388608" # 8 MiB
 
@@ -165,56 +161,56 @@ jobs:
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
 
-  argument_comment_lint_prebuilt:
-    name: Argument comment lint - ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout_minutes }}
+  # Clanker: one lean Linux job replaces the Bazel-based lint matrix and the
+  # per-platform test suites. It compiles the whole workspace under strict
+  # Clippy and runs unit tests for the crates the fork modifies.
+  linux:
+    name: Linux clippy + fork crate tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     needs: changed
-    environment:
-      name: bazel
-      deployment: false
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux
-            runner: ubuntu-24.04
-            timeout_minutes: 120
-          - name: macOS
-            runner: macos-15
-            timeout_minutes: 120
-          - name: Windows
-            runner: windows-latest
-            timeout_minutes: 120
+    if: ${{ needs.changed.outputs.codex == 'true' || needs.changed.outputs.workflows == 'true' }}
+    defaults:
+      run:
+        working-directory: codex-rs
     steps:
-      - name: Check whether argument comment lint should run
-        id: argument_comment_lint_gate
-        shell: bash
-        env:
-          ARGUMENT_COMMENT_LINT: ${{ needs.changed.outputs.argument_comment_lint }}
-          WORKFLOWS: ${{ needs.changed.outputs.workflows }}
-        run: |
-          if [[ "$ARGUMENT_COMMENT_LINT" == "true" || "$WORKFLOWS" == "true" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "No argument-comment-lint relevant changes."
-          echo "run=false" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ steps.argument_comment_lint_gate.outputs.run == 'true' }}
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Run argument comment lint on codex-rs via Bazel
-        if: ${{ steps.argument_comment_lint_gate.outputs.run == 'true' }}
-        uses: ./.github/actions/run-argument-comment-lint
+      - uses: ./.github/actions/setup-ci
+        id: setup
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
         with:
-          target: ${{ runner.os }}
-          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          tool: nextest
+      - name: Restore Cargo cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ${{ steps.setup.outputs.cargo-target-dir }}
+          key: clanker-linux-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock') }}
+          restore-keys: clanker-linux-
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Fork crate tests
+        run: >-
+          cargo nextest run --locked --no-fail-fast
+          -p codex-character
+          -p codex-tui
+          -p codex-state
+          -p codex-memories-write
+          -p codex-memories-extension
+          -p codex-model-provider-info
+          -p codex-api
+          -p codex-collaboration-mode-templates
+          -p codex-context-fragments
 
       - name: Check for a clean worktree
-        if: always() && !cancelled() && steps.argument_comment_lint_gate.outputs.run == 'true'
+        if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
 
   # --- Gatherer job that you mark as the ONLY required status -----------------
@@ -226,7 +222,7 @@ jobs:
         general,
         cargo_shear,
         argument_comment_lint_package,
-        argument_comment_lint_prebuilt,
+        linux,
       ]
     if: always()
     runs-on: ubuntu-24.04
@@ -235,7 +231,7 @@ jobs:
         shell: bash
         run: |
           echo "argpkg : ${{ needs.argument_comment_lint_package.result }}"
-          echo "arglint: ${{ needs.argument_comment_lint_prebuilt.result }}"
+          echo "linux  : ${{ needs.linux.result }}"
           echo "general: ${{ needs.general.result }}"
           echo "shear  : ${{ needs.cargo_shear.result }}"
 
@@ -250,13 +246,10 @@ jobs:
             [[ '${{ needs.argument_comment_lint_package.result }}' == 'success' ]] || { echo 'argument_comment_lint_package failed'; exit 1; }
           fi
 
-          if [[ "${NEEDS_CHANGED_OUTPUTS_ARGUMENT_COMMENT_LINT}" == 'true' || "${NEEDS_CHANGED_OUTPUTS_WORKFLOWS}" == 'true' ]]; then
-            [[ '${{ needs.argument_comment_lint_prebuilt.result }}' == 'success' ]] || { echo 'argument_comment_lint_prebuilt failed'; exit 1; }
-          fi
-
           if [[ "${NEEDS_CHANGED_OUTPUTS_CODEX}" == 'true' || "${NEEDS_CHANGED_OUTPUTS_WORKFLOWS}" == 'true' ]]; then
             [[ '${{ needs.general.result }}' == 'success' ]] || { echo 'general failed'; exit 1; }
             [[ '${{ needs.cargo_shear.result }}' == 'success' ]] || { echo 'cargo_shear failed'; exit 1; }
+            [[ '${{ needs.linux.result }}' == 'success' ]] || { echo 'linux failed'; exit 1; }
           fi
         env:
           NEEDS_CHANGED_OUTPUTS_ARGUMENT_COMMENT_LINT: ${{ needs.changed.outputs.argument_comment_lint }}

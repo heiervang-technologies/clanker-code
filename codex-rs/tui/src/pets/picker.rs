@@ -162,7 +162,7 @@ pub(crate) fn build_pet_picker_params(
         preserve_side_content_bg: true,
         on_selection_changed,
         on_tab_changed,
-        ..Default::default()
+        ..SelectionViewParams::picker()
     }
 }
 

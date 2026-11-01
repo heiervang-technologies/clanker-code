@@ -11,43 +11,29 @@
     "prettier": "^3.5.3"
   },
   "resolutions": {
-    "@modelcontextprotocol/sdk": "1.26.0",
-    "@babel/core@<=7.29.0": "7.29.6",
-    "@hono/node-server@<2.0.10": "2.0.10",
-    "ajv@<6.14.0": "6.14.0",
-    "ajv@>=7.0.0-alpha.0 <8.18.0": "8.18.0",
-    "body-parser@>=2.0.0 <2.3.0": "2.3.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "braces": "^3.0.3",
-    "brace-expansion@<1.1.16": "5.0.8",
-    "brace-expansion@>=3.0.0 <=5.0.7": "5.0.8",
-    "diff@>=4.0.0 <4.0.4": "4.0.4",
     "esbuild": "0.28.1",
-    "fast-uri": "3.1.4",
+    "fast-uri": "3.1.1",
     "flatted": "3.4.2",
     "glob@10.4.5": "10.5.0",
     "handlebars": "4.7.9",
-    "hono": "4.12.27",
-    "ip-address@<=10.1.0": "10.1.1",
-    "js-yaml@<3.15.0": "3.15.0",
-    "js-yaml@>=4.0.0 <4.3.0": "4.3.0",
+    "hono": "4.12.25",
     "micromatch": "^4.0.8",
     "minimatch@3.1.2": "3.1.4",
     "minimatch@9.0.5": "9.0.7",
     "path-to-regexp": "8.4.0",
     "picomatch@2.3.1": "2.3.2",
     "picomatch@4.0.3": "4.0.4",
-    "postcss@<=8.5.17": "8.5.18",
-    "qs@<=6.15.1": "6.15.2",
     "rollup": "4.59.0",
-    "semver": "^7.7.1",
-    "yaml@>=2.0.0 <2.8.3": "2.8.3"
+    "semver": "^7.7.1"
   },
   "overrides": {
     "punycode": "^2.3.1"
   },
   "engines": {
-    "node": ">=22",
-    "pnpm": ">=10.33.0"
+    "node": ">=24.22.1",
+    "pnpm": ">=10.34.5"
   },
-  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319"
+  "packageManager": "pnpm@10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e"
 }

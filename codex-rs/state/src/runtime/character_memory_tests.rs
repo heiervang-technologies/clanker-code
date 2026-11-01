@@ -16,6 +16,7 @@ use chrono::Utc;
 use codex_character::CharacterCatalog;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
+use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::fs;
@@ -1526,9 +1527,12 @@ async fn pollution_enqueues_snapshot_consumers_and_private_shared_global_visibil
 
 async fn runtime() -> (TempDir, Arc<StateRuntime>) {
     let home = tempfile::tempdir().expect("tempdir");
-    let runtime = StateRuntime::init(home.path().to_path_buf(), "mock_provider".to_string())
-        .await
-        .expect("state runtime should initialize");
+    let runtime = StateRuntime::init(
+        crate::SqliteConfig::new_for_testing(home.path().abs()),
+        "mock_provider".to_string(),
+    )
+    .await
+    .expect("state runtime should initialize");
     (home, runtime)
 }
 

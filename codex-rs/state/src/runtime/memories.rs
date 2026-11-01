@@ -1,3 +1,6 @@
+#[path = "memory_readiness.rs"]
+mod readiness;
+
 use super::threads::ThreadFilterOptions;
 use super::threads::push_thread_filters;
 use super::*;
@@ -20,6 +23,8 @@ use crate::model::Stage1MemoryPayload;
 use crate::model::Stage1Output;
 use crate::model::Stage1StartupClaimParams;
 use crate::model::ThreadRow;
+use crate::sqlite::SqlitePoolWriteExt;
+use crate::sqlite::SqliteWriteQueryExt;
 use chrono::DateTime;
 use chrono::Duration;
 use sqlx::Executor;
@@ -74,7 +79,7 @@ impl MemoryStore {
         &self,
         scope: &MemoryScope,
     ) -> Result<MemoryScopeRegistration, MemoryScopeError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let result = register_memory_scope_in_tx(&mut tx, scope).await?;
         tx.commit().await?;
         Ok(result)
@@ -135,7 +140,7 @@ WHERE thread_id = ?
         .bind(scope.parent_thread_id.map(|id| id.to_string()))
         .bind(citation_path.map(MemoryCitationPath::as_str))
         .bind(thread_id.to_string())
-        .execute(self.pool.as_ref())
+        .execute_with_busy_retry(self.pool.as_ref())
         .await?
         .rows_affected();
         if rows_affected > 0 {
@@ -192,7 +197,7 @@ WHERE thread_id = ?
         if scope.clanker_id.is_none() {
             return Err(MemoryScopeError::AnonymousScope { thread_id });
         }
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let mut affected_scopes =
             affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None)
                 .await?
@@ -455,7 +460,7 @@ LIMIT ? OFFSET ?
         &self,
         thread_id: ThreadId,
     ) -> Result<MemoryResetReceipt, MemoryScopeError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let affected_scopes =
             affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None).await?;
         let removed_outputs = sqlx::query("DELETE FROM stage1_outputs WHERE thread_id = ?")
@@ -491,7 +496,7 @@ LIMIT ? OFFSET ?
         let clanker_id = scope
             .clanker_id
             .ok_or(MemoryScopeError::AnonymousScope { thread_id })?;
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let affected_scopes =
             affected_output_selection_scopes(&mut tx, /*thread_id*/ None, Some(&clanker_id))
                 .await?;
@@ -535,7 +540,7 @@ WHERE kind = ?
                 affected_scopes: Vec::new(),
             });
         }
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let target_count: i64 = sqlx::query_scalar(
             r#"
 SELECT
@@ -600,7 +605,7 @@ SELECT
         }
 
         let now = Utc::now().timestamp();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let mut updated_rows = 0;
 
         for thread_id in thread_ids {
@@ -675,7 +680,6 @@ WHERE kind = ? AND job_key = ?
     /// - starts from `threads` filtered to active threads and allowed sources
     ///   (`push_thread_filters`)
     /// - excludes threads with `memory_mode != 'enabled'`
-    /// - excludes paginated threads because stage 1 still full-loads rollout JSONL
     /// - excludes the current thread id
     /// - keeps only threads whose millisecond `updated_at` is in the age window
     /// - checks memory staleness against the memories DB
@@ -712,11 +716,15 @@ WHERE kind = ? AND job_key = ?
             r#"
 SELECT
     threads.id,
+    threads.attached_thread_parent_id,
     threads.rollout_path,
     threads.created_at_ms AS created_at,
     threads.updated_at_ms AS updated_at,
     threads.recency_at_ms AS recency_at,
     threads.source,
+    threads.originator,
+    threads.creator_user_id,
+    threads.creator_account_id,
     threads.history_mode,
     threads.thread_source,
     threads.agent_path,
@@ -728,12 +736,28 @@ SELECT
     threads.cwd,
     threads.cli_version,
     threads.title,
+    threads.name,
     threads.preview,
     threads.sandbox_policy,
     threads.approval_mode,
     threads.tokens_used,
     threads.first_user_message,
     threads.archived_at,
+    threads.thread_section_id AS section,
+    (
+        SELECT thread_sections.name
+        FROM thread_sections
+        WHERE thread_sections.id = threads.thread_section_id
+    ) AS section_name,
+    (
+        SELECT thread_sections.appearance
+        FROM thread_sections
+        WHERE thread_sections.id = threads.thread_section_id
+    ) AS section_appearance,
+    threads.section_position,
+    threads.section_entered_at_ms,
+    threads.project_id,
+    threads.daybreak_enabled,
     threads.git_sha,
     threads.git_branch,
     threads.git_origin_url
@@ -747,6 +771,8 @@ FROM threads
                 allowed_sources,
                 model_providers: None,
                 cwd_filters: None,
+                section: None,
+                project_id: None,
                 anchor: None,
                 sort_key: SortKey::UpdatedAt,
                 sort_direction: SortDirection::Desc,
@@ -754,7 +780,7 @@ FROM threads
             },
             /*include_thread_id_tiebreaker*/ false,
         );
-        builder.push(" AND threads.memory_mode = 'enabled' AND threads.history_mode = 'legacy'");
+        builder.push(" AND threads.memory_mode = 'enabled'");
         builder
             .push(" AND threads.id != ")
             .push_bind(current_thread_id.as_str());
@@ -815,7 +841,7 @@ FROM threads
     pub(super) async fn delete_thread_memory(&self, thread_id: ThreadId) -> anyhow::Result<()> {
         let now = Utc::now().timestamp();
         let thread_id = thread_id.to_string();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
 
         let affected_scopes = affected_output_selection_scopes(
             &mut tx,
@@ -948,7 +974,7 @@ WHERE thread_id IN (
         )
         .bind(cutoff)
         .bind(limit as i64)
-        .execute(self.pool.as_ref())
+        .execute_with_busy_retry(self.pool.as_ref())
         .await?
         .rows_affected();
 
@@ -1143,11 +1169,15 @@ WHERE so.thread_id = ? AND so.source_updated_at = ?
             r#"
 SELECT
     threads.id,
+    threads.attached_thread_parent_id,
     threads.rollout_path,
     threads.created_at_ms AS created_at,
     threads.updated_at_ms AS updated_at,
     threads.recency_at_ms AS recency_at,
     threads.source,
+    threads.originator,
+    threads.creator_user_id,
+    threads.creator_account_id,
     threads.history_mode,
     threads.thread_source,
     threads.agent_nickname,
@@ -1159,17 +1189,33 @@ SELECT
     threads.cwd,
     threads.cli_version,
     threads.title,
+    threads.name,
     threads.preview,
     threads.sandbox_policy,
     threads.approval_mode,
     threads.tokens_used,
     threads.first_user_message,
     threads.archived_at,
+    threads.thread_section_id AS section,
+    (
+        SELECT thread_sections.name
+        FROM thread_sections
+        WHERE thread_sections.id = threads.thread_section_id
+    ) AS section_name,
+    (
+        SELECT thread_sections.appearance
+        FROM thread_sections
+        WHERE thread_sections.id = threads.thread_section_id
+    ) AS section_appearance,
+    threads.section_position,
+    threads.section_entered_at_ms,
+    threads.project_id,
+    threads.daybreak_enabled,
     threads.git_sha,
     threads.git_branch,
     threads.git_origin_url
 FROM threads
-WHERE threads.id = ? AND threads.memory_mode = 'enabled' AND threads.history_mode = 'legacy'
+WHERE threads.id = ? AND threads.memory_mode = 'enabled'
             "#,
         )
         .bind(thread_id.to_string())
@@ -1188,7 +1234,7 @@ WHERE threads.id = ? AND threads.memory_mode = 'enabled' AND threads.history_mod
     ) -> anyhow::Result<bool> {
         let now = Utc::now().timestamp();
         let thread_id_value = thread_id.to_string();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let mut affected_scopes = snapshot_selection_scopes_for_thread(&mut tx, thread_id).await?;
         affected_scopes.extend(
             affected_output_selection_scopes(&mut tx, Some(thread_id), /*clanker_id*/ None).await?,
@@ -1201,7 +1247,7 @@ WHERE id = ? AND memory_mode != 'polluted'
             "#,
         )
         .bind(thread_id_value.as_str())
-        .execute(self.state_pool.as_ref())
+        .execute_with_busy_retry(self.state_pool.as_ref())
         .await?
         .rows_affected();
         for scope in affected_scopes {
@@ -1243,7 +1289,7 @@ WHERE id = ? AND memory_mode != 'polluted'
         let thread_id = thread_id.to_string();
         let worker_id = worker_id.to_string();
 
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
 
         let existing_output = sqlx::query(
             r#"
@@ -1427,7 +1473,7 @@ WHERE kind = ? AND job_key = ?
         let now = Utc::now().timestamp();
         let thread_id = thread_id.to_string();
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let rows_affected = sqlx::query(
             r#"
 UPDATE jobs
@@ -1499,7 +1545,7 @@ WHERE excluded.source_updated_at >= stage1_outputs.source_updated_at
     ) -> Result<bool, MemoryScopeError> {
         let now = Utc::now().timestamp();
         let thread_id = scope.thread_id.to_string();
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
 
         register_memory_scope_in_tx(&mut tx, scope).await?;
 
@@ -1630,7 +1676,7 @@ WHERE excluded.source_updated_at >= stage1_outputs.source_updated_at
         let now = Utc::now().timestamp();
         let thread_id = thread_id.to_string();
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let rows_affected = sqlx::query(
             r#"
 UPDATE jobs
@@ -1709,7 +1755,7 @@ WHERE thread_id = ?
     ) -> Result<bool, MemoryScopeError> {
         let now = Utc::now().timestamp();
         let thread_id = scope.thread_id.to_string();
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         register_memory_scope_in_tx(&mut tx, scope).await?;
 
         let rows_affected = sqlx::query(
@@ -1801,7 +1847,7 @@ WHERE kind = ? AND job_key = ?
         .bind(JOB_KIND_MEMORY_STAGE1)
         .bind(thread_id.as_str())
         .bind(ownership_token)
-        .execute(self.pool.as_ref())
+        .execute_with_busy_retry(self.pool.as_ref())
         .await?
         .rows_affected();
 
@@ -1816,7 +1862,10 @@ WHERE kind = ? AND job_key = ?
     /// Phase 2 does not use this watermark as a dirty check; git workspace diffing
     /// decides whether consolidation work exists after the lock is claimed.
     pub async fn enqueue_global_consolidation(&self, input_watermark: i64) -> anyhow::Result<()> {
-        enqueue_global_consolidation_with_executor(self.pool.as_ref(), input_watermark).await
+        crate::sqlite::retry_on_busy(|| {
+            enqueue_global_consolidation_with_executor(self.pool.as_ref(), input_watermark)
+        })
+        .await
     }
 
     /// Attempts to claim the global phase-2 consolidation lock.
@@ -1843,7 +1892,7 @@ WHERE kind = ? AND job_key = ?
         let ownership_token = Uuid::new_v4().to_string();
         let worker_id = worker_id.to_string();
 
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
 
         let existing_job = sqlx::query(
             r#"
@@ -2021,7 +2070,7 @@ WHERE kind = ? AND job_key = ?
         .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
         .bind(MEMORY_CONSOLIDATION_JOB_KEY)
         .bind(ownership_token)
-        .execute(self.pool.as_ref())
+        .execute_with_busy_retry(self.pool.as_ref())
         .await?
         .rows_affected();
 
@@ -2081,7 +2130,7 @@ WHERE kind = ? AND job_key = ?
         completed_watermark: i64,
         selected_outputs: &[Stage1Output],
     ) -> anyhow::Result<bool> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let rows_affected = mark_global_phase2_job_succeeded_row(
             &mut tx,
             ownership_token,
@@ -2124,6 +2173,12 @@ WHERE thread_id = ? AND source_updated_at = ?
             .await?;
         }
 
+        sqlx::query(
+            "UPDATE consolidation_progress SET max_thread_count = MAX(max_thread_count, ?)",
+        )
+        .bind(i64::try_from(selected_outputs.len())?)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(true)
     }
@@ -2161,7 +2216,7 @@ WHERE thread_id = ? AND source_updated_at = ?
             unreachable!("anonymous phase-2 completion returned above");
         };
         let scope_key = scope.phase2_key();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let rows_affected = mark_phase2_job_succeeded_row(
             &mut tx,
             JOB_KIND_MEMORY_CONSOLIDATE_SCOPED,
@@ -2236,7 +2291,7 @@ WHERE kind = ? AND job_key = ?
         .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
         .bind(MEMORY_CONSOLIDATION_JOB_KEY)
         .bind(ownership_token)
-        .execute(self.pool.as_ref())
+        .execute_with_busy_retry(self.pool.as_ref())
         .await?
         .rows_affected();
 
@@ -2302,7 +2357,7 @@ WHERE kind = ? AND job_key = ?
         .bind(JOB_KIND_MEMORY_CONSOLIDATE_GLOBAL)
         .bind(MEMORY_CONSOLIDATION_JOB_KEY)
         .bind(ownership_token)
-        .execute(self.pool.as_ref())
+        .execute_with_busy_retry(self.pool.as_ref())
         .await?
         .rows_affected();
 
@@ -2350,7 +2405,7 @@ async fn try_claim_phase2_job(
     let cooldown_cutoff = now.saturating_sub(PHASE2_SUCCESS_COOLDOWN_SECONDS);
     let ownership_token = Uuid::new_v4().to_string();
     let worker_id = worker_id.to_string();
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let mut tx = pool.begin_immediate().await?;
     let existing = sqlx::query(
         "SELECT status, lease_until, retry_at, input_watermark, finished_at, last_error FROM jobs WHERE kind = ? AND job_key = ?",
     )
@@ -2459,7 +2514,7 @@ async fn heartbeat_phase2_job(
     .bind(kind)
     .bind(job_key)
     .bind(ownership_token)
-    .execute(pool)
+    .execute_with_busy_retry(pool)
     .await?
     .rows_affected();
     Ok(rows > 0)
@@ -2530,7 +2585,7 @@ async fn mark_phase2_job_failed(
         .bind(kind)
         .bind(job_key)
         .bind(ownership_token)
-        .execute(pool)
+        .execute_with_busy_retry(pool)
         .await?
         .rows_affected();
     Ok(rows > 0)
@@ -2608,7 +2663,10 @@ WHERE kind = ? AND job_key = ? AND status = 'running'
 }
 
 pub(super) async fn clear_memory_data_in_pool(pool: &SqlitePool) -> anyhow::Result<()> {
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_immediate().await?;
+    sqlx::query("UPDATE consolidation_progress SET max_thread_count = 0")
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query(
         r#"
@@ -3217,6 +3275,7 @@ mod tests {
     use chrono::Utc;
     use codex_protocol::ThreadId;
     use codex_protocol::protocol::ThreadHistoryMode;
+    use codex_utils_absolute_path::test_support::PathExt;
     use pretty_assertions::assert_eq;
     use sqlx::Row;
     use std::sync::Arc;
@@ -3243,9 +3302,12 @@ mod tests {
     #[tokio::test]
     async fn stage1_claim_skips_when_up_to_date() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let metadata = test_thread_metadata(&codex_home, thread_id, codex_home.join("a"));
@@ -3311,9 +3373,12 @@ mod tests {
     #[tokio::test]
     async fn stage1_running_stale_can_be_stolen_but_fresh_running_is_skipped() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -3366,9 +3431,12 @@ mod tests {
     #[tokio::test]
     async fn stage1_concurrent_claim_for_same_thread_is_conflict_safe() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         runtime
@@ -3434,9 +3502,12 @@ mod tests {
     #[tokio::test]
     async fn stage1_concurrent_claims_respect_running_cap() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let thread_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
@@ -3502,9 +3573,12 @@ mod tests {
     #[tokio::test]
     async fn claim_stage1_jobs_filters_by_age_idle_and_current_thread() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let now = Utc::now();
         let fresh_at = now - Duration::hours(1);
@@ -3557,6 +3631,7 @@ mod tests {
         );
         eligible_idle.created_at = eligible_idle_at;
         eligible_idle.updated_at = eligible_idle_at;
+        eligible_idle.attached_thread_parent_id = Some(current_thread_id);
         runtime
             .upsert_thread(&eligible_idle)
             .await
@@ -3592,9 +3667,12 @@ mod tests {
     #[tokio::test]
     async fn claim_stage1_jobs_bounds_state_scan_before_memory_probes() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let now = Utc::now();
         let eligible_newer_at = now - Duration::hours(13);
@@ -3705,11 +3783,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claim_stage1_jobs_skips_threads_without_legacy_enabled_memory() {
+    async fn claim_stage1_jobs_skips_threads_without_enabled_memory() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let now = Utc::now();
         let eligible_at = now - Duration::hours(13);
@@ -3736,6 +3817,7 @@ mod tests {
             test_thread_metadata(&codex_home, disabled_thread_id, codex_home.join("disabled"));
         disabled.created_at = eligible_at;
         disabled.updated_at = eligible_at;
+        disabled.history_mode = ThreadHistoryMode::Paginated;
         runtime
             .upsert_thread(&disabled)
             .await
@@ -3784,8 +3866,17 @@ mod tests {
             .await
             .expect("claim stage1 startup jobs");
 
-        assert_eq!(claims.len(), 1);
-        assert_eq!(claims[0].thread.id, enabled_thread_id);
+        let mut claimed_ids = claims
+            .iter()
+            .map(|claim| claim.thread.id.to_string())
+            .collect::<Vec<_>>();
+        claimed_ids.sort();
+        let mut expected_ids = vec![
+            enabled_thread_id.to_string(),
+            paginated_thread_id.to_string(),
+        ];
+        expected_ids.sort();
+        assert_eq!(claimed_ids, expected_ids);
 
         let _ = tokio::fs::remove_dir_all(codex_home).await;
     }
@@ -3793,9 +3884,12 @@ mod tests {
     #[tokio::test]
     async fn clear_memory_data_clears_rows_and_preserves_thread_memory_modes() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let now = Utc::now() - Duration::hours(13);
         let worker_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("worker id");
@@ -3902,9 +3996,12 @@ mod tests {
     #[tokio::test]
     async fn claim_stage1_jobs_enforces_global_running_cap() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let current_thread_id =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("current thread id");
@@ -4029,9 +4126,12 @@ WHERE kind = 'memory_stage1'
     #[tokio::test]
     async fn claim_stage1_jobs_processes_two_full_batches_across_startup_passes() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let current_thread_id =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("current thread id");
@@ -4116,9 +4216,12 @@ WHERE kind = 'memory_stage1'
     #[tokio::test]
     async fn delete_thread_removes_stage1_output_and_enqueues_phase2_when_selected() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -4241,9 +4344,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn mark_stage1_job_succeeded_no_output_skips_phase2_when_output_was_already_absent() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -4316,9 +4422,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn mark_stage1_job_succeeded_no_output_enqueues_phase2_when_deleting_output() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -4441,9 +4550,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn stage1_retry_exhaustion_does_not_block_newer_watermark() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -4537,9 +4649,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn phase2_global_lock_respects_success_cooldown() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
 
@@ -4599,9 +4714,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn phase2_global_lock_can_be_claimed_after_retry_budget_is_exhausted() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         runtime
             .enqueue_global_consolidation(/*input_watermark*/ 100)
@@ -4669,9 +4787,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn list_stage1_outputs_for_global_returns_latest_outputs() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let thread_id_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
@@ -4772,9 +4893,12 @@ WHERE kind = ? AND job_key = ?
     #[tokio::test]
     async fn list_stage1_outputs_for_global_skips_empty_payloads() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id_non_empty =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
@@ -4839,11 +4963,14 @@ VALUES (?, ?, ?, ?, ?)
     }
 
     #[tokio::test]
-    async fn list_stage1_outputs_for_global_skips_polluted_threads() {
+    async fn list_stage1_outputs_for_global_includes_paginated_and_skips_polluted_threads() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id_enabled =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
@@ -4855,12 +4982,11 @@ VALUES (?, ?, ?, ?, ?)
             (thread_id_enabled, "workspace-enabled"),
             (thread_id_polluted, "workspace-polluted"),
         ] {
+            let mut metadata =
+                test_thread_metadata(&codex_home, thread_id, codex_home.join(workspace));
+            metadata.history_mode = ThreadHistoryMode::Paginated;
             runtime
-                .upsert_thread(&test_thread_metadata(
-                    &codex_home,
-                    thread_id,
-                    codex_home.join(workspace),
-                ))
+                .upsert_thread(&metadata)
                 .await
                 .expect("upsert thread");
 
@@ -4909,9 +5035,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_returns_current_selected_rows() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id_a = stable_thread_id("00000000-0000-4000-8000-000000000001");
         let thread_id_b = stable_thread_id("00000000-0000-4000-8000-000000000002");
@@ -5024,9 +5153,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_excludes_polluted_previous_selection() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id_enabled =
             ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
@@ -5117,9 +5249,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn mark_thread_memory_mode_polluted_enqueues_phase2_for_selected_threads() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -5206,9 +5341,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn mark_thread_memory_mode_polluted_enqueues_phase2_when_already_polluted() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -5301,9 +5439,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_returns_regenerated_selected_rows() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -5420,9 +5561,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_uses_current_ranking_after_refreshes() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id_a = stable_thread_id("00000000-0000-4000-8000-000000000001");
         let thread_id_b = stable_thread_id("00000000-0000-4000-8000-000000000002");
@@ -5563,9 +5707,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn mark_global_phase2_job_succeeded_updates_selected_snapshot_timestamp() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -5713,9 +5860,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn stale_global_phase2_completion_does_not_mark_refreshed_snapshot() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_id = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id");
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -5833,9 +5983,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn record_stage1_output_usage_updates_usage_metadata() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id a");
         let thread_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id b");
@@ -5952,9 +6105,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_prioritizes_usage_count_then_recent_usage() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let now = Utc::now();
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -6048,9 +6204,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_excludes_stale_used_memories_but_keeps_fresh_never_used() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let now = Utc::now();
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
@@ -6144,9 +6303,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn get_phase2_input_selection_prefers_recent_thread_updates_over_recent_generation() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
         let older_thread =
@@ -6230,9 +6392,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn prune_stage1_outputs_for_retention_prunes_stale_unselected_rows_only() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
         let stale_unused =
@@ -6372,9 +6537,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn prune_stage1_outputs_for_retention_respects_batch_limit() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let owner = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner id");
         let thread_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread a");
@@ -6450,9 +6618,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn mark_stage1_job_succeeded_enqueues_global_consolidation() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let thread_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id a");
         let thread_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("thread id b");
@@ -6545,9 +6716,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn phase2_global_lock_allows_only_one_fresh_runner() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         runtime
             .enqueue_global_consolidation(/*input_watermark*/ 200)
@@ -6578,9 +6752,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn phase2_global_lock_creates_missing_job_row() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         let owner_a = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner a");
         let owner_b = ThreadId::from_string(&Uuid::new_v4().to_string()).expect("owner b");
@@ -6628,9 +6805,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn phase2_global_lock_stale_lease_allows_takeover() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         runtime
             .enqueue_global_consolidation(/*input_watermark*/ 300)
@@ -6703,9 +6883,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn enqueue_global_consolidation_keeps_phase2_input_watermark_monotonic() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         runtime
             .enqueue_global_consolidation(/*input_watermark*/ 500)
@@ -6767,9 +6950,12 @@ VALUES (?, ?, ?, ?, ?)
     #[tokio::test]
     async fn phase2_failure_fallback_updates_unowned_running_job() {
         let codex_home = unique_temp_dir();
-        let runtime = StateRuntime::init(codex_home.clone(), "test-provider".to_string())
-            .await
-            .expect("initialize runtime");
+        let runtime = StateRuntime::init(
+            crate::SqliteConfig::new_for_testing(codex_home.as_path().abs()),
+            "test-provider".to_string(),
+        )
+        .await
+        .expect("initialize runtime");
 
         runtime
             .enqueue_global_consolidation(/*input_watermark*/ 400)

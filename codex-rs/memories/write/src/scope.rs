@@ -138,15 +138,19 @@ mod tests {
     use codex_protocol::protocol::SessionSource;
     use codex_state::MemoryScopeRegistration;
     use codex_state::ThreadMetadataBuilder;
+    use codex_utils_absolute_path::test_support::PathExt;
     use tempfile::tempdir;
 
     #[tokio::test]
     async fn existing_anonymous_scope_is_not_adopted_by_later_named_launch() {
         let home = tempdir().unwrap();
         write_character(home.path(), "chloe", &["cleo"]);
-        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
-            .await
-            .unwrap();
+        let runtime = StateRuntime::init(
+            codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+            "mock".to_string(),
+        )
+        .await
+        .unwrap();
         let thread_id = ThreadId::new();
         let canonical_home = home.path().canonicalize().unwrap();
         let persisted_project = canonical_home.join("persisted-project");
@@ -195,9 +199,12 @@ mod tests {
     #[tokio::test]
     async fn existing_scope_wins_before_invalid_launcher_identity_is_decoded_or_resolved() {
         let home = tempdir().unwrap();
-        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
-            .await
-            .unwrap();
+        let runtime = StateRuntime::init(
+            codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+            "mock".to_string(),
+        )
+        .await
+        .unwrap();
         let thread_id = ThreadId::new();
         let canonical_home = home.path().canonicalize().unwrap();
         let persisted_project = canonical_home.join("persisted-project");
@@ -268,7 +275,9 @@ mod tests {
         write_character(home.path(), "chloe", &["cleo"]);
         for (offset, rejected) in ["Chloe", "cleo", "missing"].into_iter().enumerate() {
             let runtime = StateRuntime::init(
-                home.path().join(format!("state-{offset}")),
+                codex_state::SqliteConfig::new_for_testing(
+                    home.path().join(format!("state-{offset}")).abs(),
+                ),
                 "mock".to_string(),
             )
             .await
@@ -307,9 +316,12 @@ mod tests {
         let home = tempdir().unwrap();
         let project = tempdir().unwrap();
         let project_path = project.path().canonicalize().unwrap();
-        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
-            .await
-            .unwrap();
+        let runtime = StateRuntime::init(
+            codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+            "mock".to_string(),
+        )
+        .await
+        .unwrap();
         let thread_id = ThreadId::new();
         let parent_thread_id = ThreadId::new();
 
@@ -348,9 +360,12 @@ mod tests {
         let home = tempdir().unwrap();
         let project = tempdir().unwrap();
         let effective_cwd = project.path().canonicalize().unwrap();
-        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
-            .await
-            .unwrap();
+        let runtime = StateRuntime::init(
+            codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+            "mock".to_string(),
+        )
+        .await
+        .unwrap();
         let thread_id = ThreadId::new();
         let stale_cwd = home
             .path()
@@ -383,9 +398,12 @@ mod tests {
     #[tokio::test]
     async fn historical_claim_uses_only_its_persisted_origin_and_stays_anonymous() {
         let home = tempdir().unwrap();
-        let runtime = StateRuntime::init(home.path().to_path_buf(), "mock".to_string())
-            .await
-            .unwrap();
+        let runtime = StateRuntime::init(
+            codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+            "mock".to_string(),
+        )
+        .await
+        .unwrap();
         let thread_id = ThreadId::new();
         let thread = seed_thread(
             &runtime,

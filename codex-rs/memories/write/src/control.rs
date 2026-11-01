@@ -1,11 +1,13 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use codex_protocol::MemoryVersion;
 use codex_state::MemorySelectionScope;
 
 pub async fn clear_memory_roots_contents(codex_home: &Path) -> std::io::Result<()> {
     clear_authorized_roots([
         codex_home.join("memories"),
+        codex_home.join("memories_v2"),
         codex_home.join("character_memories"),
         codex_home.join("memories_extensions"),
     ])
@@ -18,17 +20,23 @@ pub async fn clear_memory_selection_scopes(
 ) -> std::io::Result<()> {
     let roots = scopes
         .iter()
-        .map(|scope| match scope {
+        .flat_map(|scope| match scope {
             MemorySelectionScope::Named {
                 clanker_id,
                 project_key,
-            } => codex_home
-                .join("character_memories")
-                .join("characters")
-                .join(clanker_id.as_str())
-                .join("projects")
-                .join(project_key.artifact_digest()),
-            MemorySelectionScope::Anonymous => codex_home.join("memories"),
+            } => vec![
+                codex_home
+                    .join("character_memories")
+                    .join("characters")
+                    .join(clanker_id.as_str())
+                    .join("projects")
+                    .join(project_key.artifact_digest()),
+            ],
+            // Anonymous memory exists once per memory version; reset covers all of them.
+            MemorySelectionScope::Anonymous => vec![
+                codex_home.join(MemoryVersion::V1.directory_name()),
+                codex_home.join(MemoryVersion::V2.directory_name()),
+            ],
         })
         .collect::<std::collections::BTreeSet<_>>();
     let mut failures = Vec::new();
@@ -103,7 +111,7 @@ pub(crate) async fn clear_memory_root_contents(memory_root: &Path) -> std::io::R
             ));
         }
         Ok(_) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(err) => return Err(err),
     }
 

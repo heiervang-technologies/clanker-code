@@ -10,9 +10,10 @@ use codex_app_server_protocol::McpToolCallStatus;
 use codex_app_server_protocol::PatchApplyStatus;
 use codex_app_server_protocol::PatchChangeKind;
 use codex_app_server_protocol::ServerNotification;
-use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadItemPayload;
 use codex_app_server_protocol::ThreadTokenUsage;
 use codex_app_server_protocol::TurnStatus;
+use codex_app_server_protocol::WebSearchAction as ApiWebSearchAction;
 use codex_core::config::Config;
 use codex_protocol::models::WebSearchAction;
 use codex_protocol::protocol::SessionConfiguredEvent;
@@ -140,15 +141,15 @@ impl EventProcessorWithJsonOutput {
     }
 
     fn map_item_with_id(
-        item: ThreadItem,
+        item: ThreadItemPayload,
         make_id: impl FnOnce() -> String,
     ) -> Option<ExecThreadItem> {
         match item {
-            ThreadItem::AgentMessage { text, .. } => Some(ExecThreadItem {
+            ThreadItemPayload::AgentMessage { text, .. } => Some(ExecThreadItem {
                 id: make_id(),
                 details: ThreadItemDetails::AgentMessage(AgentMessageItem { text }),
             }),
-            ThreadItem::Reasoning { summary, .. } => {
+            ThreadItemPayload::Reasoning { summary, .. } => {
                 let text = summary.join("\n");
                 if text.trim().is_empty() {
                     return None;
@@ -158,7 +159,7 @@ impl EventProcessorWithJsonOutput {
                     details: ThreadItemDetails::Reasoning(ReasoningItem { text }),
                 })
             }
-            ThreadItem::CommandExecution {
+            ThreadItemPayload::CommandExecution {
                 command,
                 aggregated_output,
                 exit_code,
@@ -178,7 +179,7 @@ impl EventProcessorWithJsonOutput {
                     },
                 }),
             }),
-            ThreadItem::FileChange {
+            ThreadItemPayload::FileChange {
                 changes, status, ..
             } => Some(ExecThreadItem {
                 id: make_id(),
@@ -203,7 +204,7 @@ impl EventProcessorWithJsonOutput {
                     },
                 }),
             }),
-            ThreadItem::McpToolCall {
+            ThreadItemPayload::McpToolCall {
                 server,
                 tool,
                 status,
@@ -232,7 +233,7 @@ impl EventProcessorWithJsonOutput {
                     }),
                 }),
             }),
-            ThreadItem::CollabAgentToolCall {
+            ThreadItemPayload::CollabAgentToolCall {
                 tool,
                 sender_thread_id,
                 receiver_thread_ids,
@@ -244,6 +245,10 @@ impl EventProcessorWithJsonOutput {
                 id: make_id(),
                 details: ThreadItemDetails::CollabToolCall(CollabToolCallItem {
                     tool: match tool {
+                        CollabAgentTool::SendMessage
+                        | CollabAgentTool::FollowupTask
+                        | CollabAgentTool::InterruptAgent
+                        | CollabAgentTool::ListAgents => return None,
                         CollabAgentTool::SpawnAgent => CollabTool::SpawnAgent,
                         CollabAgentTool::SendInput => CollabTool::SendInput,
                         CollabAgentTool::ResumeAgent => CollabTool::Wait,
@@ -291,21 +296,28 @@ impl EventProcessorWithJsonOutput {
                         CollabAgentToolCallStatus::InProgress => CollabToolCallStatus::InProgress,
                         CollabAgentToolCallStatus::Completed => CollabToolCallStatus::Completed,
                         CollabAgentToolCallStatus::Failed => CollabToolCallStatus::Failed,
+                        CollabAgentToolCallStatus::Interrupted => return None,
                     },
                 }),
             }),
-            ThreadItem::WebSearch(item) => Some(ExecThreadItem {
+            ThreadItemPayload::WebSearch(item) => Some(ExecThreadItem {
                 id: make_id(),
                 details: ThreadItemDetails::WebSearch(WebSearchItem {
                     id: item.id,
                     query: item.query,
                     action: match item.action {
-                        Some(action) => serde_json::from_value(
-                            serde_json::to_value(action).unwrap_or_else(|_| json!("other")),
-                        )
-                        .unwrap_or(WebSearchAction::Other),
-                        None => WebSearchAction::Other,
+                        Some(ApiWebSearchAction::Search { query, queries }) => {
+                            WebSearchAction::Search { query, queries }
+                        }
+                        Some(ApiWebSearchAction::OpenPage { url }) => {
+                            WebSearchAction::OpenPage { url }
+                        }
+                        Some(ApiWebSearchAction::FindInPage { url, pattern }) => {
+                            WebSearchAction::FindInPage { url, pattern }
+                        }
+                        Some(ApiWebSearchAction::Other) | None => WebSearchAction::Other,
                     },
+                    results: item.results,
                 }),
             }),
             _ => None,
@@ -328,9 +340,9 @@ impl EventProcessorWithJsonOutput {
             .unwrap_or_else(|| self.next_item_id())
     }
 
-    fn map_started_item(&mut self, item: ThreadItem) -> Option<ExecThreadItem> {
+    fn map_started_item(&mut self, item: ThreadItemPayload) -> Option<ExecThreadItem> {
         match item {
-            ThreadItem::AgentMessage { .. } | ThreadItem::Reasoning { .. } => None,
+            ThreadItemPayload::AgentMessage { .. } | ThreadItemPayload::Reasoning { .. } => None,
             other => {
                 let raw_id = other.id().to_string();
                 Self::map_item_with_id(other, || self.started_item_id(&raw_id))
@@ -338,14 +350,14 @@ impl EventProcessorWithJsonOutput {
         }
     }
 
-    fn map_completed_item_mut(&mut self, item: ThreadItem) -> Option<ExecThreadItem> {
-        if let ThreadItem::Reasoning { summary, .. } = &item
+    fn map_completed_item_mut(&mut self, item: ThreadItemPayload) -> Option<ExecThreadItem> {
+        if let ThreadItemPayload::Reasoning { summary, .. } = &item
             && summary.join("\n").trim().is_empty()
         {
             return None;
         }
         match &item {
-            ThreadItem::AgentMessage { .. } | ThreadItem::Reasoning { .. } => {
+            ThreadItemPayload::AgentMessage { .. } | ThreadItemPayload::Reasoning { .. } => {
                 Self::map_item_with_id(item, || self.next_item_id())
             }
             other => {
@@ -357,7 +369,7 @@ impl EventProcessorWithJsonOutput {
 
     fn reconcile_unfinished_started_items(
         &mut self,
-        turn_items: &[ThreadItem],
+        turn_items: &[codex_app_server_protocol::ThreadItem],
     ) -> Vec<ThreadEvent> {
         turn_items
             .iter()
@@ -366,23 +378,25 @@ impl EventProcessorWithJsonOutput {
                 if !self.raw_to_exec_item_id.contains_key(&raw_id) {
                     return None;
                 }
-                self.map_completed_item_mut(item.clone())
+                self.map_completed_item_mut(item.payload.clone())
                     .map(|item| ThreadEvent::ItemCompleted(ItemCompletedEvent { item }))
             })
             .collect()
     }
 
-    fn final_message_from_turn_items(items: &[ThreadItem]) -> Option<String> {
+    fn final_message_from_turn_items(
+        items: &[impl std::borrow::Borrow<ThreadItemPayload>],
+    ) -> Option<String> {
         items
             .iter()
             .rev()
-            .find_map(|item| match item {
-                ThreadItem::AgentMessage { text, .. } => Some(text.clone()),
+            .find_map(|item| match item.borrow() {
+                ThreadItemPayload::AgentMessage { text, .. } => Some(text.clone()),
                 _ => None,
             })
             .or_else(|| {
-                items.iter().rev().find_map(|item| match item {
-                    ThreadItem::Plan { text, .. } => Some(text.clone()),
+                items.iter().rev().find_map(|item| match item.borrow() {
+                    ThreadItemPayload::Plan { text, .. } => Some(text.clone()),
                     _ => None,
                 })
             })
@@ -463,13 +477,13 @@ impl EventProcessorWithJsonOutput {
                 CodexStatus::Running
             }
             ServerNotification::ItemStarted(notification) => {
-                if let Some(item) = self.map_started_item(notification.item) {
+                if let Some(item) = self.map_started_item(notification.item.payload) {
                     events.push(ThreadEvent::ItemStarted(ItemStartedEvent { item }));
                 }
                 CodexStatus::Running
             }
             ServerNotification::ItemCompleted(notification) => {
-                if let Some(item) = self.map_completed_item_mut(notification.item) {
+                if let Some(item) = self.map_completed_item_mut(notification.item.payload) {
                     if let ThreadItemDetails::AgentMessage(AgentMessageItem { text }) =
                         &item.details
                     {

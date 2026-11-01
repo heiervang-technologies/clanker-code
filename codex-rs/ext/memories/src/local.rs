@@ -3,6 +3,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use codex_protocol::MemoryVersion;
 use codex_protocol::ThreadId;
 use codex_state::MemorySelectionScope;
 use codex_state::StateRuntime;
@@ -33,6 +34,7 @@ pub(crate) struct LocalMemoriesBackend {
 #[derive(Clone)]
 pub(crate) struct ScopedLocalMemoriesBackend {
     codex_home: AbsolutePathBuf,
+    version: MemoryVersion,
     state_db: Option<Arc<StateRuntime>>,
     thread_id: ThreadId,
 }
@@ -40,11 +42,13 @@ pub(crate) struct ScopedLocalMemoriesBackend {
 impl ScopedLocalMemoriesBackend {
     pub(crate) fn new(
         codex_home: AbsolutePathBuf,
+        version: MemoryVersion,
         state_db: Option<Arc<StateRuntime>>,
         thread_id: ThreadId,
     ) -> Self {
         Self {
             codex_home,
+            version,
             state_db,
             thread_id,
         }
@@ -61,7 +65,11 @@ impl ScopedLocalMemoriesBackend {
                 .unwrap_or(MemorySelectionScope::Anonymous),
             None => MemorySelectionScope::Anonymous,
         };
-        let root = codex_memories_write::memory_root_for_scope(&self.codex_home, &selection_scope);
+        let root = codex_memories_write::memory_root_for_scope_and_version(
+            &self.codex_home,
+            self.version,
+            &selection_scope,
+        );
         Ok(LocalMemoriesBackend::from_memory_root(root))
     }
 }
@@ -73,10 +81,6 @@ fn memory_scope_error(error: codex_state::MemoryScopeError) -> MemoriesBackendEr
 }
 
 impl LocalMemoriesBackend {
-    pub(crate) fn from_codex_home(codex_home: &AbsolutePathBuf) -> Self {
-        Self::from_memory_root(codex_home.join("memories").to_path_buf())
-    }
-
     pub(crate) fn from_memory_root(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }

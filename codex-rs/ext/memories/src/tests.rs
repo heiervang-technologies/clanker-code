@@ -7,10 +7,12 @@ use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::NoopTurnItemEmitter;
 use codex_extension_api::PromptSlot;
 use codex_extension_api::ToolCall;
+use codex_extension_api::ToolCallSource;
 use codex_extension_api::ToolContributor;
 use codex_extension_api::ToolExecutor;
 use codex_extension_api::ToolName;
 use codex_extension_api::ToolPayload;
+use codex_protocol::models::ContentItem;
 use codex_tools::ToolOutput;
 use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::PathExt;
@@ -19,7 +21,13 @@ use codex_utils_output_truncation::TruncationPolicy;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
+use crate::backend::ListMemoriesRequest;
+use crate::backend::ListMemoriesResponse;
 use crate::backend::MemoriesBackend;
+use crate::backend::MemoryEntry;
+use crate::backend::MemoryEntryType;
+use crate::backend::SearchMatchMode;
+use crate::backend::SearchMemoriesRequest;
 use crate::extension::MemoriesExtension;
 use crate::extension::MemoriesExtensionConfig;
 use crate::local::LocalMemoriesBackend;
@@ -53,7 +61,7 @@ fn tools_are_not_contributed_without_thread_config() {
         extension
             .tools(
                 &ExtensionData::new("session"),
-                &ExtensionData::new("thread")
+                &ExtensionData::new("thread"),
             )
             .is_empty()
     );
@@ -64,6 +72,7 @@ fn tools_are_not_contributed_when_disabled() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: false,
         dedicated_tools: true,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
@@ -81,6 +90,7 @@ fn tools_are_not_contributed_when_dedicated_tools_disabled() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: true,
         dedicated_tools: false,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
@@ -98,6 +108,7 @@ fn tools_are_contributed_when_enabled_with_dedicated_tools() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: true,
         dedicated_tools: true,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
@@ -131,6 +142,7 @@ fn install_registers_dedicated_tool_contributor() {
     let registry = builder.build();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: true,
         dedicated_tools: true,
         codex_home: test_path_buf("/tmp/codex-home").abs(),
@@ -191,6 +203,7 @@ async fn prompt_contribution_uses_memory_summary_when_enabled() {
     let extension = MemoriesExtension::default();
     let thread_store = ExtensionData::new("thread");
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: true,
         dedicated_tools: false,
         codex_home: tempdir.path().abs(),
@@ -202,20 +215,23 @@ async fn prompt_contribution_uses_memory_summary_when_enabled() {
 
     assert_eq!(fragments.len(), 1);
     assert_eq!(fragments[0].slot(), PromptSlot::DeveloperPolicy);
-    assert!(
-        fragments[0]
-            .text()
-            .contains("Remember repository-specific implementation preferences.")
-    );
+    assert!(matches!(
+        fragments[0].content(),
+        ContentItem::InputText { text }
+            if text.contains("Remember repository-specific implementation preferences.")
+    ));
 }
 
 #[tokio::test]
 async fn named_prompt_uses_db_selected_character_context_without_anonymous_summary() {
     let home = tempfile::tempdir().unwrap();
     write_character(home.path(), "chloe", "Chloe");
-    let state_db = codex_state::StateRuntime::init(home.path().to_path_buf(), "test".to_string())
-        .await
-        .unwrap();
+    let state_db = codex_state::StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+        "test".to_string(),
+    )
+    .await
+    .unwrap();
     let project = MemoryProjectKey::from_git_origin("git@github.com:example/project.git").unwrap();
     let current_thread = test_thread_id(20);
     let source_thread = test_thread_id(21);
@@ -271,6 +287,7 @@ async fn named_prompt_uses_db_selected_character_context_without_anonymous_summa
     let extension = MemoriesExtension::new(None, Some(Arc::clone(&state_db)));
     let thread_store = ExtensionData::new(current_thread.to_string());
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: true,
         dedicated_tools: false,
         codex_home: home.path().abs(),
@@ -280,15 +297,12 @@ async fn named_prompt_uses_db_selected_character_context_without_anonymous_summa
         .await;
 
     assert_eq!(fragments.len(), 1);
-    assert_eq!(fragments[0].slot(), PromptSlot::ContextualUser);
-    assert!(fragments[0].text().contains("<character_memory_context>"));
-    assert!(fragments[0].text().contains("display_name=\"Chloe\""));
-    assert!(fragments[0].text().contains("named-context-only"));
-    assert!(
-        !fragments[0]
-            .text()
-            .contains("anonymous-context-must-not-leak")
-    );
+    assert_eq!(fragments[0].slot(), PromptSlot::ContextWindow);
+    let named_text = fragment_text(&fragments[0]);
+    assert!(named_text.contains("<character_memory_context>"));
+    assert!(named_text.contains("display_name=\"Chloe\""));
+    assert!(named_text.contains("named-context-only"));
+    assert!(!named_text.contains("anonymous-context-must-not-leak"));
     let selected_after = state_db
         .memories()
         .select_scoped_memories(&selection_scope, 128)
@@ -329,11 +343,15 @@ async fn unregistered_thread_with_state_preserves_legacy_anonymous_prompt_bytes(
     )
     .await
     .unwrap();
-    let state_db = codex_state::StateRuntime::init(home.path().to_path_buf(), "test".to_string())
-        .await
-        .unwrap();
+    let state_db = codex_state::StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+        "test".to_string(),
+    )
+    .await
+    .unwrap();
     let thread_store = ExtensionData::new(test_thread_id(22).to_string());
     thread_store.insert(MemoriesExtensionConfig {
+        version: codex_protocol::MemoryVersion::V1,
         enabled: true,
         dedicated_tools: false,
         codex_home: home.path().abs(),
@@ -348,7 +366,7 @@ async fn unregistered_thread_with_state_preserves_legacy_anonymous_prompt_bytes(
 
     assert_eq!(state_backed.len(), 1);
     assert_eq!(state_backed[0].slot(), PromptSlot::DeveloperPolicy);
-    assert_eq!(state_backed[0].text(), legacy[0].text());
+    assert_eq!(state_backed[0], legacy[0]);
 }
 
 #[tokio::test]
@@ -372,8 +390,11 @@ async fn add_ad_hoc_note_tool_creates_note_file() {
             model: "gpt-test".to_string(),
             codex_turn_metadata: None,
             truncation_policy: TruncationPolicy::Bytes(1024),
+            source: ToolCallSource::Direct,
             conversation_history: codex_extension_api::ConversationHistory::default(),
             turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            attachment_store: codex_core::passthrough_image_store(),
+            ephemeral: false,
             environments: Vec::new(),
             payload: payload.clone(),
         })
@@ -417,8 +438,11 @@ async fn add_ad_hoc_note_tool_rejects_paths_as_filenames() {
             model: "gpt-test".to_string(),
             codex_turn_metadata: None,
             truncation_policy: TruncationPolicy::Bytes(1024),
+            source: ToolCallSource::Direct,
             conversation_history: codex_extension_api::ConversationHistory::default(),
             turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            attachment_store: codex_core::passthrough_image_store(),
+            ephemeral: false,
             environments: Vec::new(),
             payload,
         })
@@ -463,8 +487,11 @@ async fn read_tool_reads_memory_file() {
             model: "gpt-test".to_string(),
             codex_turn_metadata: None,
             truncation_policy: TruncationPolicy::Bytes(1024),
+            source: ToolCallSource::Direct,
             conversation_history: codex_extension_api::ConversationHistory::default(),
             turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            attachment_store: codex_core::passthrough_image_store(),
+            ephemeral: false,
             environments: Vec::new(),
             payload: payload.clone(),
         })
@@ -480,6 +507,73 @@ async fn read_tool_reads_memory_file() {
             "truncated": true
         }))
     );
+}
+
+#[tokio::test]
+async fn local_listing_and_search_ignore_symlinks() {
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let memory_root = tempdir.path().join("memories");
+    let outside_root = tempdir.path().join("outside");
+    std::fs::create_dir_all(memory_root.join("nested")).expect("create memories directory");
+    std::fs::create_dir_all(&outside_root).expect("create outside directory");
+    for (path, content) in [
+        (memory_root.join("a.md"), "visible needle"),
+        (memory_root.join("nested/z.md"), "nested needle"),
+        (outside_root.join("secret.md"), "outside needle"),
+    ] {
+        std::fs::write(path, content).expect("write memory fixture");
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside_root, memory_root.join("linked-directory"))
+        .expect("create memory fixture symlink");
+
+    let backend = LocalMemoriesBackend::from_memory_root(&memory_root);
+    let listing = backend
+        .list(ListMemoriesRequest {
+            path: None,
+            cursor: None,
+            max_results: 10,
+        })
+        .await
+        .expect("list visible memories");
+    assert_eq!(
+        listing,
+        ListMemoriesResponse {
+            path: None,
+            entries: vec![
+                MemoryEntry {
+                    path: "a.md".to_string(),
+                    entry_type: MemoryEntryType::File,
+                },
+                MemoryEntry {
+                    path: "nested".to_string(),
+                    entry_type: MemoryEntryType::Directory,
+                },
+            ],
+            next_cursor: None,
+            truncated: false,
+        }
+    );
+
+    let response = backend
+        .search(SearchMemoriesRequest {
+            queries: vec!["needle".to_string()],
+            match_mode: SearchMatchMode::Any,
+            path: None,
+            cursor: None,
+            context_lines: 0,
+            case_sensitive: false,
+            normalized: false,
+            max_results: 10,
+        })
+        .await
+        .expect("search visible memories");
+    let paths = response
+        .matches
+        .iter()
+        .map(|matched| matched.path.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(paths, vec!["a.md", "nested/z.md"]);
 }
 
 #[tokio::test]
@@ -512,8 +606,11 @@ async fn search_tool_accepts_multiple_queries() {
             model: "gpt-test".to_string(),
             codex_turn_metadata: None,
             truncation_policy: TruncationPolicy::Bytes(1024),
+            source: ToolCallSource::Direct,
             conversation_history: codex_extension_api::ConversationHistory::default(),
             turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            attachment_store: codex_core::passthrough_image_store(),
+            ephemeral: false,
             environments: Vec::new(),
             payload: payload.clone(),
         })
@@ -587,8 +684,11 @@ async fn search_tool_accepts_windowed_all_match_mode() {
             model: "gpt-test".to_string(),
             codex_turn_metadata: None,
             truncation_policy: TruncationPolicy::Bytes(1024),
+            source: ToolCallSource::Direct,
             conversation_history: codex_extension_api::ConversationHistory::default(),
             turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            attachment_store: codex_core::passthrough_image_store(),
+            ephemeral: false,
             environments: Vec::new(),
             payload: payload.clone(),
         })
@@ -642,8 +742,11 @@ async fn search_tool_rejects_legacy_single_query() {
             model: "gpt-test".to_string(),
             codex_turn_metadata: None,
             truncation_policy: TruncationPolicy::Bytes(1024),
+            source: ToolCallSource::Direct,
             conversation_history: codex_extension_api::ConversationHistory::default(),
             turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+            attachment_store: codex_core::passthrough_image_store(),
+            ephemeral: false,
             environments: Vec::new(),
             payload,
         })
@@ -662,9 +765,12 @@ async fn scoped_tools_isolate_named_characters_and_anonymous_legacy() {
     let home = tempfile::tempdir().unwrap();
     write_character(home.path(), "chloe", "Chloe");
     write_character(home.path(), "clanker", "Clanker");
-    let state_db = codex_state::StateRuntime::init(home.path().to_path_buf(), "test".to_string())
-        .await
-        .unwrap();
+    let state_db = codex_state::StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+        "test".to_string(),
+    )
+    .await
+    .unwrap();
     let project = MemoryProjectKey::from_git_origin("git@github.com:example/project.git").unwrap();
     let chloe_thread = test_thread_id(1);
     let clanker_thread = test_thread_id(2);
@@ -700,16 +806,19 @@ async fn scoped_tools_isolate_named_characters_and_anonymous_legacy() {
 
     let chloe = ScopedLocalMemoriesBackend::new(
         home.path().abs(),
+        codex_protocol::MemoryVersion::V1,
         Some(Arc::clone(&state_db)),
         chloe_thread,
     );
     let clanker = ScopedLocalMemoriesBackend::new(
         home.path().abs(),
+        codex_protocol::MemoryVersion::V1,
         Some(Arc::clone(&state_db)),
         clanker_thread,
     );
     let anonymous = ScopedLocalMemoriesBackend::new(
         home.path().abs(),
+        codex_protocol::MemoryVersion::V1,
         Some(Arc::clone(&state_db)),
         test_thread_id(3),
     );
@@ -788,9 +897,12 @@ async fn scoped_tools_isolate_named_characters_and_anonymous_legacy() {
 async fn named_tool_scope_failure_never_falls_back_to_anonymous() {
     let home = tempfile::tempdir().unwrap();
     write_character(home.path(), "chloe", "Chloe");
-    let state_db = codex_state::StateRuntime::init(home.path().to_path_buf(), "test".to_string())
-        .await
-        .unwrap();
+    let state_db = codex_state::StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(home.path().abs()),
+        "test".to_string(),
+    )
+    .await
+    .unwrap();
     let thread_id = test_thread_id(10);
     state_db
         .memories()
@@ -816,8 +928,12 @@ async fn named_tool_scope_failure_never_falls_back_to_anonymous() {
     tokio::fs::write(home.path().join("memories/MEMORY.md"), "must-not-leak")
         .await
         .unwrap();
-    let backend =
-        ScopedLocalMemoriesBackend::new(home.path().abs(), Some(Arc::clone(&state_db)), thread_id);
+    let backend = ScopedLocalMemoriesBackend::new(
+        home.path().abs(),
+        codex_protocol::MemoryVersion::V1,
+        Some(Arc::clone(&state_db)),
+        thread_id,
+    );
     state_db.close().await;
 
     let tool = memory_tool_with_backend(backend, crate::READ_TOOL_NAME);
@@ -833,14 +949,20 @@ async fn named_tool_scope_failure_never_falls_back_to_anonymous() {
     assert!(!error.to_string().contains("must-not-leak"));
 }
 
-fn memory_tool(memory_root: &Path, tool_name: &str) -> Arc<dyn ToolExecutor<ToolCall>> {
+fn memory_tool(
+    memory_root: &Path,
+    tool_name: &str,
+) -> Arc<dyn for<'call> ToolExecutor<ToolCall<'call>>> {
     memory_tool_with_backend(
         LocalMemoriesBackend::from_memory_root(memory_root),
         tool_name,
     )
 }
 
-fn memory_tool_with_backend<B>(backend: B, tool_name: &str) -> Arc<dyn ToolExecutor<ToolCall>>
+fn memory_tool_with_backend<B>(
+    backend: B,
+    tool_name: &str,
+) -> Arc<dyn for<'call> ToolExecutor<ToolCall<'call>>>
 where
     B: MemoriesBackend,
 {
@@ -851,7 +973,7 @@ where
         .unwrap_or_else(|| panic!("{tool_name} tool should be registered"))
 }
 
-fn tool_call(tool_name: &str, payload: ToolPayload) -> ToolCall {
+fn tool_call(tool_name: &str, payload: ToolPayload) -> ToolCall<'static> {
     ToolCall {
         turn_id: "turn-1".to_string(),
         call_id: "call-1".to_string(),
@@ -859,10 +981,20 @@ fn tool_call(tool_name: &str, payload: ToolPayload) -> ToolCall {
         model: "gpt-test".to_string(),
         codex_turn_metadata: None,
         truncation_policy: TruncationPolicy::Bytes(4096),
+        source: ToolCallSource::Direct,
         conversation_history: codex_extension_api::ConversationHistory::default(),
         turn_item_emitter: Arc::new(NoopTurnItemEmitter),
+        attachment_store: codex_core::passthrough_image_store(),
+        ephemeral: false,
         environments: Vec::new(),
         payload,
+    }
+}
+
+fn fragment_text(fragment: &codex_extension_api::PromptFragment) -> String {
+    match fragment.content() {
+        ContentItem::InputText { text } => text.clone(),
+        other => panic!("expected text prompt fragment, got {other:?}"),
     }
 }
 

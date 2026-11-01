@@ -27,8 +27,12 @@ fn preset_names_use_mode_display_names() {
 }
 
 #[test]
-fn mode_instructions_replace_mode_names_placeholder() {
-    let known_mode_names = format_mode_names(&TUI_VISIBLE_COLLABORATION_MODES);
+fn mode_instructions_list_known_mode_names() {
+    let known_mode_names = TUI_VISIBLE_COLLABORATION_MODES
+        .iter()
+        .map(|mode| mode.display_name())
+        .collect::<Vec<_>>()
+        .join(", ");
     let expected_snippet = format!("Known mode names are {known_mode_names}.");
 
     for preset in builtin_collaboration_mode_presets() {
@@ -38,7 +42,7 @@ fn mode_instructions_replace_mode_names_placeholder() {
             .expect("builtin preset should include instructions")
             .expect("builtin instructions should be set");
 
-        assert!(!instructions.contains("{{KNOWN_MODE_NAMES}}"));
+        assert!(!instructions.contains("{{"));
         if mode != ModeKind::Plan {
             assert!(instructions.contains(&expected_snippet));
             assert!(instructions.contains(
@@ -49,7 +53,7 @@ fn mode_instructions_replace_mode_names_placeholder() {
 }
 
 #[test]
-fn larp_instructions_keep_plain_text_question_guidance() {
+fn larp_instructions_follow_user_input_tool_availability() {
     let larp_instructions = builtin_collaboration_mode_presets()
         .into_iter()
         .find(|mask| mask.mode == Some(ModeKind::Larp))
@@ -58,5 +62,10 @@ fn larp_instructions_keep_plain_text_question_guidance() {
         .expect("LARP preset should include instructions")
         .expect("LARP instructions should be set");
 
-    assert!(larp_instructions.contains("ask the user directly with a concise plain-text question"));
+    assert!(larp_instructions.contains(
+        "Use the `request_user_input` tool only when it is listed in the available tools"
+    ));
+    assert!(
+        larp_instructions.contains("Ask the user directly with one concise plain-text question")
+    );
 }
