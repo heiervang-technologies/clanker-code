@@ -59,6 +59,7 @@ struct TestSyncArgs {
     barrier: Option<BarrierArgs>,
     #[serde(default)]
     file_rendezvous: Option<FileRendezvousArgs>,
+    #[serde(default)]
     wait_for_git_enrichment: bool,
 }
 

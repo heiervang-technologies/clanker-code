@@ -13,6 +13,7 @@ use app_test_support::create_mock_responses_server_sequence;
 use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::create_request_user_input_sse_response;
 use app_test_support::format_with_current_shell_display;
+use app_test_support::to_response;
 use app_test_support::write_chatgpt_auth;
 use app_test_support::write_mock_responses_config_toml_with_chatgpt_base_url;
 use app_test_support::write_models_cache;
@@ -2105,12 +2106,10 @@ async fn named_turn_start_scope_error_fails_before_user_input_submission() -> Re
     let server = create_mock_responses_server_repeating_assistant("must not run").await;
     let codex_home = TempDir::new()?;
     write_test_character(codex_home.path(), "chloe", "Chloe")?;
-    create_config_toml(
-        codex_home.path(),
-        &server.uri(),
-        "never",
-        &BTreeMap::from([(Feature::MemoryTool, true), (Feature::Sqlite, true)]),
-    )?;
+    MockResponsesConfig::new(&server.uri())
+        .enable_feature(Feature::MemoryTool)
+        .enable_feature(Feature::Sqlite)
+        .write(codex_home.path())?;
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .with_env_overrides(&[("CLANKER_ID", Some("Chloe"))])
@@ -2175,12 +2174,10 @@ async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> R
     let initial_cwd = canonicalize_existing_preserving_symlinks(&initial_cwd)?;
     let turn_cwd = canonicalize_existing_preserving_symlinks(&turn_cwd)?;
     write_test_character(&codex_home, "chloe", "Chloe")?;
-    create_config_toml(
-        &codex_home,
-        &server.uri(),
-        "never",
-        &BTreeMap::from([(Feature::MemoryTool, true), (Feature::Sqlite, true)]),
-    )?;
+    MockResponsesConfig::new(&server.uri())
+        .enable_feature(Feature::MemoryTool)
+        .enable_feature(Feature::Sqlite)
+        .write(&codex_home)?;
     let mut mcp = TestAppServer::builder()
         .with_codex_home(&codex_home)
         .with_env_overrides(&[("CLANKER_ID", Some("chloe"))])
@@ -2220,7 +2217,11 @@ async fn named_first_turn_uses_effective_cwd_for_registered_project_scope() -> R
     .await??;
     let _: TurnStartResponse = to_response(response)?;
 
-    let state = StateRuntime::init(codex_home.clone(), "test-reader".to_string()).await?;
+    let state = StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(codex_home.abs()),
+        "test-reader".to_string(),
+    )
+    .await?;
     let scope = state
         .memories()
         .memory_scope(thread_id)
