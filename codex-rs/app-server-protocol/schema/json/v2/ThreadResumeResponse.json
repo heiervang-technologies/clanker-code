@@ -1014,7 +1014,11 @@
       "description": "Initial collaboration mode to use when the TUI starts.",
       "enum": [
         "plan",
-        "default"
+        "larp",
+        "locked_in",
+        "based",
+        "cringe",
+        "ultrachill"
       ],
       "type": "string"
     },

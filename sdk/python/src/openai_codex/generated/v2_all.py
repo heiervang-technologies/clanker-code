@@ -2750,7 +2750,11 @@ class MisalignmentSteer(BaseModel):
 
 class ModeKind(Enum):
     plan = "plan"
-    default = "default"
+    larp = "larp"
+    locked_in = "locked_in"
+    based = "based"
+    cringe = "cringe"
+    ultrachill = "ultrachill"
 
 
 class ModelAccessPrograms(BaseModel):
