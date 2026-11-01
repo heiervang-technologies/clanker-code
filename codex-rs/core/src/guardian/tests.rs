@@ -1172,6 +1172,8 @@ fn collect_guardian_transcript_entries_skips_contextual_user_messages() {
             internal_chat_message_metadata_passthrough: None,
         },
         ResponseItem::Message {
+            encrypted_content: None,
+            status: None,
             id: None,
             role: "assistant".to_string(),
             content: vec![ContentItem::OutputText {

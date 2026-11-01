@@ -261,6 +261,9 @@ async fn catalog_collaboration_messages_refresh_without_mode_or_model_change(
             ModeKind::Plan => {
                 model_with_collaboration_messages(MODEL, Some(INACTIVE), Some(instructions))
             }
+            ModeKind::LockedIn | ModeKind::Based | ModeKind::Cringe | ModeKind::Ultrachill => {
+                unreachable!("catalog refresh is only exercised for LARP and Plan")
+            }
         }],
     };
     let server = MockServer::start().await;

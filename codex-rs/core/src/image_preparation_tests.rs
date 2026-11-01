@@ -674,33 +674,32 @@ fn preparation_errors_use_bounded_actionable_placeholders() {
     }
 }
 
-#[test]
-fn audio_data_urls_pass_through_unchanged() {
+#[tokio::test]
+async fn audio_data_urls_pass_through_unchanged() {
     let url = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IA==".to_string();
-    let mut items = vec![ResponseItem::Message {
+    let message = |image_url: String| ResponseItem::Message {
+        encrypted_content: None,
+        status: None,
         id: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputImage {
-            image_url: url.clone(),
+            image: ImageReference::Inline { image_url },
             detail: Some(ImageDetail::High),
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
-    }];
+    };
+    let mut items = vec![message(url.clone())];
 
-    prepare_response_items(&mut items);
+    prepare_response_items(
+        "image-preparation-thread",
+        /*ephemeral*/ false,
+        &mut items,
+        ImagePreparationMode::DetailBased,
+        ImageResizeNoticeMode::Disabled,
+        &InlineAttachmentStore,
+    )
+    .await;
 
-    assert_eq!(
-        items,
-        vec![ResponseItem::Message {
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputImage {
-                image_url: url,
-                detail: Some(ImageDetail::High),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        }]
-    );
+    assert_eq!(items, vec![message(url)]);
 }

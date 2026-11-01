@@ -1,10 +1,10 @@
 //! End-to-end coverage for providers configured with `wire_api = "chat"`.
 
+use codex_core::TurnInputRequest;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses::start_mock_server;
 use core_test_support::skip_if_no_network;
@@ -50,11 +50,13 @@ fn chat_provider(base_url: String) -> ModelProviderInfo {
     ModelProviderInfo {
         name: "chat-mock".into(),
         base_url: Some(base_url),
+        model_catalog_url: None,
         // Any variable that exists in the test environment works as a key.
         env_key: Some("PATH".into()),
         env_key_instructions: None,
         experimental_bearer_token: None,
         auth: None,
+        gateway_oauth: None,
         aws: None,
         wire_api: WireApi::Chat,
         query_params: None,
@@ -66,6 +68,12 @@ fn chat_provider(base_url: String) -> ModelProviderInfo {
         websocket_connect_timeout_ms: None,
         requires_openai_auth: false,
         supports_websockets: false,
+        supports_standalone_web_search: false,
+        capabilities: None,
+        project_id: None,
+        location: None,
+        credential_file: None,
+        include_internal_metadata: false,
         developer_role_name: None,
         extra_body: None,
     }
@@ -120,16 +128,10 @@ async fn chat_wire_runs_tool_call_round_trip() -> anyhow::Result<()> {
         .await?;
 
     codex
-        .submit(Op::UserInput {
-            items: vec![UserInput::Text {
-                text: "make a plan".into(),
-                text_elements: Vec::new(),
-            }],
-            final_output_json_schema: None,
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: Default::default(),
-        })
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "make a plan".into(),
+            text_elements: Vec::new(),
+        }]))
         .await?;
 
     let mut saw_plan_update = false;
@@ -227,16 +229,10 @@ async fn chat_wire_disables_thinking_and_merges_extra_body() -> anyhow::Result<(
         .await?;
 
     codex
-        .submit(Op::UserInput {
-            items: vec![UserInput::Text {
-                text: "hi".into(),
-                text_elements: Vec::new(),
-            }],
-            final_output_json_schema: None,
-            responsesapi_client_metadata: None,
-            additional_context: Default::default(),
-            thread_settings: Default::default(),
-        })
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "hi".into(),
+            text_elements: Vec::new(),
+        }]))
         .await?;
     wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
 

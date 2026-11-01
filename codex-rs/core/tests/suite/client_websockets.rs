@@ -2742,8 +2742,6 @@ fn websocket_provider_with_connect_timeout(
         include_internal_metadata: false,
         developer_role_name: None,
         extra_body: None,
-        developer_role_name: None,
-        extra_body: None,
     }
 }
 

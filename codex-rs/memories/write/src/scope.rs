@@ -439,7 +439,9 @@ mod tests {
             SessionSource::Cli,
         );
         builder.cwd = cwd.into();
-        builder.git_origin_url = git_origin.map(str::to_string);
+        builder.git_origin_url = git_origin.map(|origin| {
+            codex_protocol::SanitizedGitUrl::try_from(origin).expect("test origin should sanitize")
+        });
         let thread = builder.build("mock");
         runtime.upsert_thread(&thread).await.unwrap();
         thread

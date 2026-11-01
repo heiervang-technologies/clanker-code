@@ -119,7 +119,14 @@ pub async fn run(
     ) else {
         // If we can't get the config, we can't consolidate.
         tracing::error!("failed to get agent config");
-        job::failed(context.as_ref(), &db, &selection_scope, &claim, "failed_sandbox_policy").await;
+        job::failed(
+            context.as_ref(),
+            &db,
+            &selection_scope,
+            &claim,
+            "failed_sandbox_policy",
+        )
+        .await;
         return;
     };
 

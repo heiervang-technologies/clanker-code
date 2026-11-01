@@ -1066,7 +1066,7 @@ fn test_git_info_serialization_with_nones() {
 }
 
 #[tokio::test]
-async fn get_git_repo_root_with_fs_ignores_empty_git_dir() {
+async fn trust_root_ignores_empty_git_dir() {
     skip_if_sandbox!();
     let temp_root = TempDir::new().unwrap();
 
@@ -1078,13 +1078,13 @@ async fn get_git_repo_root_with_fs_ignores_empty_git_dir() {
     fs::create_dir(&nested).unwrap();
 
     assert_eq!(
-        get_git_repo_root_with_fs(LOCAL_FS.as_ref(), &nested.abs()).await,
+        codex_git_utils::resolve_root_git_project_for_trust(LOCAL_FS.as_ref(), &nested.abs()).await,
         None
     );
 }
 
 #[tokio::test]
-async fn get_git_repo_root_with_fs_skips_empty_git_dir_for_valid_parent() {
+async fn trust_root_skips_empty_git_dir_for_valid_parent() {
     skip_if_sandbox!();
     let temp_root = TempDir::new().unwrap();
     let repo = temp_root.path().join("repo");
@@ -1094,7 +1094,7 @@ async fn get_git_repo_root_with_fs_skips_empty_git_dir_for_valid_parent() {
     fs::create_dir_all(nested.join(".git")).unwrap();
 
     assert_eq!(
-        get_git_repo_root_with_fs(LOCAL_FS.as_ref(), &nested.abs()).await,
+        codex_git_utils::resolve_root_git_project_for_trust(LOCAL_FS.as_ref(), &nested.abs()).await,
         Some(repo.abs())
     );
 }

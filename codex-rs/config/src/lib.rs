@@ -57,8 +57,6 @@ pub mod types;
 
 pub const CONFIG_TOML_FILE: &str = "config.toml";
 
-pub use clanker_version::PRODUCT_NAME as CLANKER_PRODUCT_NAME;
-pub use clanker_version::VERSION as CLANKER_VERSION;
 pub use application_requirements::ApplicationNetworkRequirementsToml;
 pub use application_requirements::ApplicationRequirementsToml;
 pub use application_storage_requirements::ApplicationStorageRequirementsToml;
@@ -75,6 +73,8 @@ pub use browser_computer_use_requirements::ComputerUseWindowsRequirementsToml;
 pub use browser_computer_use_requirements::RequestHeaderToml;
 pub use browser_use::BrowserUseConfigToml;
 pub use browser_use::BrowserUseOriginPolicyConfigToml;
+pub use clanker_version::PRODUCT_NAME as CLANKER_PRODUCT_NAME;
+pub use clanker_version::VERSION as CLANKER_VERSION;
 pub use cloud_config_bundle::CloudConfigBundle;
 pub use cloud_config_bundle::CloudConfigBundleBinding;
 pub use cloud_config_bundle::CloudConfigBundleBindingGuard;

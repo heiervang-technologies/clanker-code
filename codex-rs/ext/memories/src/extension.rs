@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use codex_context_fragments::CharacterMemoryContext;
 use codex_core::config::Config;
 use codex_core::context::ContextualUserFragment;
 use codex_core::context::MemoryContextFragment;
@@ -16,7 +17,6 @@ use codex_extension_api::ThreadStartInput;
 use codex_extension_api::ToolContributor;
 use codex_features::Feature;
 use codex_otel::MetricsClient;
-use codex_context_fragments::CharacterMemoryContext;
 use codex_protocol::MemoryVersion;
 use codex_protocol::ThreadId;
 use codex_state::MemorySelectionScope;

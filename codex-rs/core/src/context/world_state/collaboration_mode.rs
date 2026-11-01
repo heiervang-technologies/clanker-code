@@ -31,11 +31,13 @@ impl CollaborationModeState {
         update_plan_enabled: bool,
         custom_model_catalog: bool,
     ) -> Self {
+        // Clanker's extra modes have no model-catalog message; their bundled
+        // templates arrive through the mode's developer instructions.
         let catalog_instructions = match collaboration_mode.mode {
-            ModeKind::Default => messages.default,
-            ModeKind::Plan => messages.plan,
-        }
-        .catalog_override();
+            ModeKind::Default => messages.default.catalog_override(),
+            ModeKind::Plan => messages.plan.catalog_override(),
+            ModeKind::LockedIn | ModeKind::Based | ModeKind::Cringe | ModeKind::Ultrachill => None,
+        };
 
         let instructions = catalog_instructions.map(str::to_string).or_else(|| {
             collaboration_mode
