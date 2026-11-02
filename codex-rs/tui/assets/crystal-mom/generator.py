@@ -128,18 +128,36 @@ def crystal_mom_frame(
         c_dark, c_mid, c_hi = AME_DARK, AME, AME_HI
 
     # Three distinct faceted crystal prisms with dark amethyst separation
-    d.polygon([(13 + bx, y(18)), (15 + bx, y(13)), (17 + bx, y(15)), (16 + bx, y(18))], fill=c_dark)
+    d.polygon(
+        [(13 + bx, y(18)), (15 + bx, y(13)), (17 + bx, y(15)), (16 + bx, y(18))],
+        fill=c_dark,
+    )
     d.line([(15 + bx, y(14)), (15 + bx, y(17))], fill=c_mid)
-    d.polygon([(16 + bx, y(18)), (18 + bx, y(12)), (20 + bx, y(14)), (19 + bx, y(18))], fill=c_mid)
+    d.polygon(
+        [(16 + bx, y(18)), (18 + bx, y(12)), (20 + bx, y(14)), (19 + bx, y(18))],
+        fill=c_mid,
+    )
     d.line([(18 + bx, y(13)), (18 + bx, y(17))], fill=c_hi)
-    d.polygon([(19 + bx, y(19)), (21 + bx, y(14)), (22 + bx, y(16)), (21 + bx, y(19))], fill=c_dark)
-    d.point([(18 + bx, y(13)), (15 + bx, y(14)), (21 + bx, y(15))], fill=AME_SPARK if crystal != "dead" else c_hi)
+    d.polygon(
+        [(19 + bx, y(19)), (21 + bx, y(14)), (22 + bx, y(16)), (21 + bx, y(19))],
+        fill=c_dark,
+    )
+    d.point(
+        [(18 + bx, y(13)), (15 + bx, y(14)), (21 + bx, y(15))],
+        fill=AME_SPARK if crystal != "dead" else c_hi,
+    )
     if crystal == "pulse":
         d.point([(14 + bx, y(12)), (18 + bx, y(11)), (22, y(13))], fill=AME_SPARK)
 
     # Lavender swaddle blanket wrapping the crystals
     d.polygon(
-        [(9 + bx, y(21)), (12 + bx, y(17)), (20 + bx, y(17)), (21 + bx, y(22)), (11 + bx, y(23))],
+        [
+            (9 + bx, y(21)),
+            (12 + bx, y(17)),
+            (20 + bx, y(17)),
+            (21 + bx, y(22)),
+            (11 + bx, y(23)),
+        ],
         fill=SWADDLE,
     )
     d.line([(12 + bx, y(17)), (20 + bx, y(17))], fill=SWADDLE_SHAD)
@@ -212,6 +230,7 @@ def build_crystal_mom() -> list[Image.Image]:
         crystal_mom_frame(mouth="half"),
         crystal_mom_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_crystal_mom()

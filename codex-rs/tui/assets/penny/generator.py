@@ -61,7 +61,15 @@ def penny_frame(
         return v + bob
 
     # --- Back long blonde hair cascade ---
-    d.polygon([(3 + hair_sway, y(6)), (19 + hair_sway, y(6)), (21 + hair_sway, 22), (2 + hair_sway, 22)], fill=GOLD_DARK)
+    d.polygon(
+        [
+            (3 + hair_sway, y(6)),
+            (19 + hair_sway, y(6)),
+            (21 + hair_sway, 22),
+            (2 + hair_sway, 22),
+        ],
+        fill=GOLD_DARK,
+    )
     d.rectangle([5, y(4), 18, y(18)], fill=GOLD)
 
     # --- Black Executive Blazer ---
@@ -83,7 +91,20 @@ def penny_frame(
     mp(d, [(5, y(11))], GLASS_HI)
 
     # --- Spiky Golden-Blonde Crown & Bangs ---
-    d.polygon([(4, y(4)), (7, y(1)), (10, y(2)), (12, y(0)), (15, y(2)), (18, y(1)), (20, y(4)), (18, y(6)), (5, y(6))], fill=GOLD)
+    d.polygon(
+        [
+            (4, y(4)),
+            (7, y(1)),
+            (10, y(2)),
+            (12, y(0)),
+            (15, y(2)),
+            (18, y(1)),
+            (20, y(4)),
+            (18, y(6)),
+            (5, y(6)),
+        ],
+        fill=GOLD,
+    )
     mp(d, [(8, y(2)), (9, y(2)), (10, y(1)), (11, y(1))], GOLD_HI)
     mp(d, [(7, y(5)), (8, y(5)), (11, y(5)), (7, y(6))], GOLD)
     mp(d, [(9, y(4)), (10, y(4))], GOLD_HI)
@@ -91,7 +112,9 @@ def penny_frame(
     # --- Glowing Amber Eyes in Dark Socket Outline (y=7..8) + Low Sleek Shades (y=9..10) ---
     ey = y(8)
     if eyes == "amber":
-        mp(d, [(8, ey - 1), (9, ey - 1), (10, ey - 1), (7, ey)], INK)  # dark winged lash/socket
+        mp(
+            d, [(8, ey - 1), (9, ey - 1), (10, ey - 1), (7, ey)], INK
+        )  # dark winged lash/socket
         mp(d, [(8, ey), (9, ey)], AMBER)
         mp(d, [(8, ey)], GOLD_HI)
     elif eyes == "pulse":
@@ -117,7 +140,11 @@ def penny_frame(
             d.point([(ex, ey - 1), (ex + 1, ey), (ex + 1, ey - 1), (ex, ey)], fill=RED)
 
     # Low-slung dark sunglasses perched just below the eyes at y=9..10 (connected across bridge)
-    mp(d, [(8, y(9)), (9, y(9)), (10, y(9)), (8, y(10)), (9, y(10)), (10, y(10))], GLASS)
+    mp(
+        d,
+        [(8, y(9)), (9, y(9)), (10, y(9)), (8, y(10)), (9, y(10)), (10, y(10))],
+        GLASS,
+    )
     d.line([(11, y(9)), (12, y(9))], fill=GLASS_RIM)  # nose bridge bar
     mp(d, [(8, y(9))], GLASS_HI)
 
@@ -196,6 +223,7 @@ def build_penny() -> list[Image.Image]:
         penny_frame(mouth="half"),
         penny_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_penny()

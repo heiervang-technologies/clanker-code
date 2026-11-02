@@ -119,7 +119,10 @@ def chatgepert_frame(
         d.line([(13, ey + 1), (14, ey + 1)], fill=CARBON)
     elif eyes == "x":
         for ex in (8, 13):
-            d.point([(ex, ey), (ex + 1, ey + 1), (ex + 1, ey), (ex, ey + 1)], fill=BREACH_RED)
+            d.point(
+                [(ex, ey), (ex + 1, ey + 1), (ex + 1, ey), (ex, ey + 1)],
+                fill=BREACH_RED,
+            )
 
     # --- Subtle 1px nose at y=9 + 1px gap at y=10 + Slim 2px seam mouth at y=11 ---
     d.point((11, y(9)), fill=SHELL_SHAD)
@@ -197,6 +200,7 @@ def build_chatgepert() -> list[Image.Image]:
         chatgepert_frame(mouth="half"),
         chatgepert_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_chatgepert()

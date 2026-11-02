@@ -83,7 +83,20 @@ def snoop_kube_frame(
 
     # --- Wraparound Dark Sunglasses (fused with brow at y=7..9) ---
     d.rectangle([6, y(7), 17, y(9)], fill=SHADES_RIM)
-    mp(d, [(7, y(8)), (8, y(8)), (9, y(8)), (10, y(8)), (7, y(9)), (8, y(9)), (9, y(9)), (10, y(9))], SHADES)
+    mp(
+        d,
+        [
+            (7, y(8)),
+            (8, y(8)),
+            (9, y(8)),
+            (10, y(8)),
+            (7, y(9)),
+            (8, y(9)),
+            (9, y(9)),
+            (10, y(9)),
+        ],
+        SHADES,
+    )
     if shades == "glint":
         mp(d, [(8, y(8)), (9, y(8))], WHITE)
     elif shades == "pulse":
@@ -133,7 +146,7 @@ def snoop_kube_frame(
     d.rectangle([10, y(1), 13, y(4)], fill=K8S_BLUE)
     mp(d, [(10, y(1)), (11, y(1)), (10, y(2)), (10, y(3)), (11, y(4))], K8S_CYAN)
     mp(d, [(11, y(2)), (11, y(3))], CAP_NAVY)  # inner hub ring
-    mp(d, [(11, y(2))], WHITE)                 # helm wheel center star
+    mp(d, [(11, y(2))], WHITE)  # helm wheel center star
 
     # --- Optional Crisp Salute Arm ---
     if salute:
@@ -193,6 +206,7 @@ def build_snoop_kube() -> list[Image.Image]:
         snoop_kube_frame(mouth="half"),
         snoop_kube_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_snoop_kube()

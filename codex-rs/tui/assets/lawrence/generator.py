@@ -57,7 +57,9 @@ def lawrence_frame(
         return v + bob
 
     # --- Purple Leopard-Spot Suit & Tie ---
-    d.polygon([(3 + coat_sway, 23), (5, y(16)), (18, y(16)), (20 + coat_sway, 23)], fill=PURP)
+    d.polygon(
+        [(3 + coat_sway, 23), (5, y(16)), (18, y(16)), (20 + coat_sway, 23)], fill=PURP
+    )
     d.rectangle([5, y(17), 18, 23], fill=PURP)
     mp(d, [(6, y(18)), (8, y(20)), (6, y(21)), (9, y(22))], PURP_DARK)
     mp(d, [(7, y(18)), (8, y(21))], INK)
@@ -77,7 +79,11 @@ def lawrence_frame(
         mp(d, [(7, y(8)), (8, y(8)), (9, y(8)), (10, y(8)), (8, y(9)), (9, y(9))], GOLD)
         mp(d, [(7, y(8)), (8, y(8))], GOLD_HI)
     elif shades == "sparkle":
-        mp(d, [(7, y(8)), (8, y(8)), (9, y(8)), (10, y(8)), (8, y(9)), (9, y(9))], GOLD_HI)
+        mp(
+            d,
+            [(7, y(8)), (8, y(8)), (9, y(8)), (10, y(8)), (8, y(9)), (9, y(9))],
+            GOLD_HI,
+        )
     elif shades == "blink":
         mp(d, [(7, y(9)), (8, y(9)), (9, y(9)), (10, y(9))], GOLD_DARK)
     elif shades == "left":
@@ -122,7 +128,10 @@ def lawrence_frame(
     d.line([(7, y(3)), (9, y(1))], fill=WHITE)
     d.line([(14, y(4)), (16, y(2))], fill=WHITE)
     d.line([(6, y(4)), (17, y(4))], fill=GOLD)
-    d.polygon([(2, y(5)), (6, y(4)), (17, y(4)), (21, y(5)), (19, y(6)), (4, y(6))], fill=PURP_DARK)
+    d.polygon(
+        [(2, y(5)), (6, y(4)), (17, y(4)), (21, y(5)), (19, y(6)), (4, y(6))],
+        fill=PURP_DARK,
+    )
     mp(d, [(4, y(5)), (7, y(5))], WHITE)
     # Dark purple badge box with clear gold 'L' letter inside
     d.rectangle([9, y(0), 14, y(4)], fill=INK)
@@ -177,13 +186,16 @@ def build_lawrence() -> list[Image.Image]:
         lawrence_frame(shades="left", extras=("holo0",)),
         lawrence_frame(shades="left", extras=("holo1",)),
         lawrence_frame(shades="sparkle", extras=("holo2",)),
-        lawrence_frame(bob=1, shades="dim", stache="droop", extras=("coffee", "steam1")),
+        lawrence_frame(
+            bob=1, shades="dim", stache="droop", extras=("coffee", "steam1")
+        ),
         lawrence_frame(bob=1, shades="blink", stache="droop", extras=("coffee",)),
         lawrence_frame(bob=1, shades="dim", coat_sway=-1, extras=("sweat",)),
         lawrence_frame(bob=1, shades="dim", coat_sway=1, extras=("sweat",)),
         lawrence_frame(mouth="half"),
         lawrence_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_lawrence()

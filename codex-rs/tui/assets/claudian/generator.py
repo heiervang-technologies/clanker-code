@@ -201,6 +201,7 @@ def build_claudian() -> list[Image.Image]:
         claudian_frame(mouth="open"),
     ]
 
+
 if __name__ == "__main__":
     frames = build_claudian()
     strip = Image.new("RGBA", (SIZE * len(frames), SIZE), (0, 0, 0, 0))

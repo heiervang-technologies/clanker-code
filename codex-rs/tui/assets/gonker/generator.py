@@ -103,7 +103,17 @@ def gonker_frame(
 
     # --- Cute ω (:3) Mouth (y=10..12) — talking modifies ONLY y=10..12! ---
     if mouth == "closed":
-        d.point([(9, y(10)), (10, y(11)), (11, y(10)), (12, y(10)), (13, y(11)), (14, y(10))], fill=INK)
+        d.point(
+            [
+                (9, y(10)),
+                (10, y(11)),
+                (11, y(10)),
+                (12, y(10)),
+                (13, y(11)),
+                (14, y(10)),
+            ],
+            fill=INK,
+        )
     elif mouth == "half":
         d.rectangle([10, y(10), 13, y(11)], fill=INK)
         d.line([(11, y(11)), (12, y(11))], fill=MOUTH_RED)
@@ -182,6 +192,7 @@ def build_gonker() -> list[Image.Image]:
         gonker_frame(mouth="half"),
         gonker_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_gonker()

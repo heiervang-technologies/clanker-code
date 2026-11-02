@@ -59,8 +59,14 @@ def xinan_frame(
     d.polygon([(3 - cf, 23), (5, y(14)), (8, y(15)), (6, 23)], fill=CRIMSON_DARK)
     d.polygon([(20 + cf, 23), (18, y(14)), (15, y(15)), (17, 23)], fill=CRIMSON)
     d.polygon([(7, 23), (8, y(15)), (15, y(15)), (16, 23)], fill=PORC)
-    d.polygon([(3, y(14)), (8, y(13)), (8, y(16)), (4, y(16))], fill=PORC_HI, outline=CRIMSON)
-    d.polygon([(20, y(14)), (15, y(13)), (15, y(16)), (19, y(16))], fill=PORC_HI, outline=CRIMSON)
+    d.polygon(
+        [(3, y(14)), (8, y(13)), (8, y(16)), (4, y(16))], fill=PORC_HI, outline=CRIMSON
+    )
+    d.polygon(
+        [(20, y(14)), (15, y(13)), (15, y(16)), (19, y(16))],
+        fill=PORC_HI,
+        outline=CRIMSON,
+    )
 
     # --- Crimson & Gold Chest Core + Red Armor Seam Lines ---
     d.line([(11, y(15)), (11, 23)], fill=CRIMSON_DARK)
@@ -87,7 +93,10 @@ def xinan_frame(
     for ex in (4, 18):
         d.rectangle([ex, y(7), ex + 1, y(9)], fill=CRIMSON)
         d.point((ex, y(7)), fill=GOLD)
-        d.line([(ex + (1 if ex < 12 else 0), y(10)), (ex + (1 if ex < 12 else 0), y(12))], fill=CRIMSON_HI)
+        d.line(
+            [(ex + (1 if ex < 12 else 0), y(10)), (ex + (1 if ex < 12 else 0), y(12))],
+            fill=CRIMSON_HI,
+        )
 
     # --- Serene Eyes in Dark Porcelain Sockets (y=7..8) ---
     ey = y(7)
@@ -120,7 +129,10 @@ def xinan_frame(
         d.line([(13, ey + 1), (14, ey + 1)], fill=INK)
     elif eyes == "x":
         for ex in (8, 13):
-            d.point([(ex, ey), (ex + 1, ey + 1), (ex + 1, ey), (ex, ey + 1)], fill=CRIMSON_HI)
+            d.point(
+                [(ex, ey), (ex + 1, ey + 1), (ex + 1, ey), (ex, ey + 1)],
+                fill=CRIMSON_HI,
+            )
 
     # --- Nose tip at y=9 + clean 1px gap at y=10 + Serene 2px lip at y=11 ---
     d.point((11, y(9)), fill=PORC_SHAD)
@@ -191,6 +203,7 @@ def build_xinan() -> list[Image.Image]:
         xinan_frame(mouth="half"),
         xinan_frame(mouth="open"),
     ]
+
 
 if __name__ == "__main__":
     frames = build_xinan()

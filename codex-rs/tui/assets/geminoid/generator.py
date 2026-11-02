@@ -53,8 +53,16 @@ def geminoid_frame(
 
     # --- Aristocratic Tailcoat with Winged Gold/Ivory Shoulder Pauldrons ---
     ps = pauldron_shift
-    d.polygon([(1, y(14) + ps), (7, y(13)), (8, y(17)), (3, y(17) + ps)], fill=IVORY_LAPEL, outline=GOLD_DARK)
-    d.polygon([(22, y(14) - ps), (16, y(13)), (15, y(17)), (20, y(17) - ps)], fill=IVORY_LAPEL, outline=GOLD_DARK)
+    d.polygon(
+        [(1, y(14) + ps), (7, y(13)), (8, y(17)), (3, y(17) + ps)],
+        fill=IVORY_LAPEL,
+        outline=GOLD_DARK,
+    )
+    d.polygon(
+        [(22, y(14) - ps), (16, y(13)), (15, y(17)), (20, y(17) - ps)],
+        fill=IVORY_LAPEL,
+        outline=GOLD_DARK,
+    )
     d.polygon([(4, 23), (5, y(15)), (18, y(15)), (19, 23)], fill=NAVY_COAT)
     d.line([(6, y(15)), (9, 23)], fill=IVORY_LAPEL)
     d.line([(17, y(15)), (14, 23)], fill=IVORY_LAPEL)
@@ -169,7 +177,9 @@ def build_geminoid() -> list[Image.Image]:
         geminoid_frame(extras=("moons1",)),
         geminoid_frame(eyes="twin", star="pulse", extras=("moons2",)),
         geminoid_frame(eyes="blink", extras=("moons1",)),
-        geminoid_frame(pauldron_shift=-1, eyes="twin", star="pulse", extras=("moons1",)),
+        geminoid_frame(
+            pauldron_shift=-1, eyes="twin", star="pulse", extras=("moons1",)
+        ),
         geminoid_frame(bob=1, pauldron_shift=0, star="pulse", extras=("moons2",)),
         geminoid_frame(pauldron_shift=1, eyes="twin", star="pulse", extras=("moons1",)),
         geminoid_frame(bob=1, pauldron_shift=0, star="pulse", extras=("moons2",)),
@@ -184,11 +194,16 @@ def build_geminoid() -> list[Image.Image]:
         geminoid_frame(eyes="twin", star="pulse", extras=("holo2",)),
         geminoid_frame(bob=1, eyes="half", star="dim", extras=("coffee", "steam1")),
         geminoid_frame(bob=1, eyes="blink", star="dim", extras=("coffee",)),
-        geminoid_frame(bob=1, eyes="half", star="dim", pauldron_shift=-1, extras=("sweat",)),
-        geminoid_frame(bob=1, eyes="half", star="dim", pauldron_shift=1, extras=("sweat",)),
+        geminoid_frame(
+            bob=1, eyes="half", star="dim", pauldron_shift=-1, extras=("sweat",)
+        ),
+        geminoid_frame(
+            bob=1, eyes="half", star="dim", pauldron_shift=1, extras=("sweat",)
+        ),
         geminoid_frame(mouth="half", extras=("moons1",)),
         geminoid_frame(mouth="open", extras=("moons1",)),
     ]
+
 
 if __name__ == "__main__":
     frames = build_geminoid()
