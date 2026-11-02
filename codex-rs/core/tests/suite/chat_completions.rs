@@ -76,6 +76,7 @@ fn chat_provider(base_url: String) -> ModelProviderInfo {
         include_internal_metadata: false,
         developer_role_name: None,
         extra_body: None,
+        max_audio_inputs: None,
     }
 }
 
