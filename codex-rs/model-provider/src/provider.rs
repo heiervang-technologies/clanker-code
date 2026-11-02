@@ -837,6 +837,7 @@ mod tests {
             supports_websockets: false,
             developer_role_name: None,
             extra_body: None,
+            max_audio_inputs: None,
             supports_standalone_web_search: false,
             capabilities: None,
             project_id: None,

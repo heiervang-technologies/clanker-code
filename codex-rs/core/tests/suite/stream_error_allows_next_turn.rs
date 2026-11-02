@@ -91,6 +91,7 @@ async fn continue_after_stream_error() {
         include_internal_metadata: false,
         developer_role_name: None,
         extra_body: None,
+        max_audio_inputs: None,
     };
 
     let TestCodex { codex, .. } = test_codex()
