@@ -206,6 +206,15 @@ mod tests {
             ("clautist", "clautist"),
             ("jasonelle", "jasonelle"),
             ("centurion", "centurion"),
+            ("crystal_mom", "crystal-mom"),
+            ("snoop-kubernetes", "snoop-kube"),
+            ("penny", "penny"),
+            ("lawrence", "lawrence"),
+            ("claudians", "claudian"),
+            ("gepert", "chatgepert"),
+            ("geminoids", "geminoid"),
+            ("xinans", "xinan"),
+            ("gonkers", "gonker"),
         ]
         .into_iter()
         .map(|(requested_name, expected_id)| {
@@ -224,6 +233,15 @@ mod tests {
                 ("clautist".to_string(), "clautist"),
                 ("jasonelle".to_string(), "jasonelle"),
                 ("centurion".to_string(), "centurion"),
+                ("crystal-mom".to_string(), "crystal-mom"),
+                ("snoop-kube".to_string(), "snoop-kube"),
+                ("penny".to_string(), "penny"),
+                ("lawrence".to_string(), "lawrence"),
+                ("claudian".to_string(), "claudian"),
+                ("chatgepert".to_string(), "chatgepert"),
+                ("geminoid".to_string(), "geminoid"),
+                ("xinan".to_string(), "xinan"),
+                ("gonker".to_string(), "gonker"),
             ]
         );
     }

@@ -84,6 +84,42 @@ fn renders_bundled_agent_avatars() {
             "Centurion",
             include_bytes!("../../assets/centurion/sheet.png").as_slice(),
         ),
+        (
+            "Crystal-Mom",
+            include_bytes!("../../assets/crystal-mom/sheet.png").as_slice(),
+        ),
+        (
+            "Snoop-Kube",
+            include_bytes!("../../assets/snoop-kube/sheet.png").as_slice(),
+        ),
+        (
+            "Penny",
+            include_bytes!("../../assets/penny/sheet.png").as_slice(),
+        ),
+        (
+            "Lawrence",
+            include_bytes!("../../assets/lawrence/sheet.png").as_slice(),
+        ),
+        (
+            "Claudian",
+            include_bytes!("../../assets/claudian/sheet.png").as_slice(),
+        ),
+        (
+            "Chatgepert",
+            include_bytes!("../../assets/chatgepert/sheet.png").as_slice(),
+        ),
+        (
+            "Geminoid",
+            include_bytes!("../../assets/geminoid/sheet.png").as_slice(),
+        ),
+        (
+            "Xinan",
+            include_bytes!("../../assets/xinan/sheet.png").as_slice(),
+        ),
+        (
+            "Gonker",
+            include_bytes!("../../assets/gonker/sheet.png").as_slice(),
+        ),
     ]
     .into_iter()
     .map(|(name, sheet)| format!("{name}\n{}", render_bundled_avatar(sheet)))
