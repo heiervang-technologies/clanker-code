@@ -61,6 +61,22 @@ wire_api = "chat"
 extra_body = { chat_template_kwargs = { enable_thinking = false }, top_k = 40 }
 ```
 
+Audio inputs (a `.wav` or `.mp3` passed with `-i`, or a `localImage` item over
+the app server) are sent as `input_audio` parts. In a voice conversation every
+earlier clip would be resent on every turn; `max_audio_inputs` keeps only the
+newest N and replaces older ones with a short text note:
+
+```toml
+[model_providers.gems]
+# ...
+wire_api = "chat"
+max_audio_inputs = 1
+```
+
+Message text on the chat wire is also stripped of C0 control characters
+(other than tab, newline and carriage return): binary tool output full of NULs
+otherwise makes llama.cpp reject multimodal prompts.
+
 Large prompts on a slow local server can take longer to prefill than the
 default 300 s stream idle timeout; raise `stream_idle_timeout_ms` for such
 providers.

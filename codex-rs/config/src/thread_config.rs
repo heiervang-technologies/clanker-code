@@ -323,6 +323,7 @@ mod tests {
             location: None,
             credential_file: None,
             include_internal_metadata: false,
+            max_audio_inputs: None,
         }
     }
 }

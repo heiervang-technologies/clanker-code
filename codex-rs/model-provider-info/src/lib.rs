@@ -261,6 +261,12 @@ pub struct ModelProviderInfo {
     ///
     /// Example: `extra_body = { chat_template_kwargs = { enable_thinking = false }, top_k = 40 }`.
     pub extra_body: Option<serde_json::Map<String, serde_json::Value>>,
+
+    /// Chat Completions wire only: send the audio of just the newest N audio
+    /// inputs in each request; older audio parts are replaced by a short text
+    /// note. Voice conversations otherwise resend every clip on every turn.
+    /// Unset keeps all audio.
+    pub max_audio_inputs: Option<usize>,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -640,6 +646,7 @@ other non-default provider fields are not supported"
             location: None,
             credential_file: None,
             include_internal_metadata: true,
+            max_audio_inputs: None,
         }
     }
 
@@ -685,6 +692,7 @@ other non-default provider fields are not supported"
             location: None,
             credential_file: None,
             include_internal_metadata: false,
+            max_audio_inputs: None,
         }
     }
 
@@ -725,6 +733,7 @@ other non-default provider fields are not supported"
             credential_file: None,
             developer_role_name: None,
             extra_body: None,
+            max_audio_inputs: None,
             include_internal_metadata: false,
         }
     }
@@ -985,6 +994,7 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         location: None,
         credential_file: None,
         include_internal_metadata: false,
+        max_audio_inputs: None,
     }
 }
 

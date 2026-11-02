@@ -208,6 +208,7 @@ fn model_provider_from_proto(
         location: provider.location,
         credential_file: provider.credential_file.map(Into::into),
         include_internal_metadata: false,
+        max_audio_inputs: None,
     };
     Ok((id, info))
 }
@@ -239,10 +240,11 @@ fn model_provider_to_proto(
         websocket_connect_timeout_ms,
         requires_openai_auth,
         supports_websockets,
-        // Remote thread-config proto has no developer_role_name or extra_body field, so they are
-        // not round-tripped here.
+        // Remote thread-config proto has no developer_role_name, extra_body or
+        // max_audio_inputs field, so they are not round-tripped here.
         developer_role_name: _,
         extra_body: _,
+        max_audio_inputs: _,
         supports_standalone_web_search,
         include_internal_metadata: _,
         credential_file,
@@ -633,6 +635,7 @@ mod tests {
             extra_body: None,
             supports_standalone_web_search: true,
             gateway_oauth: None,
+            max_audio_inputs: None,
             aws: None,
             capabilities: Some(ModelProviderCapabilities {
                 cyber_access_programs: Some(true),
