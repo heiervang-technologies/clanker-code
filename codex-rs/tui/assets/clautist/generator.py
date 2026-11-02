@@ -37,6 +37,7 @@ approval-gated act that this file deliberately cannot perform.
     ./generator.py preview --out /tmp/clautist # (B) candidate + evidence
 
 """
+
 import argparse
 import hashlib
 import json
@@ -114,7 +115,9 @@ def draw_eye(
     d.ellipse(sclera_box, outline=INK)
 
 
-def lid(closed: float, rotation: int = 0, dim_factor: float | None = None) -> Image.Image:
+def lid(
+    closed: float, rotation: int = 0, dim_factor: float | None = None
+) -> Image.Image:
     """The eye at `closed` (0 open, 1 shut), drawn narrowed — not cropped.
 
     Cropping an open eye is the obvious implementation and it is wrong: it
@@ -195,7 +198,9 @@ def green_arc(im: Image.Image, closed: float = 0.0) -> Image.Image:
     mid = (top + bottom) / 2
     lid_bottom = round(bottom - (bottom - mid) * closed)
     out = im.copy()
-    ImageDraw.Draw(out).arc((2, lid_bottom - 4, 21, lid_bottom + 4), 20, 160, fill=GREEN)
+    ImageDraw.Draw(out).arc(
+        (2, lid_bottom - 4, 21, lid_bottom + 4), 20, 160, fill=GREEN
+    )
     return out
 
 
@@ -222,31 +227,31 @@ def normalized_frames() -> list[Image.Image]:
         return im
 
     open_eye = base()
-    frames.append(open_eye)                       # 0  idle, also talking rest
-    frames.append(lid(0.55))                      # 1  blink mid
-    frames.append(lid(1.0))                       # 2  blink shut
+    frames.append(open_eye)  # 0  idle, also talking rest
+    frames.append(lid(0.55))  # 1  blink mid
+    frames.append(lid(1.0))  # 2  blink shut
 
     # Iris rotations must all be distinct mod 360, frame 0 included — running
     # starts at 18, not 0, or frame 3 is a pixel-for-pixel duplicate of idle.
-    for k in range(4):                            # 3-6   running
+    for k in range(4):  # 3-6   running
         frames.append(base(18 + k * 18))
-    for k in range(2):                            # 7-8   waiting
+    for k in range(2):  # 7-8   waiting
         frames.append(base(90 + k * 36))
-    for k in range(2):                            # 9-10  review
+    for k in range(2):  # 9-10  review
         frames.append(base(162 + k * 18))
-    for k in range(2):                            # 11-12 failed
+    for k in range(2):  # 11-12 failed
         frames.append(base(216 + k * 36))
-    for k in range(2):                            # 13-14 planning, pre-ring
+    for k in range(2):  # 13-14 planning, pre-ring
         frames.append(base(288 + k * 18))
-    frames.append(gold_ring(base(324)))           # 15    planning, ring beat
+    frames.append(gold_ring(base(324)))  # 15    planning, ring beat
 
     # Tired reads as a heavy lid, not just a dim — the lid is the part that
     # survives the statusline downsample.
     tired = dim(open_eye, 0.82)
-    frames.append(gold_ring(tired))                        # 16 tired-idle
-    frames.append(gold_ring(lid(0.45, dim_factor=0.82)))   # 17 tired-idle, lid
-    frames.append(green_arc(lid(0.30, dim_factor=0.82), 0.30))       # 18 tired-run
-    frames.append(green_arc(lid(0.45, 36, dim_factor=0.82), 0.45))   # 19 tired-run
+    frames.append(gold_ring(tired))  # 16 tired-idle
+    frames.append(gold_ring(lid(0.45, dim_factor=0.82)))  # 17 tired-idle, lid
+    frames.append(green_arc(lid(0.30, dim_factor=0.82), 0.30))  # 18 tired-run
+    frames.append(green_arc(lid(0.45, 36, dim_factor=0.82), 0.45))  # 19 tired-run
 
     # Talking: the lower lid alone, by 1 and 2 px. This character has no mouth,
     # and my first two attempts both missed by trusting my eye over the corpus.
@@ -254,8 +259,8 @@ def normalized_frames() -> list[Image.Image]:
     # moves 4% of the character and the highest legitimate one is 35%; a full
     # squint moves 59-75% and reads as a pose change, which is why the shipped
     # frames (100%) strobe. A cue is small and local.
-    frames.append(lower_lid(1))                   # 20    talking
-    frames.append(lower_lid(2))                   # 21    talking
+    frames.append(lower_lid(1))  # 20    talking
+    frames.append(lower_lid(2))  # 21    talking
 
     assert len(frames) == FRAME_COUNT, len(frames)
     return frames
@@ -299,7 +304,9 @@ def legacy_capture() -> Image.Image:
 
 
 def frames_of(strip: Image.Image) -> list[Image.Image]:
-    return [strip.crop((i * FRAME, 0, (i + 1) * FRAME, FRAME)) for i in range(FRAME_COUNT)]
+    return [
+        strip.crop((i * FRAME, 0, (i + 1) * FRAME, FRAME)) for i in range(FRAME_COUNT)
+    ]
 
 
 def deltas(legacy: Image.Image, candidate: Image.Image) -> list[dict]:
@@ -311,16 +318,22 @@ def deltas(legacy: Image.Image, candidate: Image.Image) -> list[dict]:
             for x in range(FRAME)
             if a.getpixel((x, y)) != b.getpixel((x, y))
         ]
-        opaque_a = sum(1 for y in range(FRAME) for x in range(FRAME) if a.getpixel((x, y))[3])
-        opaque_b = sum(1 for y in range(FRAME) for x in range(FRAME) if b.getpixel((x, y))[3])
+        opaque_a = sum(
+            1 for y in range(FRAME) for x in range(FRAME) if a.getpixel((x, y))[3]
+        )
+        opaque_b = sum(
+            1 for y in range(FRAME) for x in range(FRAME) if b.getpixel((x, y))[3]
+        )
         out.append(
             {
                 "frame": i,
                 "changed_px": len(changed),
                 "legacy_opaque": opaque_a,
                 "candidate_opaque": opaque_b,
-                "rows": [min((y for _, y in changed), default=-1),
-                         max((y for _, y in changed), default=-1)],
+                "rows": [
+                    min((y for _, y in changed), default=-1),
+                    max((y for _, y in changed), default=-1),
+                ],
             }
         )
     return out
@@ -333,7 +346,9 @@ def contact_sheet(legacy: Image.Image, candidate: Image.Image, out: Path) -> Pat
     bg = (30, 30, 34, 255)
     cols = FRAME_COUNT
     cw = FRAME * scale + pad
-    sheet = Image.new("RGBA", (cols * cw + pad, 2 * (FRAME * scale + pad) + pad + 10), bg)
+    sheet = Image.new(
+        "RGBA", (cols * cw + pad, 2 * (FRAME * scale + pad) + pad + 10), bg
+    )
     for row, strip in enumerate((legacy, candidate)):
         for i, f in enumerate(frames_of(strip)):
             tile = Image.alpha_composite(Image.new("RGBA", (FRAME, FRAME), bg), f)
@@ -373,7 +388,9 @@ def cmd_verify(_args) -> int:
     manifest = json.loads(MANIFEST.read_text())
     fr = manifest["frame"]
     assert (fr["width"], fr["height"], fr["columns"]) == (FRAME, FRAME, FRAME_COUNT)
-    print(f"legacy capture OK — sheet.png matches {LEGACY_SHA256[:16]}… and the manifest")
+    print(
+        f"legacy capture OK — sheet.png matches {LEGACY_SHA256[:16]}… and the manifest"
+    )
     return 0
 
 

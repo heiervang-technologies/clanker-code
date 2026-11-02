@@ -8,6 +8,7 @@ user-supplied path, or a symlink is enough to turn a preview into an overwrite.
 So the guard is tested from several directions, including the ones I would not
 have thought to type by hand.
 """
+
 import importlib.util
 import json
 import subprocess
@@ -165,11 +166,15 @@ class NormalizedOutput(unittest.TestCase):
             self.assertGreater(opaque, 0, f"frame {i} is empty")
 
     def test_no_two_frames_are_identical(self):
-        frames = [f.tobytes() for f in gen.to_strip(gen.normalized_frames()).split()[0:1]]
+        frames = [
+            f.tobytes() for f in gen.to_strip(gen.normalized_frames()).split()[0:1]
+        ]
         strip = gen.to_strip(gen.normalized_frames())
         seen = {}
         for i in range(gen.FRAME_COUNT):
-            key = strip.crop((i * gen.FRAME, 0, (i + 1) * gen.FRAME, gen.FRAME)).tobytes()
+            key = strip.crop(
+                (i * gen.FRAME, 0, (i + 1) * gen.FRAME, gen.FRAME)
+            ).tobytes()
             self.assertNotIn(key, seen, f"frame {i} duplicates frame {seen.get(key)}")
             seen[key] = i
 
@@ -184,7 +189,9 @@ class NormalizedOutput(unittest.TestCase):
 
         def footprint(im):
             a = im.tobytes()[3::4]
-            return {(i % gen.FRAME, i // gen.FRAME) for i, v in enumerate(a) if v >= 128}
+            return {
+                (i % gen.FRAME, i // gen.FRAME) for i, v in enumerate(a) if v >= 128
+            }
 
         base = frame(0)
         for idx in (20, 21):
