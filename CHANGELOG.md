@@ -31,7 +31,7 @@ Everything below is Clanker-specific and has no upstream Codex equivalent.
 
 ### Characters
 
-A first-class notion of an agent *character* — a named identity with an avatar,
+A first-class notion of an agent _character_ — a named identity with an avatar,
 declared aliases, and a validated manifest.
 
 - **`codex-rs/character/` crate** — character manifest schema
@@ -97,13 +97,13 @@ Five Clanker-specific collaboration modes
 (`codex-rs/collaboration-mode-templates/templates/`), each replacing any
 previously active mode:
 
-| Mode | Template |
-|---|---|
-| **LARP** (default) | `larp.md` |
-| **Based** | `based.md` |
-| **Locked In** | `locked_in.md` |
-| **Ultrachill** | `ultrachill.md` |
-| **Cringe** | `cringe.md` |
+| Mode               | Template        |
+| ------------------ | --------------- |
+| **LARP** (default) | `larp.md`       |
+| **Based**          | `based.md`      |
+| **Locked In**      | `locked_in.md`  |
+| **Ultrachill**     | `ultrachill.md` |
+| **Cringe**         | `cringe.md`     |
 
 ### Branding
 
