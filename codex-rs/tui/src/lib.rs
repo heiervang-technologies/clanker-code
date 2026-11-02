@@ -105,6 +105,7 @@ pub(crate) use worktree_startup::ManagedTuiWorktree;
 
 mod activation_key_guard;
 mod additional_dirs;
+mod agent_name;
 mod analytics;
 mod app;
 mod app_backtrack;
@@ -214,6 +215,7 @@ mod session_state;
 mod shortcut_help;
 mod skills_helpers;
 mod slash_command;
+mod startup_avatar;
 mod startup_draft;
 mod startup_error;
 mod startup_hooks_review;
@@ -1237,11 +1239,7 @@ async fn run_ratatui_app(
     startup_draft: startup_draft::StartupDraft,
 ) -> color_eyre::Result<AppExitInfo> {
     // Clanker: `--name` binds the session to a named character avatar.
-    let avatar_binding = cli
-        .name
-        .as_deref()
-        .map(|name| avatars::resolve_named_avatar_binding(&initial_config.codex_home, name))
-        .transpose()
+    let avatar_binding = startup_avatar::resolve(&initial_config.codex_home, cli.name.as_deref())
         .map_err(|err| color_eyre::eyre::eyre!("{err:#}"))?;
     let backend_id = crate::backend_id::BackendId::new();
     let uses_remote_workspace = app_server_target.uses_remote_workspace();

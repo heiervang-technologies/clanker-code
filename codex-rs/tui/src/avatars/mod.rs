@@ -12,7 +12,9 @@ mod runtime;
 #[allow(unused_imports)]
 pub(crate) use assets::ensure_bundled_avatars;
 pub use assets::ensure_bundled_character_for_name;
+#[cfg(test)]
 pub(crate) use binding::resolve_named_avatar_binding;
+pub(crate) use binding::resolve_startup_avatar_binding;
 pub(crate) use runtime::AvatarBinding;
 pub(crate) use runtime::AvatarPlacement;
 pub(crate) use runtime::AvatarRuntime;
