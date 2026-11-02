@@ -102,14 +102,21 @@ def frame(
     # Head, fedora crown, and low brim.
     draw.rounded_rectangle([5, y(5), 18, y(15)], radius=2, fill=NAVY)
     draw.polygon([(5, y(5)), (6, y(2)), (9, y(0)), (16, y(1)), (18, y(4))], fill=BLUE)
-    draw.polygon([(7, y(2)), (10, y(0)), (16, y(1)), (17, y(3)), (10, y(3))], fill=BLUE_HI)
-    draw.polygon([(4, y(4)), (18, y(3)), (21, y(5)), (18, y(6)), (5, y(7)), (3, y(6))], fill=NAVY)
+    draw.polygon(
+        [(7, y(2)), (10, y(0)), (16, y(1)), (17, y(3)), (10, y(3))], fill=BLUE_HI
+    )
+    draw.polygon(
+        [(4, y(4)), (18, y(3)), (21, y(5)), (18, y(6)), (5, y(7)), (3, y(6))], fill=NAVY
+    )
     draw.line([(6, y(4)), (18, y(4))], fill=TEAL)
     draw.point([(6, y(3)), (7, y(3)), (17, y(2))], fill=ICE)
 
     # Visor band.  Glance states shift only the hot core; scan adds a moving
     # pale bar; fault deliberately drops the source palette for an alarm read.
-    draw.polygon([(5, y(7)), (18, y(6)), (19, y(10)), (17, y(12)), (6, y(12)), (4, y(10))], fill=BLUE)
+    draw.polygon(
+        [(5, y(7)), (18, y(6)), (19, y(10)), (17, y(12)), (6, y(12)), (4, y(10))],
+        fill=BLUE,
+    )
     draw.rectangle([6, y(8), 17, y(10)], fill=TEAL)
     if visor == "bright":
         draw.rectangle([8, y(8), 16, y(9)], fill=CYAN)
@@ -163,10 +170,14 @@ def frame(
             draw.rectangle([21, cigar_y, 22, cigar_y + 1], fill=FAULT_DARK)
 
     if smoke == "curl":
-        draw.point([(22, y(10)), (23, y(8)), (22, y(6)), (22, y(5)), (23, y(3))], fill=ICE)
+        draw.point(
+            [(22, y(10)), (23, y(8)), (22, y(6)), (22, y(5)), (23, y(3))], fill=ICE
+        )
         draw.point([(21, y(7)), (23, y(2))], fill=PALE)
     elif smoke == "puff":
-        draw.point([(22, y(9)), (23, y(8)), (21, y(7)), (22, y(6)), (23, y(6))], fill=ICE)
+        draw.point(
+            [(22, y(9)), (23, y(8)), (21, y(7)), (22, y(6)), (23, y(6))], fill=ICE
+        )
     elif smoke == "wind-left":
         draw.line([(21, y(10)), (16, y(8))], fill=PALE)
         draw.point([(14, y(8)), (18, y(9))], fill=ICE)
@@ -218,7 +229,14 @@ FRAMES = [
     frame(bob=1, visor="dim", coat="slump", cigar="ash", smoke="puff"),
     frame(bob=1, visor="blink", coat="slump", cigar="ash", smoke="curl"),
     frame(bob=1, visor="dim", coat="left", cigar="ash", smoke="wind-left"),
-    frame(bob=1, visor="dim", coat="right", cigar="ash", smoke="wind-right", extras=("sweat",)),
+    frame(
+        bob=1,
+        visor="dim",
+        coat="right",
+        cigar="ash",
+        smoke="wind-right",
+        extras=("sweat",),
+    ),
     frame(mouth="half"),
     frame(mouth="open"),
 ]
