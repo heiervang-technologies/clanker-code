@@ -518,7 +518,7 @@ sqlx-macros = { version = "=0.9.0", default-features = false, features = ["deriv
 # Preserve the target driver's query-description support without building it on the host.
 sqlx-sqlite = { version = "=0.9.0", default-features = false, features = ["offline"] }
 starlark = { version = "0.14.2", default-features = false }
-strum = "0.27.2"
+strum = "0.28.0"
 strum_macros = "0.28.0"
 supports-color = "3.0.2"
 syntect = "5"
