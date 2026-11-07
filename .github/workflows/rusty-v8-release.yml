@@ -361,7 +361,7 @@ jobs:
         run: git apply -p3 "${GITHUB_WORKSPACE}/patches/v8_array_sort_elements_kind.patch"
 
       - name: Install sccache
-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
         with:
           tool: sccache@0.8.2
 
