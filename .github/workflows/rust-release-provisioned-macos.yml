@@ -185,7 +185,7 @@ jobs:
             bin codex-resources codex-path codex-package.json CodexCLI.app
           (cd verified && shasum -a 256 "codex-provisioned-package-$TARGET$ARTIFACT_SUFFIX.tar.gz" > SHA256SUMS)
       - uses: ./.github/actions/setup-ci
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.5"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
