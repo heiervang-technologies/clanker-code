@@ -40,7 +40,7 @@ branch and repository history.
 ### Branch strategy
 
 - **`main`** - Clean mirror of upstream. Never modified directly.
-- **`clanker`** - Default branch. Contains all HT-specific additions rebased on top of `main`.
+- **`clanker`** - Default branch. Contains all HT-specific additions, with upstream `main` integrated through merge PRs.
 
 For questions, feature requests, or bug reports related to this fork, please use the [HT Discussions page](https://github.com/orgs/heiervang-technologies/discussions). For upstream issues, use the [upstream repository](https://github.com/openai/codex/issues).
 
