@@ -28,28 +28,40 @@ Each fork has two key branches:
 
 ## Syncing with Upstream
 
-When upstream `main` advances:
+The scheduled Fork Sync workflow fast-forwards `main` from upstream and sets
+`skip_rebase: true`. Check the latest workflow result: a schedule alone does not
+establish that the mirror is current. Integration into `clanker` is a separate,
+reviewed merge PR.
+
+Do not rebase or force-push the published `clanker` branch. Preserve upstream
+ancestry with a merge commit, including when landing the integration PR; do not
+squash or rebase that PR.
+
+After verifying that the mirror sync succeeded, prepare an isolated worktree:
 
 ```bash
-# 1. Update local main
-git checkout main
-git fetch upstream
-git merge --ff-only upstream/main
-git push origin main
-
-# 2. Rebase clanker onto updated main
-git checkout clanker
-git rebase main
-
-# 3. Resolve any conflicts, then force-push
-git push --force-with-lease origin clanker
+git fetch origin
+git worktree add ~/worktrees/clanker-upstream-sync -b sync/upstream origin/clanker
+cd ~/worktrees/clanker-upstream-sync
+git merge --no-ff origin/main
+# Resolve conflicts, review the downstream changes, and run the relevant checks.
+git push -u origin sync/upstream
+gh pr create --base clanker --title "chore: merge upstream main"
 ```
+
+Before landing, verify the required CI checks on the final PR revision and
+review that fork features survive the integration. For changes to authentication,
+model discovery, or request handling, run the focused tests and a local ChatGPT
+sign-in smoke test covering a model response and tool execution. Keep credentials
+out of CI logs and repository files. Retain a known-working release for rollback.
 
 ## Feature Development
 
 1. Create a feature branch from `clanker`:
    ```bash
-   git checkout -b feat/my-feature clanker
+   git fetch origin
+   git worktree add ~/worktrees/my-feature -b feat/my-feature origin/clanker
+   cd ~/worktrees/my-feature
    ```
 2. Develop, commit, push
 3. Open a PR targeting `clanker`
@@ -59,7 +71,7 @@ git push --force-with-lease origin clanker
 ## Commit Standards
 
 - Use [conventional commits](https://www.conventionalcommits.org/) (e.g., `feat:`, `fix:`, `chore:`)
-- Maintain clean, linear history — no merge commits from sync operations
+- Squash ordinary feature PRs; preserve merge commits for upstream integration
 - One commit per feature or logical change
 
 ## Questions & Discussion
