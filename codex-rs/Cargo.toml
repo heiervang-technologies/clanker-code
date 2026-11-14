@@ -359,7 +359,7 @@ aws-smithy-runtime-api = { version = "1", features = ["client", "http-1x"] }
 aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
 aws-types = "1"
 axum = { version = "0.8", default-features = false }
-base64 = "0.22.1"
+base64 = "0.23.0"
 bitflags = "2.13.1"
 blake3 = "1.8.2"
 bm25 = "2.3.2"
