@@ -9844,8 +9844,6 @@ dependencies = [
 [[package]]
 name = "pagable"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3658968938a4d1eaa1987e69dcd84b01fb067c5b3416dccc8d71373b6ded6821"
 dependencies = [
  "allocative",
  "anyhow",

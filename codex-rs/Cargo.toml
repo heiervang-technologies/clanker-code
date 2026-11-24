@@ -164,7 +164,7 @@ codex-collaboration-mode-templates = { path = "collaboration-mode-templates" }
 codex-cloud-config = { path = "cloud-config" }
 codex-cloud-tasks-client = { path = "cloud-tasks-client" }
 codex-cloud-tasks-mock-client = { path = "cloud-tasks-mock-client" }
-codex-code-mode = { path = "code-mode" }
+codex-code-mode = { path = "code-mode", default-features = false }
 codex-code-mode-protocol = { path = "code-mode-protocol" }
 codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
@@ -566,6 +566,8 @@ crossterm = { git = "https://github.com/nornagon/crossterm", rev = "87db8bfa6dc9
 ratatui = { git = "https://github.com/nornagon/ratatui", rev = "9b2ad1298408c45918ee9f8241a6f95498cdbed2" }
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186" }
 tungstenite = { git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f" }
+# Vendored to fix a size assertion that fails on 32-bit ARM (Android).
+pagable = { path = "vendor/pagable" }
 
 # Uncomment to debug local changes.
 # rmcp = { path = "../../rust-sdk/crates/rmcp" }

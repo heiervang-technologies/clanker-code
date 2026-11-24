@@ -131,6 +131,15 @@ openssl-sys = { workspace = true, features = ["vendored"] }
 [target.aarch64-unknown-linux-musl.dependencies]
 openssl-sys = { workspace = true, features = ["vendored"] }
 
+# Build OpenSSL from source for Android builds.
+[target.'cfg(target_os = "android")'.dependencies]
+openssl-sys = { workspace = true, features = ["vendored"] }
+
+# rusty_v8 ships no prebuilt Android archives, so Android builds run code mode
+# only through an out-of-process `codex-code-mode-host`.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+codex-code-mode = { workspace = true, features = ["in-process-v8"] }
+
 [target.'cfg(unix)'.dependencies]
 codex-shell-escalation = { workspace = true }
 

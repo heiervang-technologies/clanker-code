@@ -77,9 +77,9 @@ impl CodeModeSessionProvider for ProcessOwnedCodeModeSessionProvider {
     ) -> CodeModeSessionProviderFuture<'a> {
         Box::pin(async move {
             let Some(process_host) = self.process_host() else {
-                let session: Arc<dyn CodeModeSession> =
-                    Arc::new(crate::InProcessCodeModeSession::with_delegate(delegate));
-                return Ok(session);
+                return crate::InProcessCodeModeSessionProvider
+                    .create_session(delegate)
+                    .await;
             };
 
             match process_host.connection().await {
@@ -90,9 +90,9 @@ impl CodeModeSessionProvider for ProcessOwnedCodeModeSessionProvider {
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner) =
                         ProviderState::InProcess;
-                    let session: Arc<dyn CodeModeSession> =
-                        Arc::new(crate::InProcessCodeModeSession::with_delegate(delegate));
-                    return Ok(session);
+                    return crate::InProcessCodeModeSessionProvider
+                        .create_session(delegate)
+                        .await;
                 }
                 Err(error) => return Err(error.to_string()),
             }
