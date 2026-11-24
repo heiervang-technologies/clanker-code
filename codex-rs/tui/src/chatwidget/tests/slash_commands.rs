@@ -1585,7 +1585,7 @@ async fn pending_token_activity_refresh_keeps_composer_visible_in_short_viewport
 
     dispatch_usage_and_expect_refresh(&mut chat, &mut rx);
 
-    let width: u16 = 80;
+    let width = snapshot_width_for_test_cwd(/*width*/ 80);
     let height: u16 = 8;
     let backend = VT100Backend::new(width, height);
     let mut term = crate::custom_terminal::Terminal::with_options(backend).expect("terminal");
