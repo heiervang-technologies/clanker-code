@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
 use codex_file_system::ExecutorFileSystem;
-use codex_file_system::FindUpErrorPolicy;
-use codex_file_system::find_nearest_native_ancestor_with_markers;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use futures::future::join_all;
@@ -54,15 +53,12 @@ pub async fn get_git_repo_root_with_fs(
         Ok(metadata) if metadata.is_directory => cwd.clone(),
         _ => cwd.parent()?,
     };
-    find_nearest_native_ancestor_with_markers(
-        fs,
-        &base,
-        vec![".git".to_string()],
-        FindUpErrorPolicy::Ignore,
-        /*sandbox*/ None,
-    )
-    .await
-    .ok()?
+    for dir in base.ancestors() {
+        if is_valid_git_entry_with_fs(fs, &dir.join(".git")).await {
+            return Some(dir);
+        }
+    }
+    None
 }
 
 /// Timeout for git commands to prevent freezing on large repositories
@@ -847,7 +843,7 @@ fn find_ancestor_git_entry(base_dir: &Path) -> Option<(PathBuf, PathBuf)> {
 
     loop {
         let dot_git = dir.join(".git");
-        if dot_git.exists() {
+        if is_valid_git_entry(&dot_git) {
             return Some((dir, dot_git));
         }
 
@@ -859,6 +855,50 @@ fn find_ancestor_git_entry(base_dir: &Path) -> Option<(PathBuf, PathBuf)> {
     }
 
     None
+}
+
+fn is_valid_git_entry(dot_git: &Path) -> bool {
+    if dot_git.is_dir() {
+        return dot_git.join("HEAD").is_file();
+    }
+    if !dot_git.is_file() {
+        return false;
+    }
+    fs::read_to_string(dot_git)
+        .ok()
+        .is_some_and(|contents| is_gitdir_pointer(&contents))
+}
+
+async fn is_valid_git_entry_with_fs(
+    fs: &dyn ExecutorFileSystem,
+    dot_git: &AbsolutePathBuf,
+) -> bool {
+    let dot_git_uri = PathUri::from_abs_path(dot_git);
+    let Ok(metadata) = fs.get_metadata(&dot_git_uri, /*sandbox*/ None).await else {
+        return false;
+    };
+
+    if metadata.is_directory {
+        let head_uri = PathUri::from_abs_path(&dot_git.join("HEAD"));
+        return fs
+            .get_metadata(&head_uri, /*sandbox*/ None)
+            .await
+            .is_ok_and(|metadata| metadata.is_file);
+    }
+    if !metadata.is_file {
+        return false;
+    }
+    fs.read_file_text(&dot_git_uri, /*sandbox*/ None)
+        .await
+        .ok()
+        .is_some_and(|contents| is_gitdir_pointer(&contents))
+}
+
+fn is_gitdir_pointer(contents: &str) -> bool {
+    contents
+        .trim()
+        .strip_prefix("gitdir:")
+        .is_some_and(|path| !path.trim().is_empty())
 }
 
 /// Returns a list of local git branches.
@@ -910,6 +950,35 @@ mod tests {
     use pretty_assertions::assert_eq;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn git_repo_root_ignores_empty_git_directory_until_head_exists() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let repo = temp_dir.path().join("repo");
+        let nested = repo.join("nested");
+        std::fs::create_dir_all(repo.join(".git")).expect("create empty .git");
+        std::fs::create_dir_all(&nested).expect("create nested directory");
+
+        assert_eq!(get_git_repo_root(&nested), None);
+
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
+        assert_eq!(get_git_repo_root(&nested), Some(repo));
+    }
+
+    #[test]
+    fn git_repo_root_accepts_nonempty_gitdir_pointer() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let repo = temp_dir.path().join("worktree");
+        let nested = repo.join("nested");
+        std::fs::create_dir_all(&nested).expect("create nested directory");
+        std::fs::write(
+            repo.join(".git"),
+            "gitdir: ../main/.git/worktrees/worktree\n",
+        )
+        .expect("write gitdir pointer");
+
+        assert_eq!(get_git_repo_root(&nested), Some(repo));
+    }
 
     #[test]
     fn canonicalize_git_remote_url_normalizes_github_variants() {

@@ -1380,9 +1380,9 @@ async fn review_branch_picker_escape_navigates_back_then_dismisses() {
     // Open the Review presets parent popup.
     chat.open_review_popup();
 
-    // Open the branch picker submenu (child view). Using a temp cwd with no git repo is fine.
-    let cwd = std::env::temp_dir();
-    chat.show_review_branch_picker(&cwd).await;
+    // Open the branch picker submenu (child view) outside a Git repository.
+    let cwd = tempfile::tempdir().expect("create review-mode test cwd");
+    chat.show_review_branch_picker(cwd.path()).await;
 
     // Verify child view header.
     let header = render_bottom_first_row(&chat, /*width*/ 60);

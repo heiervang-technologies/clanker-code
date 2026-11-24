@@ -70,10 +70,21 @@ impl ExecutorFileSystem for TestFileSystem {
 
     fn get_metadata<'a>(
         &'a self,
-        _path: &'a PathUri,
+        path: &'a PathUri,
         _sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, FileMetadata> {
-        Box::pin(async move { unimplemented!("test filesystem only supports reads") })
+        Box::pin(async move {
+            let path = path.to_abs_path()?;
+            let metadata = tokio::fs::metadata(path.as_path()).await?;
+            Ok(FileMetadata {
+                is_directory: metadata.is_dir(),
+                is_file: metadata.is_file(),
+                is_symlink: metadata.is_symlink(),
+                size: metadata.len(),
+                created_at_ms: 0,
+                modified_at_ms: 0,
+            })
+        })
     }
 
     fn read_directory<'a>(
@@ -102,6 +113,27 @@ impl ExecutorFileSystem for TestFileSystem {
     ) -> ExecutorFileSystemFuture<'a, ()> {
         Box::pin(async move { unimplemented!("test filesystem only supports reads") })
     }
+}
+
+#[tokio::test]
+async fn git_checkout_root_ignores_transient_empty_git_directory() {
+    let tmp = tempdir().expect("tempdir");
+    let repo = tmp.path().join("repo");
+    let workspace = repo.join("workspace");
+    std::fs::create_dir_all(repo.join(".git")).expect("create empty .git");
+    std::fs::create_dir_all(&workspace).expect("create workspace");
+    let workspace = AbsolutePathBuf::from_absolute_path(workspace).expect("absolute workspace");
+
+    assert_eq!(
+        get_git_repo_root_with_fs(&TestFileSystem, &workspace).await,
+        None
+    );
+
+    std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
+    assert_eq!(
+        get_git_repo_root_with_fs(&TestFileSystem, &workspace).await,
+        Some(AbsolutePathBuf::from_absolute_path(repo).expect("absolute repo"))
+    );
 }
 
 #[tokio::test]

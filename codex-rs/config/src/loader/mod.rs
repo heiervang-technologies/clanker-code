@@ -33,6 +33,7 @@ use crate::strict_config::unknown_feature_toml_value_field;
 use crate::thread_config::ThreadConfigContext;
 use crate::thread_config::ThreadConfigLoader;
 use codex_file_system::ExecutorFileSystem;
+use codex_git_utils::get_git_repo_root_with_fs;
 use codex_git_utils::resolve_root_git_project_for_trust;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::SandboxMode;
@@ -995,7 +996,7 @@ async fn project_trust_context(
         .first()
         .cloned()
         .unwrap_or_else(|| project_trust_key(project_root.as_path()));
-    let checkout_root = find_git_checkout_root(fs, cwd).await;
+    let checkout_root = get_git_repo_root_with_fs(fs, cwd).await;
     let repo_root = resolve_root_git_project_for_trust(fs, cwd).await;
     let repo_root_lookup_keys = repo_root
         .as_ref()
@@ -1155,30 +1156,6 @@ async fn find_project_root(
         }
     }
     Ok(cwd.clone())
-}
-
-async fn find_git_checkout_root(
-    fs: &dyn ExecutorFileSystem,
-    cwd: &AbsolutePathBuf,
-) -> Option<AbsolutePathBuf> {
-    let cwd_uri = PathUri::from_abs_path(cwd);
-    let base = match fs.get_metadata(&cwd_uri, /*sandbox*/ None).await {
-        Ok(metadata) if metadata.is_directory => cwd.clone(),
-        _ => cwd.parent()?,
-    };
-
-    for dir in base.ancestors() {
-        let dot_git = dir.join(".git");
-        let dot_git_uri = PathUri::from_abs_path(&dot_git);
-        if fs
-            .get_metadata(&dot_git_uri, /*sandbox*/ None)
-            .await
-            .is_ok()
-        {
-            return Some(dir);
-        }
-    }
-    None
 }
 
 struct LoadedProjectLayers {

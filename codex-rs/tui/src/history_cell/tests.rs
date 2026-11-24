@@ -25,6 +25,8 @@ use reqwest::StatusCode;
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+use tempfile::TempDir;
 
 use codex_app_server_protocol::CommandExecutionSource as ExecCommandSource;
 use codex_protocol::mcp::CallToolResult;
@@ -33,12 +35,20 @@ use rmcp::model::Content;
 
 const SMALL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 async fn test_config() -> Config {
-    let codex_home = std::env::temp_dir();
+    let codex_home = test_codex_home();
     ConfigBuilder::default()
-        .codex_home(codex_home.clone())
+        .codex_home(codex_home)
         .build()
         .await
         .expect("config")
+}
+
+fn test_codex_home() -> PathBuf {
+    static TEST_ROOT: OnceLock<TempDir> = OnceLock::new();
+    let root = TEST_ROOT.get_or_init(|| TempDir::new().expect("create history-cell test root"));
+    let codex_home = root.path().join("codex-home");
+    std::fs::create_dir_all(&codex_home).expect("create history-cell test CODEX_HOME");
+    codex_home
 }
 
 fn test_cwd() -> PathBuf {
