@@ -502,18 +502,12 @@ mod tests {
         );
 
         assert_eq!(
-            binding
-                .manifest_for_mode(ModeKind::LockedIn)
-                .strip_prefix(dir.path())
-                .unwrap(),
-            std::path::Path::new("locked-in/avatar.json")
+            binding.manifest_for_mode(ModeKind::LockedIn).as_path(),
+            canonical_manifest(dir.path(), "locked-in").as_path()
         );
         assert_eq!(
-            binding
-                .manifest_for_mode(ModeKind::Larp)
-                .strip_prefix(dir.path())
-                .unwrap(),
-            std::path::Path::new("default/avatar.json")
+            binding.manifest_for_mode(ModeKind::Larp).as_path(),
+            canonical_manifest(dir.path(), "default").as_path()
         );
         assert_eq!(binding.character_id(), "chloe");
     }
